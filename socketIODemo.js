@@ -5,6 +5,7 @@ var io = require('socket.io')(server);
 
 server.listen(80);
 
+
 //静态文件路径
 app.use(express.static(__dirname + '/'));
 
