@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<script type="text/javascript" src='../socket.io.js'></script>
+	<!-- <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.0.4/socket.io.js"></script> -->
+	<style>
+		.header,.content{
+			text-align: center;
+			padding: 15px;
+		}
+		.content{
+			margin: 0 auto;
+			width: 80%;
+		}
+		.btn{
+			margin-left: 15px;
+			width: 100px;
+			border-radius: 5px;
+		}
+		#msg-content{
+			width: 50%;
+			height: 400px;
+			background: #000;
+			color: #FFF;
+			margin: 0 auto;
+		}
+		.msgbox{
+			max-height: 400px;
+			text-align: left;
+			overflow: auto;
+		}
+		.row{
+			padding: 15px;
+		}
+	</style>
+	<title>socketio</title>
+</head>
+<body>
+	<div class="header">socket.io Demo</div>
+	<div class="content">
+		<div class="row" id='msg-content'>
+			<div class="msgbox">
+				<p>Message:</p>
+				<p>-----></p>
+			</div>
+		</div>
+
+		<div class="row"><input type="text" id="msgInput"></div>
+		<div class="row">
+			<button id="sendBtn" class="btn">send</button>
+			<button id="startBtn" class="btn">server Start</button>
+			<button id="stopBtn" class="btn">server Stop</button>
+		</div>
+	</div>
+	<div class="footer"></div>
+	<script type="text/javascript">
+		var socket = io.connect('http://localhost');
+		socket.on('serverSend', function (data) {
+		  console.log(data);
+		  showMsg(data,'serverSend');
+		  //socket.emit('sendMsg', { my: 'data' });
+		});
+		var sendBtn = document.getElementById('sendBtn');
+		var startBtn = document.getElementById('startBtn');
+		var stopBtn = document.getElementById('stopBtn');
+		var msgInput = document.getElementById('msgInput');
+		var msgbox = document.getElementsByClassName('msgbox')[0];
+
+		sendBtn.addEventListener('click',function(){
+			var msg = msgInput.value;
+			if(msg){
+				showMsg(msg,'sendBtn');
+				socket.emit('sendMsg', { msg: msg });
+			}
+		});
+		startBtn.addEventListener('click',function(){
+			var msg = 'start';
+			showMsg(msg,'startBtn');
+			socket.emit('sendMsg', msg);
+		});
+		stopBtn.addEventListener('click',function(){
+			var msg = 'stop';
+			showMsg(msg,'stopBtn');
+			socket.emit('sendMsg', msg);
+		});
+
+
+		function showMsg(data,type){
+			var msgNode = document.createElement('p');
+			var dataStr = '';
+			if(typeof data == 'object'){
+				dataStr = '{';
+				for(key in data){
+					dataStr = dataStr+key+' : '+ data[key]+';'
+				}
+				dataStr = dataStr.slice(0,-1)+	'}'
+			}else{
+				dataStr = data;
+			}
+			msgNode.innerHTML = 'type:'+type+';<br/>data:'+dataStr;
+			msgbox.appendChild(msgNode);
+		}
+	</script>
+</body>
+</html>
