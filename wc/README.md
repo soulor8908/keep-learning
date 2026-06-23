@@ -1,4 +1,4 @@
-# vant-wc 跨技术栈看板物料集成方案
+# wc 跨技术栈看板物料集成方案
 
 一套基于 Web Components / Custom Elements 的轻量集成方案，用于将不同部门、不同技术栈（Vue2 / Vue3 / 原生）的物料组件以统一方式接入到同一个 BI 看板基座中。
 
@@ -14,7 +14,7 @@
 ## 目录结构
 
 ```
-vant-wc/
+wc/
 ├── vue2-widget-template/          # Vue2 物料零改造模板
 │   ├── widget-wrapper.js          # Custom Element 包装入口
 │   ├── vue.config.js              # UMD 打包配置示例
@@ -55,7 +55,7 @@ npm i @vue/web-component-wrapper
 `vue.config.js`：
 
 ```js
-const widgetPlugin = require('./vant-wc/widget-wrapper-plugin/vue-cli-plugin');
+const widgetPlugin = require('./wc/widget-wrapper-plugin/vue-cli-plugin');
 
 module.exports = {
   pluginOptions: {
@@ -83,7 +83,7 @@ npm run build
 ```js
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import widgetVitePlugin from './vant-wc/widget-wrapper-plugin/vite-plugin';
+import widgetVitePlugin from './wc/widget-wrapper-plugin/vite-plugin';
 
 export default defineConfig({
   plugins: [
@@ -134,7 +134,7 @@ export default {
 如需单独生成：
 
 ```bash
-node vant-wc/schema-generator/index.js bi-sales-panel ./src/components/SalesPanel.vue
+node wc/schema-generator/index.js bi-sales-panel ./src/components/SalesPanel.vue
 ```
 
 > 自动生成的 schema 包含类型、默认值、必填项和布局尺寸。业务标题、枚举值等语义信息可通过 AI 辅助补充。
@@ -158,7 +158,7 @@ node vant-wc/schema-generator/index.js bi-sales-panel ./src/components/SalesPane
 ### 2.1 引入物料加载器
 
 ```js
-import { loadWidget, mountWidget } from './vant-wc/widget-loader';
+import { loadWidget, mountWidget } from './wc/widget-loader';
 
 // 方式一：只加载不渲染
 await loadWidget({
@@ -205,7 +205,7 @@ await mountWidget(document.getElementById('container'), {
 不同技术栈的物料需要通信时，使用 `widget-bus`：
 
 ```js
-import { emit, on } from './vant-wc/widget-bus';
+import { emit, on } from './wc/widget-bus';
 
 // 发送消息
 emit('refresh-data', { widget: 'bi-sales-panel' });
@@ -223,12 +223,12 @@ Vue2/Vue3 项目也可以安装对应的插件：
 
 ```js
 // Vue2
-import { Vue2BusPlugin } from './vant-wc/widget-bus';
+import { Vue2BusPlugin } from './wc/widget-bus';
 Vue.use(Vue2BusPlugin);
 // this.$widgetBus.emit('xxx')
 
 // Vue3
-import { Vue3BusPlugin } from './vant-wc/widget-bus';
+import { Vue3BusPlugin } from './wc/widget-bus';
 app.use(Vue3BusPlugin);
 // app.config.globalProperties.$widgetBus.emit('xxx')
 ```
@@ -251,13 +251,13 @@ app.use(Vue3BusPlugin);
 
 ```bash
 # 让 AI 辅助迁移旧组件
-node vant-wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.vue
+node wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.vue
 
 # 让 AI 生成更丰富的 schema
-node vant-wc/ai-assistant/cli.js schema bi-sales-panel ./src/components/SalesPanel.vue
+node wc/ai-assistant/cli.js schema bi-sales-panel ./src/components/SalesPanel.vue
 
 # 让 AI 生成组件文档
-node vant-wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vue
+node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vue
 ```
 
 当前 CLI 只负责拼接 Prompt，接入大模型 API 后可直接写回文件。
@@ -389,7 +389,7 @@ VITE_WIDGET_NAME=bi-finance-panel VITE_WIDGET_COMPONENT=./example/FinancePanel.v
 ### 用 AI 辅助迁移旧组件
 
 ```bash
-node vant-wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.vue
+node wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.vue
 ```
 
 ### 在基座里加载
@@ -397,7 +397,7 @@ node vant-wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPa
 ```html
 <div id="dashboard"></div>
 <script type="module">
-  import { mountWidget } from './vant-wc/widget-loader/index.js';
+  import { mountWidget } from './wc/widget-loader/index.js';
 
   mountWidget(document.getElementById('dashboard'), {
     name: 'bi-sales-panel',

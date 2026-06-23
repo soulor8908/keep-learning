@@ -1,12 +1,12 @@
 ---
-name: vant-wc-migration
+name: wc-migration
 description: >
-  用于将现有 Vue2/Vue3 组件迁移为 vant-wc 看板物料组件（Web Components / Custom Elements）。
+  用于将现有 Vue2/Vue3 组件迁移为 wc 看板物料组件（Web Components / Custom Elements）。
   当用户提到以下任一需求时触发：迁移组件为看板物料、把组件打包成物料、生成看板物料、
-  生成 schema.json、接入 vant-wc、改造为 Custom Element、看板组件迁移、物料库改造。
+  生成 schema.json、接入 wc、改造为 Custom Element、看板组件迁移、物料库改造。
 ---
 
-# vant-wc 看板物料迁移 Skill
+# wc 看板物料迁移 Skill
 
 本 Skill 指导 AI 将现有 Vue2/Vue3 业务组件快速改造成可独立发布的看板物料组件。
 
@@ -15,7 +15,7 @@ description: >
 - **不修改业务逻辑**：只在组件外层包一层 Custom Element。
 - **config 自动解析**：包装层会把 Custom Element 接收到的 String config 自动解析为 Object，业务组件直接按 `props: { config: Object }` 写即可。
 - **公共依赖 external**：Vue、aui 由基座统一提供，物料包只打包业务代码。
-- **schema 自动生成**：通过 `vant-wc/schema-generator/index.js` 扫描组件 props 生成 `bi-xxx.schema.json`。
+- **schema 自动生成**：通过 `wc/schema-generator/index.js` 扫描组件 props 生成 `bi-xxx.schema.json`。
 - **无 Shadow DOM**：保持 aui 全局样式可用，业务组件只需加 `bi-xxx` 命名空间。
 
 ## 二、迁移前必做检查
@@ -68,7 +68,7 @@ npm install @vue/web-component-wrapper
 在项目根目录创建/修改 `vue.config.js`：
 
 ```js
-const widgetPlugin = require('./vant-wc/widget-wrapper-plugin/vue-cli-plugin');
+const widgetPlugin = require('./wc/widget-wrapper-plugin/vue-cli-plugin');
 
 module.exports = {
   pluginOptions: {
@@ -88,7 +88,7 @@ module.exports = {
 ```js
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import widgetVitePlugin from './vant-wc/widget-wrapper-plugin/vite-plugin';
+import widgetVitePlugin from './wc/widget-wrapper-plugin/vite-plugin';
 
 export default defineConfig({
   plugins: [
@@ -106,7 +106,7 @@ export default defineConfig({
 运行自动生成器：
 
 ```bash
-node vant-wc/schema-generator/index.js <WIDGET_NAME> <COMPONENT_PATH> dist/<WIDGET_NAME>.schema.json
+node wc/schema-generator/index.js <WIDGET_NAME> <COMPONENT_PATH> dist/<WIDGET_NAME>.schema.json
 ```
 
 如果已配置打包插件，执行 `npm run build` 时会自动生成。
@@ -130,7 +130,7 @@ npm run build
 使用 AI 辅助工具生成文档：
 
 ```bash
-node vant-wc/ai-assistant/cli.js readme <WIDGET_NAME> <COMPONENT_PATH>
+node wc/ai-assistant/cli.js readme <WIDGET_NAME> <COMPONENT_PATH>
 ```
 
 ## 四、基座接入说明
@@ -138,7 +138,7 @@ node vant-wc/ai-assistant/cli.js readme <WIDGET_NAME> <COMPONENT_PATH>
 基座侧使用物料加载器加载并渲染：
 
 ```js
-import { mountWidget } from './vant-wc/widget-loader';
+import { mountWidget } from './wc/widget-loader';
 
 await mountWidget(containerElement, {
   name: '<WIDGET_NAME>',
@@ -152,13 +152,13 @@ await mountWidget(containerElement, {
 
 | 文件 | 用途 |
 |---|---|
-| `vant-wc/widget-wrapper-plugin/vue-cli-plugin.js` | Vue2 自动包装插件 |
-| `vant-wc/widget-wrapper-plugin/vite-plugin.js` | Vue3 自动包装插件 |
-| `vant-wc/schema-generator/index.js` | schema.json 自动生成 |
-| `vant-wc/widget-loader/index.js` | 基座物料加载器 |
-| `vant-wc/widget-bus/index.js` | 跨技术栈消息总线 |
-| `vant-wc/ai-assistant/cli.js` | AI 辅助 CLI |
-| `vant-wc/README.md` | 完整方案文档 |
+| `wc/widget-wrapper-plugin/vue-cli-plugin.js` | Vue2 自动包装插件 |
+| `wc/widget-wrapper-plugin/vite-plugin.js` | Vue3 自动包装插件 |
+| `wc/schema-generator/index.js` | schema.json 自动生成 |
+| `wc/widget-loader/index.js` | 基座物料加载器 |
+| `wc/widget-bus/index.js` | 跨技术栈消息总线 |
+| `wc/ai-assistant/cli.js` | AI 辅助 CLI |
+| `wc/README.md` | 完整方案文档 |
 
 ## 六、常见风险与处理
 
