@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vue3 基座</title>
+  <!-- Vue3 基座自身通过 Vite 引入 Vue3，这里额外加载 Vue2 运行时供 Vue2 物料使用 -->
+  <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+  <script>window.Vue2 = window.Vue;</script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

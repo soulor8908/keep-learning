@@ -8,7 +8,8 @@
  *   plugins: [
  *     widgetVitePlugin({
  *       name: 'bi-finance-panel',
- *       component: './src/components/FinancePanel.vue'
+ *       component: './src/components/FinancePanel.vue',
+ *       vueGlobal: 'Vue' // 可选，默认 'Vue'
  *     })
  *   ]
  * });
@@ -21,7 +22,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { writeSchema } = require('../schema-generator');
 
-function generateVue3Wrapper(widgetName) {
+function generateVue3Wrapper(widgetName, vueGlobal) {
   return `
 import { createApp, h } from 'vue';
 import Component from '__WIDGET_COMPONENT__';
@@ -68,13 +69,13 @@ customElements.define('${widgetName}', WidgetElement);
 }
 
 export default function widgetVitePlugin(options = {}) {
-  const { name, component } = options;
+  const { name, component, vueGlobal = 'Vue' } = options;
   if (!name || !component) {
     throw new Error('[widget-vite-plugin] 请配置 name 和 component');
   }
 
   const componentPath = path.resolve(process.cwd(), component);
-  const wrapperCode = generateVue3Wrapper(name);
+  const wrapperCode = generateVue3Wrapper(name, vueGlobal);
   const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
   fs.writeFileSync(tmpFile, wrapperCode);
 
@@ -92,7 +93,7 @@ export default function widgetVitePlugin(options = {}) {
           external: ['vue', 'aui'],
           output: {
             globals: {
-              vue: 'Vue',
+              vue: vueGlobal,
               aui: 'aui'
             }
           }

@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vue2 基座</title>
+  <!-- Vue2 基座自身通过 webpack 引入 Vue2，这里额外加载 Vue3 运行时供 Vue3 物料使用 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script>window.Vue3 = window.Vue;</script>
+</head>
+<body>
+  <div id="app"></div>
+</body>
+</html>

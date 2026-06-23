@@ -5,13 +5,11 @@
  * const WidgetPlugin = require('@your-scope/widget-wrapper-plugin/vue-cli-plugin');
  *
  * module.exports = {
- *   pluginOptions: {
- *     widget: {
- *       name: 'bi-sales-panel',
- *       component: './src/components/SalesPanel.vue'
- *     }
- *   },
- *   configureWebpack: WidgetPlugin()
+ *   chainWebpack: WidgetPlugin({
+ *     name: 'bi-sales-panel',
+ *     component: './src/components/SalesPanel.vue',
+ *     vueGlobal: 'Vue' // 可选，默认 'Vue'
+ *   })
  * };
  */
 const path = require('path');
@@ -19,7 +17,7 @@ const fs = require('fs');
 const os = require('os');
 const { writeSchema } = require('../schema-generator');
 
-function generateVue2Wrapper(widgetName) {
+function generateVue2Wrapper(widgetName, vueGlobal) {
   return `
 import Vue from 'vue';
 import wrap from '@vue/web-component-wrapper';
@@ -45,15 +43,15 @@ customElements.define('${widgetName}', WidgetElement);
 `;
 }
 
-module.exports = function widgetVueCliPlugin() {
-  return function chainWebpack(config) {
-    const options = config.pluginOptions && config.pluginOptions.widget;
-    if (!options || !options.name || !options.component) {
-      throw new Error('[widget-vue-cli-plugin] 请在 pluginOptions.widget 中配置 name 和 component');
-    }
+module.exports = function widgetVueCliPlugin(options = {}) {
+  if (!options.name || !options.component) {
+    throw new Error('[widget-vue-cli-plugin] 请配置 name 和 component');
+  }
 
-    const { name, component } = options;
-    const wrapperCode = generateVue2Wrapper(name);
+  const { name, component, vueGlobal = 'Vue' } = options;
+
+  return function chainWebpack(config) {
+    const wrapperCode = generateVue2Wrapper(name, vueGlobal);
     const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
     fs.writeFileSync(tmpFile, wrapperCode);
 
@@ -63,9 +61,9 @@ module.exports = function widgetVueCliPlugin() {
       .library(name)
       .libraryTarget('umd');
 
-    // external 公共依赖
+    // external 公共依赖，允许自定义 Vue 全局变量名
     config.externals({
-      vue: 'Vue',
+      vue: vueGlobal,
       aui: 'aui'
     });
 

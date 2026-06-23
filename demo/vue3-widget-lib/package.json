@@ -1,0 +1,17 @@
+{
+  "name": "vue3-widget-lib",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && node -e \"require('fs').renameSync('dist/style.css','dist/bi-finance-panel.css')\"",
+    "serve": "vite"
+  },
+  "dependencies": {
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "vite": "^5.2.0"
+  }
+}
