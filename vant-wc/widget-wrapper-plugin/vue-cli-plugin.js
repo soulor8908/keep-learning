@@ -17,6 +17,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { writeSchema } = require('../schema-generator');
 
 function generateVue2Wrapper(widgetName) {
   return `
@@ -28,15 +29,17 @@ function parseConfig(value) {
   try { return value ? JSON.parse(value) : {}; } catch { return {}; }
 }
 
-class WidgetElement extends wrap(Vue, Component) {
-  static get observedAttributes() { return ['config']; }
-  attributeChangedCallback(name, oldValue, newValue) {
-    if (name === 'config' && this._vnode && this._vnode.componentInstance) {
-      this._vnode.componentInstance.config = parseConfig(newValue);
-    }
-    super.attributeChangedCallback && super.attributeChangedCallback(name, oldValue, newValue);
+// 桥接组件：把 Custom Element 接收到的 String config 转成 Object 再传给业务组件
+const BridgeComponent = {
+  props: ['config'],
+  render(h) {
+    return h(Component, {
+      props: { config: parseConfig(this.config) }
+    });
   }
-}
+};
+
+class WidgetElement extends wrap(Vue, BridgeComponent) {}
 
 customElements.define('${widgetName}', WidgetElement);
 `;
@@ -67,10 +70,20 @@ module.exports = function widgetVueCliPlugin() {
     });
 
     // 注入组件路径别名
-    config.resolve.alias.set('__WIDGET_COMPONENT__', path.resolve(process.cwd(), component));
+    const componentPath = path.resolve(process.cwd(), component);
+    config.resolve.alias.set('__WIDGET_COMPONENT__', componentPath);
 
     // 清理 html 插件，避免生成 index.html
     config.plugins.delete('html');
+
+    // 自动生成 schema.json
+    try {
+      const outputDir = path.resolve(process.cwd(), 'dist');
+      if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+      writeSchema(name, componentPath, path.join(outputDir, `${name}.schema.json`));
+    } catch (e) {
+      console.warn('[widget-vue-cli-plugin] 自动生成 schema.json 失败:', e.message);
+    }
   };
 };
 

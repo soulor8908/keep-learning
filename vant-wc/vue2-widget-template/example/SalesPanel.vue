@@ -1,6 +1,6 @@
 <template>
   <div class="bi-sales-panel">
-    <h3>{{ parsedConfig.title || '销售看板' }}</h3>
+    <h3>{{ config.title || '销售看板' }}</h3>
     <div class="stats">
       <aui-statistic title="销售额" :value="summary.amount" />
       <aui-statistic title="订单数" :value="summary.orderCount" />
@@ -12,10 +12,10 @@
 export default {
   name: 'SalesPanel',
   props: {
-    // wrapper 会把 config attribute 作为字符串传入
+    // wrapper 已经把 config attribute 解析为 Object 传入
     config: {
-      type: String,
-      default: '{}'
+      type: Object,
+      default: () => ({})
     }
   },
   data() {
@@ -25,15 +25,6 @@ export default {
         orderCount: 342
       }
     };
-  },
-  computed: {
-    parsedConfig() {
-      try {
-        return JSON.parse(this.config || '{}');
-      } catch (e) {
-        return {};
-      }
-    }
   }
 };
 </script>

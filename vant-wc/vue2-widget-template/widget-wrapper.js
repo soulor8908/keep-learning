@@ -16,23 +16,17 @@ function parseConfig(value) {
 }
 
 function createWidgetWrapper(Component, widgetName) {
-  const Wrapped = wrap(Vue, Component);
-
-  // 扩展原 wrapper，确保 config 变更时能正确透传
-  class WidgetElement extends Wrapped {
-    static get observedAttributes() {
-      return ['config'];
+  // 桥接组件：把 Custom Element 接收到的 String config 转成 Object 再传给业务组件
+  const BridgeComponent = {
+    props: ['config'],
+    render(h) {
+      return h(Component, {
+        props: { config: parseConfig(this.config) }
+      });
     }
+  };
 
-    attributeChangedCallback(name, oldValue, newValue) {
-      if (name === 'config' && this._vnode && this._vnode.componentInstance) {
-        this._vnode.componentInstance.config = parseConfig(newValue);
-      }
-      super.attributeChangedCallback && super.attributeChangedCallback(name, oldValue, newValue);
-    }
-  }
-
-  return WidgetElement;
+  return wrap(Vue, BridgeComponent);
 }
 
 const widgetName = process.env.WIDGET_NAME;

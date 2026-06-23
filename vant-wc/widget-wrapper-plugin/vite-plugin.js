@@ -16,6 +16,10 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { writeSchema } = require('../schema-generator');
 
 function generateVue3Wrapper(widgetName) {
   return `
@@ -38,8 +42,9 @@ class WidgetElement extends HTMLElement {
 
   connectedCallback() {
     const config = this.getAttribute('config');
+    // 直接把 Object 传给业务组件，组件内部无需 JSON.parse
     this.app = createApp({
-      render: () => h(Component, { config })
+      render: () => h(Component, { config: parseConfig(config) })
     });
     this.app.mount(this);
   }
@@ -53,7 +58,7 @@ class WidgetElement extends HTMLElement {
 
   attributeChangedCallback(name, oldValue, newValue) {
     if (name === 'config' && this.app) {
-      this.app._instance.props.config = newValue;
+      this.app._instance.props.config = parseConfig(newValue);
     }
   }
 }
@@ -68,6 +73,7 @@ export default function widgetVitePlugin(options = {}) {
     throw new Error('[widget-vite-plugin] 请配置 name 和 component');
   }
 
+  const componentPath = path.resolve(process.cwd(), component);
   const wrapperCode = generateVue3Wrapper(name);
   const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
   fs.writeFileSync(tmpFile, wrapperCode);
@@ -94,9 +100,19 @@ export default function widgetVitePlugin(options = {}) {
       },
       resolve: {
         alias: {
-          __WIDGET_COMPONENT__: path.resolve(process.cwd(), component)
+          __WIDGET_COMPONENT__: componentPath
         }
       }
-    })
+    }),
+    // 构建完成后自动生成 schema.json
+    closeBundle() {
+      try {
+        const outputDir = path.resolve(process.cwd(), 'dist');
+        if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+        writeSchema(name, componentPath, path.join(outputDir, `${name}.schema.json`));
+      } catch (e) {
+        console.warn('[widget-vite-plugin] 自动生成 schema.json 失败:', e.message);
+      }
+    }
   };
 }

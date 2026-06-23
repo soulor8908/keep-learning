@@ -27,8 +27,9 @@ function createWidgetWrapper(Component, widgetName) {
 
     connectedCallback() {
       const config = this.getAttribute('config');
+      // 直接把 Object 传给业务组件，组件内部无需 JSON.parse
       this.app = createApp({
-        render: () => h(Component, { config })
+        render: () => h(Component, { config: parseConfig(config) })
       });
       this.app.mount(this);
     }
@@ -43,7 +44,7 @@ function createWidgetWrapper(Component, widgetName) {
     attributeChangedCallback(name, oldValue, newValue) {
       if (name === 'config' && this.app) {
         // Vue3 直接更新根组件 props，触发重新渲染
-        this.app._instance.props.config = newValue;
+        this.app._instance.props.config = parseConfig(newValue);
       }
     }
   };
