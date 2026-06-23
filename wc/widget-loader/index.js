@@ -151,7 +151,11 @@ function loadScript(url) {
       log('script loaded:', url);
       resolve();
     };
-    script.onerror = () => reject(new Error(`Failed to load script: ${url}`));
+    script.onerror = () => {
+      // 失败时清除缓存，允许"点击重试"重新拉取（应对 CDN 偶发网络抖动）
+      loadedResources.delete(url);
+      reject(new Error(`Failed to load script: ${url}`));
+    };
     document.head.appendChild(script);
   });
 
@@ -182,7 +186,11 @@ function loadStyle(url) {
       log('style loaded:', url);
       resolve();
     };
-    link.onerror = () => reject(new Error(`Failed to load style: ${url}`));
+    link.onerror = () => {
+      // 失败时清除缓存，允许重试
+      loadedResources.delete(url);
+      reject(new Error(`Failed to load style: ${url}`));
+    };
     document.head.appendChild(link);
   });
 
@@ -281,10 +289,40 @@ export async function loadWidgets(widgets) {
 const mountedWidgets = new Map(); // name -> { element, container, widget, failed }
 let globalErrorListenerInstalled = false;
 
-function renderFallback(container, message) {
+/**
+ * 渲染降级占位（含"点击重试"按钮）
+ * @param {HTMLElement} container
+ * @param {string} message 错误信息
+ * @param {Object} widget 物料配置（重试时复用）
+ * @param {Function|null} [onRetry] 重试回调；为 null 时不渲染按钮（如版本不兼容这种确定性错误）
+ * @returns {HTMLElement} 占位节点
+ */
+function renderFallback(container, message, widget, onRetry) {
   const errorNode = document.createElement('div');
   errorNode.className = 'widget-error-placeholder';
-  errorNode.textContent = message;
+
+  const msg = document.createElement('div');
+  msg.textContent = message;
+  errorNode.appendChild(msg);
+
+  if (typeof onRetry === 'function') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'widget-error-retry';
+    btn.textContent = '点击重试';
+    btn.style.cssText =
+      'margin-top:10px;padding:5px 16px;font-size:13px;border:1px solid #3b82f6;' +
+      'border-radius:4px;background:#3b82f6;color:#fff;cursor:pointer;line-height:1.4;';
+    btn.addEventListener('click', () => {
+      // 移除占位，触发只针对该物料的重新加载，不影响看板其它区域
+      if (errorNode.parentNode === container) {
+        container.removeChild(errorNode);
+      }
+      onRetry();
+    });
+    errorNode.appendChild(btn);
+  }
+
   container.appendChild(errorNode);
   return errorNode;
 }
@@ -293,16 +331,19 @@ function markWidgetFailed(name, error) {
   const entry = mountedWidgets.get(name);
   if (!entry || entry.failed) return; // 已降级则不重复处理
   entry.failed = true;
-  const { element, container } = entry;
+  const { element, container, widget } = entry;
   // 移除崩溃的物料元素，避免残留破坏节点影响布局
   if (element && element.parentNode === container) {
     container.removeChild(element);
   }
   const reason = (error && error.message) ? error.message : String(error);
-  renderFallback(
-    container,
-    `[widget-loader] 物料 "${name}" 运行时崩溃，已降级隔离：\n${reason}`
-  );
+  const message = `[widget-loader] 物料 "${name}" 运行时崩溃，已降级隔离：\n${reason}`;
+  // 运行时崩溃重试：脚本已加载（loadWidget 会短路），重新创建元素实例挂载
+  const onRetry = () => {
+    mountedWidgets.delete(name); // 清除 failed 标记，允许错误边界重新归因
+    mountWithFallback(container, widget);
+  };
+  renderFallback(container, message, widget, onRetry);
   console.error(`[widget-loader] 物料 "${name}" 运行时崩溃:`, error);
 }
 
@@ -389,10 +430,47 @@ export function renderWidget(container, widget) {
 }
 
 /**
- * 加载并渲染物料（带错误边界与降级占位）
- * - 加载/版本校验失败：渲染降级占位
- * - 挂载同步抛错：移除崩溃元素并渲染降级占位
- * - 运行时崩溃（setTimeout/Promise/事件回调）：全局监听归因后自动降级
+ * 执行一次"加载 + 渲染 + 注册到错误边界"
+ * 不处理降级，失败直接抛出，由调用方决定如何降级/重试。
+ * @param {HTMLElement} container
+ * @param {Object} widget
+ * @returns {Promise<HTMLElement>}
+ */
+async function attemptMount(container, widget) {
+  await loadWidget(widget);
+  const element = renderWidget(container, widget);
+  // 注册到错误边界：运行时崩溃时自动降级，单点失败不影响整体
+  mountedWidgets.set(widget.name, { element, container, widget, failed: false });
+  ensureGlobalErrorListener();
+  return element;
+}
+
+/**
+ * 带降级 + 重试的挂载（重试路径复用）
+ * 失败时渲染降级占位并附带"点击重试"按钮，点击后只重新加载该物料。
+ * @param {HTMLElement} container
+ * @param {Object} widget
+ */
+function mountWithFallback(container, widget) {
+  log('mounting widget:', widget.name);
+  attemptMount(container, widget)
+    .then(() => log('widget mounted:', widget.name))
+    .catch(error => {
+      const message = `[widget-loader] 物料 "${widget.name}" 加载失败，已降级：\n${error.message || error}`;
+      // 网络/运行时类失败可重试；点击后再次走 mountWithFallback
+      renderFallback(container, message, widget, () =>
+        mountWithFallback(container, widget)
+      );
+      console.error(`[widget-loader] 物料 "${widget.name}" 加载失败:`, error);
+    });
+}
+
+/**
+ * 加载并渲染物料（带错误边界、降级占位与重试）
+ * - 加载/版本校验失败：渲染降级占位；非版本不兼容错误附带"点击重试"
+ * - 挂载同步抛错：移除崩溃元素并渲染降级占位（可重试）
+ * - 运行时崩溃（setTimeout/Promise/事件回调）：全局监听归因后自动降级（可重试）
+ * - 重试只重新加载该物料，不影响看板其它区域
  * @param {HTMLElement} container
  * @param {Object} widget
  * @returns {Promise<HTMLElement>}
@@ -400,18 +478,17 @@ export function renderWidget(container, widget) {
 export async function mountWidget(container, widget) {
   log('mounting widget:', widget.name);
   try {
-    await loadWidget(widget);
-    const element = renderWidget(container, widget);
-    // 注册到错误边界：运行时崩溃时自动降级，单点失败不影响整体
-    mountedWidgets.set(widget.name, { element, container, widget, failed: false });
-    ensureGlobalErrorListener();
-    log('widget mounted:', widget.name);
-    return element;
+    return await attemptMount(container, widget);
   } catch (error) {
-    const message = error.code === 'DEP_VERSION_MISMATCH'
+    const isVersionMismatch = error.code === 'DEP_VERSION_MISMATCH';
+    const message = isVersionMismatch
       ? error.message
       : `[widget-loader] 物料 "${widget.name}" 挂载失败，已降级：\n${error.message || error}`;
-    renderFallback(container, message);
+    // 版本不兼容是确定性错误，重试无意义，不渲染重试按钮；其余失败可重试
+    const onRetry = isVersionMismatch
+      ? null
+      : () => mountWithFallback(container, widget);
+    renderFallback(container, message, widget, onRetry);
     throw error;
   }
 }

@@ -222,37 +222,42 @@ const SUPPORTED_DEPS = {
 
 ### 2.2 错误边界（单点失败不影响整体）
 
-**问题**：一个物料的 JS 报错（渲染崩溃、`setTimeout`/Promise 内未捕获异常）可能向上冒泡，导致整个看板白屏。
+**问题**：一个物料的 JS 报错（渲染崩溃、`setTimeout`/Promise 内未捕获异常）可能向上冒泡，导致整个看板白屏；CDN 偶发网络抖动导致的加载失败，用户只能刷新整个页面。
 
-**方案**：`widget-loader` 内置错误边界，覆盖三类失败场景，命中后用降级占位替换崩溃物料，其余物料不受影响。
+**方案**：`widget-loader` 内置错误边界，覆盖三类失败场景，命中后用降级占位替换崩溃物料，其余物料不受影响。降级占位附带"点击重试"按钮，只重新加载该物料，不影响看板其它区域。
 
-| 失败场景 | 捕获机制 | 处理 |
-|---|---|---|
-| 加载/版本校验失败 | `mountWidget` 的 `try/catch` | 渲染降级占位，抛出结构化错误 |
-| 挂载同步抛错（`connectedCallback` 内 throw） | `renderWidget` 包裹 `appendChild` | 移除半挂载元素，渲染降级占位 |
-| 运行时崩溃（`setTimeout`/Promise/事件回调） | 全局 `error` + `unhandledrejection` 监听，按 `filename`/堆栈/物料名归因 | 移除崩溃元素，渲染降级占位 |
+| 失败场景 | 捕获机制 | 处理 | 可重试 |
+|---|---|---|---|
+| 加载/版本校验失败 | `mountWidget` 的 `try/catch` | 渲染降级占位，抛出结构化错误 | 网络类可重试；版本不兼容为确定性错误，不提供重试 |
+| 挂载同步抛错（`connectedCallback` 内 throw） | `renderWidget` 包裹 `appendChild` | 移除半挂载元素，渲染降级占位 | 可重试 |
+| 运行时崩溃（`setTimeout`/Promise/事件回调） | 全局 `error` + `unhandledrejection` 监听，按 `filename`/堆栈/物料名归因 | 移除崩溃元素，渲染降级占位 | 可重试 |
+
+**重试机制关键点**：
+
+- `loadScript`/`loadStyle` 失败时清除 `loadedResources` 缓存，重试才会真正重新拉取（应对 CDN 网络抖动）。
+- 运行时崩溃重试：脚本已加载（`loadWidget` 命中 `definedElements` 短路），只需重新创建元素实例挂载。
+- 重试只针对单个物料，不复用、不触碰其它物料的加载状态。
 
 ```js
-// widget-loader 内部维护已挂载物料表，全局监听器据此归因
-const mountedWidgets = new Map(); // name -> { element, container, widget, failed }
+// 降级占位含重试按钮，点击后只重新加载该物料
+renderFallback(container, message, widget, () => mountWithFallback(container, widget));
 
-window.addEventListener('error', (event) => {
-  const name = attributeErrorToWidget(event); // 按 target 元素 / filename / 堆栈归因
-  if (name) {
-    markWidgetFailed(name, event.error || new Error(event.message));
-    event.preventDefault(); // 已降级，抑制浏览器默认报错
-  }
-}, true);
+function mountWithFallback(container, widget) {
+  attemptMount(container, widget).catch(error => {
+    renderFallback(container, `...${error.message}`, widget,
+      () => mountWithFallback(container, widget)); // 重试可反复点击
+  });
+}
 ```
 
-降级占位会展示崩溃原因，控制台同步输出：
+降级占位会展示崩溃原因 + "点击重试"按钮，控制台同步输出：
 
 ```
 [widget-loader] 物料 "bi-broken-panel" 运行时崩溃，已降级隔离：
-bi-broken-panel 业务逻辑崩溃：模拟未捕获的运行时错误（setTimeout 内抛出）
+bi-broken-panel 首次运行崩溃：模拟未捕获的运行时错误（setTimeout 内抛出），重试后将恢复正常
 ```
 
-> demo 中 `vue2-host` 注册了一个故意在 `setTimeout` 里抛错的物料 `bi-broken-panel`：它先正常挂载，500ms 后崩溃，错误边界将其降级为占位，旁边的销售看板继续正常运行，看板不白屏。
+> demo 中 `vue2-host` 注册了一个故意在 `setTimeout` 里抛错的物料 `bi-broken-panel`：首次挂载 500ms 后崩溃 → 错误边界降级为占位（含重试按钮）→ 点击"重试" → 物料恢复正常渲染（绿色提示），旁边的销售看板始终不受影响，无需刷新整页。
 
 ### 2.3 引入物料加载器
 
@@ -453,12 +458,12 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 
 ### 5.5 错误监控
 
-✅ 已实现（见 [2.2 错误边界](#22-错误边界单点失败不影响整体)）：加载失败、挂载同步抛错、运行时崩溃（`setTimeout`/Promise/事件回调）三类场景均被捕获并降级为占位，单点失败不影响整体看板。
+✅ 已实现（见 [2.2 错误边界](#22-错误边界单点失败不影响整体)）：加载失败、挂载同步抛错、运行时崩溃（`setTimeout`/Promise/事件回调）三类场景均被捕获并降级为占位，单点失败不影响整体看板。降级占位附带"点击重试"按钮，只重新加载该物料（`loadScript`/`loadStyle` 失败时清除缓存以支持网络重试），无需刷新整页。
 
 🔄 待增强：
 
-- 加载失败日志上报到监控平台（Sentry 等），支持重试。
-- 降级占位支持自定义渲染（如"点击重试"按钮）。
+- 加载失败日志上报到监控平台（Sentry 等）。
+- 重试支持指数退避 + 最大次数限制，避免对持续故障的 CDN 反复打请求。
 - 运行时崩溃归因目前依赖 `filename`/堆栈匹配，对压缩后无 source map 的物料可能归因不到，可结合 source map 上报还原。
 
 ### 5.6 构建插件增强

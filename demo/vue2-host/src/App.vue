@@ -2,7 +2,7 @@
   <div class="host-app">
     <h1>Vue2 基座 —— 版本契约 + 错误边界</h1>
     <p class="desc">
-      纯 Vue2 基座。Vue2 物料正常加载；Vue3 物料被版本契约明确拒绝；崩溃物料被错误边界降级隔离。任一物料单点失败都不影响其它物料，看板不白屏。
+      纯 Vue2 基座。Vue2 物料正常加载；Vue3 物料被版本契约明确拒绝（确定性错误，无重试）；崩溃物料被错误边界降级隔离，占位提供"点击重试"——只重新加载该物料，不影响其它区域，无需刷新整页。
     </p>
     <button class="refresh-btn" @click="refreshWidgets">刷新所有物料</button>
     <div class="dashboard">
@@ -126,6 +126,9 @@ export default {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 .bus-log {
   background: #f9fafb;
