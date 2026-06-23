@@ -76,45 +76,45 @@ export default {
   border-radius: 8px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
-.title {
+.bi-sales-panel .title {
   margin: 0 0 16px 0;
   font-size: 18px;
   color: #1f2937;
 }
-.metrics {
+.bi-sales-panel .metrics {
   display: flex;
   gap: 12px;
   margin-bottom: 16px;
 }
-.metric-card {
+.bi-sales-panel .metric-card {
   flex: 1;
   padding: 12px;
   background: #f3f4f6;
   border-radius: 6px;
 }
-.metric-label {
+.bi-sales-panel .metric-label {
   font-size: 12px;
   color: #6b7280;
   margin-bottom: 4px;
 }
-.metric-value {
+.bi-sales-panel .metric-value {
   font-size: 20px;
   font-weight: 600;
   color: #111827;
 }
-.trend {
+.bi-sales-panel .trend {
   height: 8px;
   background: #e5e7eb;
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 12px;
 }
-.trend-bar {
+.bi-sales-panel .trend-bar {
   height: 100%;
   background: linear-gradient(90deg, #3b82f6, #06b6d4);
   transition: width 0.3s ease;
 }
-.footer {
+.bi-sales-panel .footer {
   font-size: 12px;
   color: #6b7280;
 }

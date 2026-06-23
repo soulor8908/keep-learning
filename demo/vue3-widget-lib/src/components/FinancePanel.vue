@@ -78,53 +78,53 @@ export default {
   border-radius: 8px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
-.title {
+.bi-finance-panel .title {
   margin: 0 0 16px 0;
   font-size: 18px;
   color: #1f2937;
 }
-.metrics {
+.bi-finance-panel .metrics {
   display: flex;
   gap: 12px;
   margin-bottom: 16px;
 }
-.metric-card {
+.bi-finance-panel .metric-card {
   flex: 1;
   padding: 12px;
   background: #f3f4f6;
   border-radius: 6px;
 }
-.metric-label {
+.bi-finance-panel .metric-label {
   font-size: 12px;
   color: #6b7280;
   margin-bottom: 4px;
 }
-.metric-value {
+.bi-finance-panel .metric-value {
   font-size: 20px;
   font-weight: 600;
   color: #111827;
 }
-.breakdown {
+.bi-finance-panel .breakdown {
   margin-bottom: 12px;
 }
-.breakdown-item {
+.bi-finance-panel .breakdown-item {
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
   border-bottom: 1px solid #f3f4f6;
   font-size: 13px;
 }
-.breakdown-item:last-child {
+.bi-finance-panel .breakdown-item:last-child {
   border-bottom: none;
 }
-.breakdown-label {
+.bi-finance-panel .breakdown-label {
   color: #6b7280;
 }
-.breakdown-value {
+.bi-finance-panel .breakdown-value {
   color: #111827;
   font-weight: 500;
 }
-.footer {
+.bi-finance-panel .footer {
   font-size: 12px;
   color: #6b7280;
 }

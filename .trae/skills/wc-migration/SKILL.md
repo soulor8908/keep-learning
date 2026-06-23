@@ -18,7 +18,28 @@ description: >
 - **schema 自动生成**：通过 `wc/schema-generator/index.js` 扫描组件 props 生成 `bi-xxx.schema.json`。
 - **无 Shadow DOM**：保持 aui 全局样式可用，业务组件只需加 `bi-xxx` 命名空间。
 
-## 二、迁移前必做检查
+## 二、快速迁移（自动化 CLI）
+
+对于规则明确的改造，可以直接使用迁移辅助 CLI：
+
+```bash
+# Vue2 组件
+node wc/migration-skill/index.js bi-sales-panel ./src/components/SalesPanel.vue 2
+
+# Vue3 组件
+node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3
+```
+
+CLI 会自动完成：
+1. 补充 `config` prop。
+2. 给根元素添加 `bi-xxx` 命名空间类名。
+3. 调用 `css-namespace-checker` 检查样式冲突。
+4. 调用 `js-risk-scanner` 检查全局状态 / body 挂载等风险。
+5. 输出推荐的 `vue.config.js` / `vite.config.js` 配置。
+
+生成的新文件为 `*.migrated.vue`，请人工确认后再覆盖原文件。
+
+## 三、迁移前必做检查
 
 在执行迁移前，先确认以下信息：
 
@@ -28,7 +49,7 @@ description: >
 4. **是否有 aui 以外的全局依赖**：如有，需要评估是否 external。
 5. **组件内部是否使用全局状态**：如 Vuex/Pinia/事件总线，需要改为组件自治或从 config 读取。
 
-## 三、迁移执行步骤
+## 四、迁移执行步骤
 
 ### 步骤 1：确认并改造组件代码（如需）
 
@@ -71,13 +92,11 @@ npm install @vue/web-component-wrapper
 const widgetPlugin = require('./wc/widget-wrapper-plugin/vue-cli-plugin');
 
 module.exports = {
-  pluginOptions: {
-    widget: {
-      name: '<WIDGET_NAME>',
-      component: '<COMPONENT_PATH>'
-    }
-  },
-  configureWebpack: widgetPlugin()
+  chainWebpack: widgetPlugin({
+    name: '<WIDGET_NAME>',
+    component: '<COMPONENT_PATH>',
+    vueGlobal: 'Vue2' // 如需与 Vue3 物料共存，使用独立全局名
+  })
 };
 ```
 
@@ -88,14 +107,15 @@ module.exports = {
 ```js
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import widgetVitePlugin from './wc/widget-wrapper-plugin/vite-plugin';
+import widgetVitePlugin from './wc/widget-wrapper-plugin/vite-plugin.js';
 
 export default defineConfig({
   plugins: [
     vue(),
     widgetVitePlugin({
       name: '<WIDGET_NAME>',
-      component: '<COMPONENT_PATH>'
+      component: '<COMPONENT_PATH>',
+      vueGlobal: 'Vue3' // 如需与 Vue2 物料共存，使用独立全局名
     })
   ]
 });
@@ -133,7 +153,7 @@ npm run build
 node wc/ai-assistant/cli.js readme <WIDGET_NAME> <COMPONENT_PATH>
 ```
 
-## 四、基座接入说明
+## 五、基座接入说明
 
 基座侧使用物料加载器加载并渲染：
 
@@ -148,7 +168,7 @@ await mountWidget(containerElement, {
 });
 ```
 
-## 五、关键文件位置
+## 六、关键文件位置
 
 | 文件 | 用途 |
 |---|---|
@@ -158,9 +178,14 @@ await mountWidget(containerElement, {
 | `wc/widget-loader/index.js` | 基座物料加载器 |
 | `wc/widget-bus/index.js` | 跨技术栈消息总线 |
 | `wc/ai-assistant/cli.js` | AI 辅助 CLI |
+| `wc/css-namespace-checker/index.js` | CSS 命名空间检查 |
+| `wc/js-risk-scanner/index.js` | JS 风险扫描 |
+| `wc/dependency-analyzer/index.js` | 依赖冲突分析 |
+| `wc/ai-schema-enricher/index.js` | Schema 语义增强 |
+| `wc/migration-skill/index.js` | 自动化迁移 CLI |
 | `wc/README.md` | 完整方案文档 |
 
-## 六、常见风险与处理
+## 七、常见风险与处理
 
 | 风险 | 处理建议 |
 |---|---|
@@ -169,7 +194,7 @@ await mountWidget(containerElement, {
 | 样式冲突 | 确保根类名为 `bi-xxx`，所有选择器加该前缀 |
 | 依赖版本不一致 | 约束 aui 等大版本一致 |
 
-## 七、输出规范
+## 八、输出规范
 
 完成迁移后，向用户输出：
 
