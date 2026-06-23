@@ -29,5 +29,14 @@ export const widgets = [
       currency: 'CNY',
       showBreakdown: true
     }
+  },
+  {
+    name: 'bi-broken-panel',
+    // 故意崩溃的原生物料：演示错误边界（Step 3）——运行时抛错后被降级隔离
+    vueVersion: '2',
+    js: isLocal
+      ? 'http://localhost:8081/bi-broken-panel.js'
+      : '/widgets/bi-broken-panel.js',
+    config: {}
   }
 ];

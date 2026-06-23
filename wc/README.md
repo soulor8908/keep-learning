@@ -220,7 +220,41 @@ const SUPPORTED_DEPS = {
 
 > demo 中 `vue2-host` 为纯 Vue2 基座（不提供 Vue3 运行时），其注册表里的 Vue3 物料 `bi-finance-panel` 会被版本契约明确拒绝；`vue3-host` 同时提供 Vue2/Vue3 运行时，两类物料均可正常加载。
 
-### 2.2 引入物料加载器
+### 2.2 错误边界（单点失败不影响整体）
+
+**问题**：一个物料的 JS 报错（渲染崩溃、`setTimeout`/Promise 内未捕获异常）可能向上冒泡，导致整个看板白屏。
+
+**方案**：`widget-loader` 内置错误边界，覆盖三类失败场景，命中后用降级占位替换崩溃物料，其余物料不受影响。
+
+| 失败场景 | 捕获机制 | 处理 |
+|---|---|---|
+| 加载/版本校验失败 | `mountWidget` 的 `try/catch` | 渲染降级占位，抛出结构化错误 |
+| 挂载同步抛错（`connectedCallback` 内 throw） | `renderWidget` 包裹 `appendChild` | 移除半挂载元素，渲染降级占位 |
+| 运行时崩溃（`setTimeout`/Promise/事件回调） | 全局 `error` + `unhandledrejection` 监听，按 `filename`/堆栈/物料名归因 | 移除崩溃元素，渲染降级占位 |
+
+```js
+// widget-loader 内部维护已挂载物料表，全局监听器据此归因
+const mountedWidgets = new Map(); // name -> { element, container, widget, failed }
+
+window.addEventListener('error', (event) => {
+  const name = attributeErrorToWidget(event); // 按 target 元素 / filename / 堆栈归因
+  if (name) {
+    markWidgetFailed(name, event.error || new Error(event.message));
+    event.preventDefault(); // 已降级，抑制浏览器默认报错
+  }
+}, true);
+```
+
+降级占位会展示崩溃原因，控制台同步输出：
+
+```
+[widget-loader] 物料 "bi-broken-panel" 运行时崩溃，已降级隔离：
+bi-broken-panel 业务逻辑崩溃：模拟未捕获的运行时错误（setTimeout 内抛出）
+```
+
+> demo 中 `vue2-host` 注册了一个故意在 `setTimeout` 里抛错的物料 `bi-broken-panel`：它先正常挂载，500ms 后崩溃，错误边界将其降级为占位，旁边的销售看板继续正常运行，看板不白屏。
+
+### 2.3 引入物料加载器
 
 ```js
 import { loadWidget, mountWidget } from './wc/widget-loader';
@@ -241,7 +275,7 @@ await mountWidget(document.getElementById('container'), {
 });
 ```
 
-### 2.3 注册表设计（极简版）
+### 2.4 注册表设计（极简版）
 
 基座维护一个 JSON 注册表，记录可用物料：
 
@@ -265,7 +299,7 @@ await mountWidget(document.getElementById('container'), {
 
 新增部门物料时，只需往注册表里加一条记录，**不需要修改基座代码**。
 
-### 2.4 跨组件通信
+### 2.5 跨组件通信
 
 不同技术栈的物料需要通信时，使用 `widget-bus`：
 
@@ -415,8 +449,13 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 
 ### 5.5 错误监控
 
-- 当前加载器只做了简单的错误占位。
-- 后续可扩展：记录加载失败日志、支持重试、展示更友好的错误提示。
+✅ 已实现（见 [2.2 错误边界](#22-错误边界单点失败不影响整体)）：加载失败、挂载同步抛错、运行时崩溃（`setTimeout`/Promise/事件回调）三类场景均被捕获并降级为占位，单点失败不影响整体看板。
+
+🔄 待增强：
+
+- 加载失败日志上报到监控平台（Sentry 等），支持重试。
+- 降级占位支持自定义渲染（如"点击重试"按钮）。
+- 运行时崩溃归因目前依赖 `filename`/堆栈匹配，对压缩后无 source map 的物料可能归因不到，可结合 source map 上报还原。
 
 ### 5.6 构建插件增强
 

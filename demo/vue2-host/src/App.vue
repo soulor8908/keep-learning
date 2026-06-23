@@ -1,8 +1,8 @@
 <template>
   <div class="host-app">
-    <h1>Vue2 基座 —— 版本契约治理</h1>
+    <h1>Vue2 基座 —— 版本契约 + 错误边界</h1>
     <p class="desc">
-      纯 Vue2 基座（仅提供 Vue2 运行时）。Vue2 物料正常加载；Vue3 物料因基座未提供 Vue3 运行时，被 widget-loader 版本契约明确拒绝，控制台输出清晰错误而非晦涩的 runtime error。
+      纯 Vue2 基座。Vue2 物料正常加载；Vue3 物料被版本契约明确拒绝；崩溃物料被错误边界降级隔离。任一物料单点失败都不影响其它物料，看板不白屏。
     </p>
     <button class="refresh-btn" @click="refreshWidgets">刷新所有物料</button>
     <div class="dashboard">
@@ -13,6 +13,10 @@
       <div class="widget-slot">
         <h3>财务部 · Vue3 物料（版本契约拒绝加载演示）</h3>
         <div ref="financePanel" class="widget-container"></div>
+      </div>
+      <div class="widget-slot">
+        <h3>风控部 · 崩溃物料（错误边界降级演示）</h3>
+        <div ref="brokenPanel" class="widget-container"></div>
       </div>
     </div>
     <div class="bus-log">
@@ -59,7 +63,8 @@ export default {
 
     await mountOne('salesPanel', this.widgets[0]);
     await mountOne('financePanel', this.widgets[1]);
-    this.logs.push('物料加载流程结束');
+    await mountOne('brokenPanel', this.widgets[2]);
+    this.logs.push('物料加载流程结束（崩溃物料的运行时降级由错误边界异步触发）');
   },
   beforeDestroy() {
     if (this.unsubscribe) this.unsubscribe();

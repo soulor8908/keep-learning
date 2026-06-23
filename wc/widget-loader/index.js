@@ -275,6 +275,95 @@ export async function loadWidgets(widgets) {
   return results;
 }
 
+// ─── 错误边界（Step 3）：单点失败不影响整体 ───
+// 跟踪已挂载物料，全局监听运行时错误并归因到对应物料，
+// 命中后用降级占位替换崩溃物料，避免整个看板白屏。
+const mountedWidgets = new Map(); // name -> { element, container, widget, failed }
+let globalErrorListenerInstalled = false;
+
+function renderFallback(container, message) {
+  const errorNode = document.createElement('div');
+  errorNode.className = 'widget-error-placeholder';
+  errorNode.textContent = message;
+  container.appendChild(errorNode);
+  return errorNode;
+}
+
+function markWidgetFailed(name, error) {
+  const entry = mountedWidgets.get(name);
+  if (!entry || entry.failed) return; // 已降级则不重复处理
+  entry.failed = true;
+  const { element, container } = entry;
+  // 移除崩溃的物料元素，避免残留破坏节点影响布局
+  if (element && element.parentNode === container) {
+    container.removeChild(element);
+  }
+  const reason = (error && error.message) ? error.message : String(error);
+  renderFallback(
+    container,
+    `[widget-loader] 物料 "${name}" 运行时崩溃，已降级隔离：\n${reason}`
+  );
+  console.error(`[widget-loader] 物料 "${name}" 运行时崩溃:`, error);
+}
+
+function attributeErrorToWidget(event) {
+  // 1. 资源错误（img/script 加载失败）：target 是元素，看落在哪个物料里
+  const target = event.target;
+  if (target && target instanceof Element) {
+    for (const [name, entry] of mountedWidgets) {
+      if (!entry.failed && entry.element && entry.element.contains(target)) {
+        return name;
+      }
+    }
+  }
+  // 2. JS 运行时错误：按 filename / message / 堆栈匹配物料 JS URL 或物料名
+  const source = [
+    event.filename,
+    event.message,
+    (event.error && event.error.stack) || ''
+  ].filter(Boolean).join('\n');
+  if (source) {
+    for (const [name, entry] of mountedWidgets) {
+      if (entry.failed) continue;
+      const jsUrl = entry.widget.js || '';
+      if (jsUrl && source.includes(jsUrl)) return name;
+      if (source.includes(name)) return name;
+    }
+  }
+  return null;
+}
+
+function ensureGlobalErrorListener() {
+  if (globalErrorListenerInstalled) return;
+  globalErrorListenerInstalled = true;
+  // 捕获阶段监听 error：资源错误 target=元素，JS 错误 target=window，都能收到
+  window.addEventListener('error', (event) => {
+    const name = attributeErrorToWidget(event);
+    if (name) {
+      const error = event.error || new Error(event.message || 'widget runtime error');
+      markWidgetFailed(name, error);
+      // 已降级处理，抑制浏览器默认报错，避免干扰基座
+      event.preventDefault();
+    }
+  }, true);
+  // 未捕获的 Promise rejection：按堆栈归因
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const stack = (reason && reason.stack) || String(reason || '');
+    for (const [name, entry] of mountedWidgets) {
+      if (entry.failed) continue;
+      const jsUrl = entry.widget.js || '';
+      if ((jsUrl && stack.includes(jsUrl)) || stack.includes(name)) {
+        markWidgetFailed(
+          name,
+          reason instanceof Error ? reason : new Error(String(reason))
+        );
+        break;
+      }
+    }
+  });
+}
+
 /**
  * 渲染物料到指定容器
  * @param {HTMLElement} container
@@ -287,12 +376,23 @@ export function renderWidget(container, widget) {
   const { name, config = {} } = widget;
   const element = document.createElement(name);
   element.setAttribute('config', JSON.stringify(config));
-  container.appendChild(element);
+  try {
+    container.appendChild(element); // 触发 connectedCallback
+  } catch (error) {
+    // connectedCallback 同步抛错：移除半挂载元素，向上抛出由 mountWidget 降级
+    if (element.parentNode === container) {
+      container.removeChild(element);
+    }
+    throw error;
+  }
   return element;
 }
 
 /**
- * 加载并渲染物料（带错误占位）
+ * 加载并渲染物料（带错误边界与降级占位）
+ * - 加载/版本校验失败：渲染降级占位
+ * - 挂载同步抛错：移除崩溃元素并渲染降级占位
+ * - 运行时崩溃（setTimeout/Promise/事件回调）：全局监听归因后自动降级
  * @param {HTMLElement} container
  * @param {Object} widget
  * @returns {Promise<HTMLElement>}
@@ -302,17 +402,16 @@ export async function mountWidget(container, widget) {
   try {
     await loadWidget(widget);
     const element = renderWidget(container, widget);
+    // 注册到错误边界：运行时崩溃时自动降级，单点失败不影响整体
+    mountedWidgets.set(widget.name, { element, container, widget, failed: false });
+    ensureGlobalErrorListener();
     log('widget mounted:', widget.name);
     return element;
   } catch (error) {
-    const errorNode = document.createElement('div');
-    errorNode.className = 'widget-error-placeholder';
-    // 版本不兼容时把具体原因展示出来，便于定位
-    errorNode.textContent =
-      error.code === 'DEP_VERSION_MISMATCH'
-        ? error.message
-        : `物料加载失败: ${widget.name}`;
-    container.appendChild(errorNode);
+    const message = error.code === 'DEP_VERSION_MISMATCH'
+      ? error.message
+      : `[widget-loader] 物料 "${widget.name}" 挂载失败，已降级：\n${error.message || error}`;
+    renderFallback(container, message);
     throw error;
   }
 }
