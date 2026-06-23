@@ -1,8 +1,8 @@
 <template>
   <div class="host-app">
-    <h1>Vue2 基座 —— 跨技术栈看板</h1>
+    <h1>Vue2 基座 —— 版本契约治理</h1>
     <p class="desc">
-      同时加载 Vue2 物料（bi-sales-panel）和 Vue3 物料（bi-finance-panel）
+      纯 Vue2 基座（仅提供 Vue2 运行时）。Vue2 物料正常加载；Vue3 物料因基座未提供 Vue3 运行时，被 widget-loader 版本契约明确拒绝，控制台输出清晰错误而非晦涩的 runtime error。
     </p>
     <button class="refresh-btn" @click="refreshWidgets">刷新所有物料</button>
     <div class="dashboard">
@@ -11,7 +11,7 @@
         <div ref="salesPanel" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>财务部 · Vue3 物料</h3>
+        <h3>财务部 · Vue3 物料（版本契约拒绝加载演示）</h3>
         <div ref="financePanel" class="widget-container"></div>
       </div>
     </div>
@@ -45,14 +45,21 @@ export default {
       this.logs.push(`[loaded] ${payload.widget}`);
     });
 
-    try {
-      await mountWidget(this.$refs.salesPanel, this.widgets[0]);
-      await mountWidget(this.$refs.financePanel, this.widgets[1]);
-      this.logs.push('物料加载完成');
-    } catch (err) {
-      this.logs.push(`物料加载失败: ${err.message}`);
-      console.error(err);
-    }
+    // 逐个加载：单个物料失败不影响其它物料，便于展示版本契约的"精确拒绝"
+    const mountOne = async (refName, widget) => {
+      try {
+        await mountWidget(this.$refs[refName], widget);
+        this.logs.push(`[ok] ${widget.name} 加载成功`);
+      } catch (err) {
+        // 版本契约错误已在控制台与占位节点中展示，这里只记一条摘要
+        this.logs.push(`[rejected] ${widget.name}：${err.code || 'LOAD_ERROR'} - ${err.message.split('\n')[0]}`);
+        console.error(`[${widget.name}]`, err);
+      }
+    };
+
+    await mountOne('salesPanel', this.widgets[0]);
+    await mountOne('financePanel', this.widgets[1]);
+    this.logs.push('物料加载流程结束');
   },
   beforeDestroy() {
     if (this.unsubscribe) this.unsubscribe();
@@ -102,6 +109,18 @@ export default {
 }
 .widget-container {
   min-height: 200px;
+}
+.widget-error-placeholder {
+  padding: 12px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #ef4444;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .bus-log {
   background: #f9fafb;

@@ -259,6 +259,6 @@ function register() {
 register();
 
 // 挂载到全局，供物料判断 aui 是否可用
-window.aui = { version: '1.0.0', register };
+window.aui = { version: '1.8.2', register };
 
 export { register };

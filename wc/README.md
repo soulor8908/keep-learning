@@ -184,7 +184,43 @@ Vue2 组件和 Vue3 组件互不兼容，无法共享。用 Web Components 实�
 
 > 注意：Vue2 物料的包装层需要禁用 Shadow DOM（`shadow: false`），否则 aui 的全局样式无法穿透到物料内部。
 
-### 2.1 引入物料加载器
+### 2.1 公共依赖版本契约（版本治理）
+
+**问题**：团队 A 用 Vue 2.6.14、团队 B 用 Vue 2.7.0，基座只提供 2.6.14，运行时可能报晦涩的错误；又如 Vue3 物料被误加载到只有 Vue2 运行时的基座，报错信息难以定位。
+
+**方案**：在 `widget-loader` 中内置公共依赖版本契约 `SUPPORTED_DEPS`，加载物料前先做版本校验，不兼容直接拒绝加载并抛出明确错误（`error.code === 'DEP_VERSION_MISMATCH'`），避免晦涩的 runtime error。
+
+```js
+// wc/widget-loader/index.js
+const SUPPORTED_DEPS = {
+  vue2: { version: '2.6.14', compatibleRange: '^2.6.0', globalVar: 'Vue2' },
+  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' },
+  aui:  { version: '1.8.2',  compatibleRange: '^1.8.0', globalVar: 'aui'  }
+};
+```
+
+物料在注册表中声明 `vueVersion`，加载器据此选择对应全局变量（`window.Vue2` / `window.Vue3`）并校验其版本是否落在 `compatibleRange` 内。内置轻量 semver（支持 `^` / `~` / `>=` / `>` / `<=` / `<` / 精确版本），无需引入外部依赖。
+
+```js
+// 注册表条目
+{
+  name: 'bi-finance-panel',
+  vueVersion: '3',          // 声明依赖的 Vue 主版本
+  js: '/widgets/bi-finance-panel.js',
+  config: { title: '财务看板' }
+}
+```
+
+校验失败时抛出结构化错误，`mountWidget` 还会把原因渲染到错误占位节点上，控制台与页面同时可见：
+
+```
+[widget-loader] 版本校验失败，已拒绝加载物料 "bi-finance-panel"：
+  - 物料 "bi-finance-panel" 依赖 Vue3（^3.0.0），但基座未提供 Vue3 运行时
+```
+
+> demo 中 `vue2-host` 为纯 Vue2 基座（不提供 Vue3 运行时），其注册表里的 Vue3 物料 `bi-finance-panel` 会被版本契约明确拒绝；`vue3-host` 同时提供 Vue2/Vue3 运行时，两类物料均可正常加载。
+
+### 2.2 引入物料加载器
 
 ```js
 import { loadWidget, mountWidget } from './wc/widget-loader';
@@ -205,7 +241,7 @@ await mountWidget(document.getElementById('container'), {
 });
 ```
 
-### 2.2 注册表设计（极简版）
+### 2.3 注册表设计（极简版）
 
 基座维护一个 JSON 注册表，记录可用物料：
 
@@ -229,7 +265,7 @@ await mountWidget(document.getElementById('container'), {
 
 新增部门物料时，只需往注册表里加一条记录，**不需要修改基座代码**。
 
-### 2.3 跨组件通信
+### 2.4 跨组件通信
 
 不同技术栈的物料需要通信时，使用 `widget-bus`：
 
@@ -344,10 +380,12 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 
 ### 5.1 公共依赖版本约束
 
-目前方案把 `vue` 和 `aui` 设为 external，依赖基座统一提供。建议：
+✅ 已实现（见 [2.1 公共依赖版本契约](#21-公共依赖版本契约版本治理)）：`widget-loader` 内置 `SUPPORTED_DEPS` 版本契约，加载物料前按 `vueVersion` 校验 `window.Vue2` / `window.Vue3` 与 `window.aui` 的版本是否落在兼容范围内，不兼容直接拒绝加载并给出明确错误。
 
-- 约束所有物料使用相同大版本的 `aui`，避免样式/组件注册冲突。
-- 如果基座和物料 Vue 版本不一致（基座 Vue2、物料 Vue3），需要基座同时加载 Vue2 和 Vue3 的运行时。
+🔄 待增强：
+
+- 支持物料在注册表中声明自定义 `compatibleRange`（覆盖基座默认范围），实现"物料级"版本诉求。
+- 校验失败时支持降级策略（如加载兼容的旧版本物料）而非直接拒绝。
 
 ### 5.2 样式隔离
 

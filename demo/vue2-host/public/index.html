@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vue2 基座</title>
-  <!-- Vue2 基座自身通过 webpack 引入 Vue2，这里额外加载 Vue3 运行时供 Vue3 物料使用 -->
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script>window.Vue3 = window.Vue;</script>
+  <!-- 纯 Vue2 基座：仅提供 Vue2 运行时（由 webpack 打包并挂到 window.Vue2）。
+       不再额外加载 Vue3 CDN —— 版本契约（Step 2）下，Vue3 物料应被明确拒绝，
+       而非靠 CDN 兜底混入运行时。 -->
 </head>
 <body>
   <div id="app"></div>

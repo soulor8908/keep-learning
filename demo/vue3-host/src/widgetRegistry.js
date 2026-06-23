@@ -6,6 +6,8 @@ const isLocal = import.meta.env.DEV;
 export const widgets = [
   {
     name: 'bi-sales-panel',
+    // 物料依赖的 Vue 主版本，供 widget-loader 做版本契约校验
+    vueVersion: '2',
     js: isLocal
       ? 'http://localhost:8081/bi-sales-panel.js'
       : '/widgets/bi-sales-panel.js',
@@ -17,6 +19,7 @@ export const widgets = [
   },
   {
     name: 'bi-finance-panel',
+    vueVersion: '3',
     js: isLocal
       ? 'http://localhost:8082/bi-finance-panel.js'
       : '/widgets/bi-finance-panel.js',

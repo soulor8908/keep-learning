@@ -1,10 +1,121 @@
 /**
  * 基座通用物料加载器
  * 支持按 URL 异步加载 JS/CSS，注册 Custom Element，并提供错误隔离
+ *
+ * 版本契约（Step 2）：加载物料前先做公共依赖版本校验，
+ * 不兼容的物料直接拒绝加载并抛出明确错误，避免晦涩的 runtime error。
  */
 
 const loadedResources = new Map();
 const definedElements = new Set();
+
+// ─── 公共依赖版本契约 ───
+// 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖。
+const SUPPORTED_DEPS = {
+  vue2: { version: '2.6.14', compatibleRange: '^2.6.0', globalVar: 'Vue2' },
+  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' },
+  aui:  { version: '1.8.2',  compatibleRange: '^1.8.0', globalVar: 'aui'  }
+};
+
+// ─── 轻量 semver 实现（避免引入外部依赖）───
+// 支持 ^、~、>=、>、<=、<、= 与精确版本，足以覆盖 compatibleRange 场景。
+function parseVersion(v) {
+  const clean = String(v).trim().replace(/^[v=]+/, '');
+  const [main] = clean.split(/[-+]/);
+  const parts = main.split('.');
+  return {
+    major: parseInt(parts[0], 10) || 0,
+    minor: parseInt(parts[1], 10) || 0,
+    patch: parseInt(parts[2], 10) || 0
+  };
+}
+
+function compareVersion(a, b) {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  return a.patch - b.patch;
+}
+
+export function satisfies(version, range) {
+  const m = String(range).trim().match(/^([\^~>=<]*)\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+  if (!m) return true; // 无法解析的范围，放行
+  const op = m[1] || '';
+  const req = {
+    major: parseInt(m[2], 10) || 0,
+    minor: parseInt(m[3], 10) || 0,
+    patch: parseInt(m[4], 10) || 0
+  };
+  const v = parseVersion(version);
+
+  switch (op) {
+    case '^':
+      // >= req 且 < (major+1).0.0；0.x 收紧到同 minor
+      if (compareVersion(v, req) < 0) return false;
+      if (req.major === 0) {
+        return v.major === 0 && v.minor === req.minor;
+      }
+      return v.major === req.major;
+    case '~':
+      if (compareVersion(v, req) < 0) return false;
+      return v.major === req.major && v.minor === req.minor;
+    case '>=':
+      return compareVersion(v, req) >= 0;
+    case '>':
+      return compareVersion(v, req) > 0;
+    case '<=':
+      return compareVersion(v, req) <= 0;
+    case '<':
+      return compareVersion(v, req) < 0;
+    case '=':
+    case '':
+    default:
+      return compareVersion(v, req) === 0;
+  }
+}
+
+/**
+ * 物料依赖版本校验
+ * @param {Object} widget
+ * @param {string} widget.name
+ * @param {('2'|'3')} [widget.vueVersion='2'] 物料依赖的 Vue 主版本
+ * @throws {Error} code='DEP_VERSION_MISMATCH'，message 含逐条不兼容原因
+ */
+export function checkDependencies(widget) {
+  const { name, vueVersion = '2' } = widget;
+  const errors = [];
+
+  // 1. Vue 运行时校验：按物料声明的 vueVersion 选择对应全局变量
+  const vueKey = vueVersion === '3' ? 'vue3' : 'vue2';
+  const vueDep = SUPPORTED_DEPS[vueKey];
+  const vueRuntime = typeof window !== 'undefined' ? window[vueDep.globalVar] : undefined;
+  if (!vueRuntime) {
+    errors.push(
+      `物料 "${name}" 依赖 Vue${vueVersion}（${vueDep.compatibleRange}），但基座未提供 ${vueDep.globalVar} 运行时`
+    );
+  } else if (vueRuntime.version && !satisfies(vueRuntime.version, vueDep.compatibleRange)) {
+    errors.push(
+      `物料 "${name}" 要求 Vue${vueVersion} ${vueDep.compatibleRange}，但基座提供 ${vueRuntime.version}`
+    );
+  }
+
+  // 2. aui 统一组件库版本校验
+  const auiDep = SUPPORTED_DEPS.aui;
+  const auiRuntime = typeof window !== 'undefined' ? window[auiDep.globalVar] : undefined;
+  if (!auiRuntime) {
+    errors.push(`物料 "${name}" 依赖 aui（${auiDep.compatibleRange}），但基座未提供 aui 运行时`);
+  } else if (auiRuntime.version && !satisfies(auiRuntime.version, auiDep.compatibleRange)) {
+    errors.push(`物料 "${name}" 要求 aui ${auiDep.compatibleRange}，但基座提供 ${auiRuntime.version}`);
+  }
+
+  if (errors.length) {
+    const err = new Error(
+      `[widget-loader] 版本校验失败，已拒绝加载物料 "${name}"：\n  - ${errors.join('\n  - ')}`
+    );
+    err.code = 'DEP_VERSION_MISMATCH';
+    err.details = errors;
+    throw err;
+  }
+}
 
 function isDebug() {
   try {
@@ -130,6 +241,9 @@ export async function loadWidget(widget) {
     return;
   }
 
+  // 版本契约校验：不兼容直接拒绝加载，给出明确提示而非晦涩的 runtime error
+  checkDependencies(widget);
+
   log('start loading widget:', name, { js, css });
   try {
     await Promise.all([loadScript(js), loadStyle(css)]);
@@ -193,7 +307,11 @@ export async function mountWidget(container, widget) {
   } catch (error) {
     const errorNode = document.createElement('div');
     errorNode.className = 'widget-error-placeholder';
-    errorNode.textContent = `物料加载失败: ${widget.name}`;
+    // 版本不兼容时把具体原因展示出来，便于定位
+    errorNode.textContent =
+      error.code === 'DEP_VERSION_MISMATCH'
+        ? error.message
+        : `物料加载失败: ${widget.name}`;
     container.appendChild(errorNode);
     throw error;
   }
