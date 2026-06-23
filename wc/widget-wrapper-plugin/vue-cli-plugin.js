@@ -41,28 +41,12 @@ class WidgetElement extends HTMLElement {
 
   connectedCallback() {
     const config = this.getAttribute('config');
-    // 调试标记：无论如何都会显示
-    const marker = document.createElement('div');
-    marker.style.cssText = 'color:red;padding:4px;border:1px solid red;margin:4px';
-    marker.textContent = '[debug] connectedCallback fired';
-    this.appendChild(marker);
     // 不使用 Shadow DOM，直接挂载到 light DOM，让 aui 全局样式能穿透
-    try {
-      this.vm = new Vue({
-        render: h => h(Component, { props: { config: parseConfig(config) } })
-      });
-      this.vm.$mount();
-      const info = document.createElement('div');
-      info.style.cssText = 'color:blue;padding:4px';
-      info.textContent = '[debug] $el.tagName=' + (this.vm.$el && this.vm.$el.tagName) + ', childNodes=' + this.vm.$el && this.vm.$el.childNodes && this.vm.$el.childNodes.length;
-      this.appendChild(info);
-      this.appendChild(this.vm.$el);
-    } catch (e) {
-      const errDiv = document.createElement('div');
-      errDiv.style.cssText = 'color:red;padding:4px';
-      errDiv.textContent = '[debug] Error: ' + e.message;
-      this.appendChild(errDiv);
-    }
+    this.vm = new Vue({
+      render: h => h(Component, { props: { config: parseConfig(config) } })
+    });
+    this.vm.$mount();
+    this.appendChild(this.vm.$el);
   }
 
   disconnectedCallback() {
