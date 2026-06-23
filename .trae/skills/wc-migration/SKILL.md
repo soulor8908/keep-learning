@@ -17,6 +17,9 @@ description: >
 - **公共依赖 external**：Vue、aui 由基座统一提供，物料包只打包业务代码。
 - **schema 自动生成**：通过 `wc/schema-generator/index.js` 扫描组件 props 生成 `bi-xxx.schema.json`。
 - **无 Shadow DOM**：保持 aui 全局样式可用，业务组件只需加 `bi-xxx` 命名空间。
+  - **禁止使用 Vue3 的 `defineCustomElement()`**：它默认调用 `attachShadow()`，会隔离物料样式，导致 aui 全局样式 / 主题变量 / 字体图标无法穿透。
+  - Vue2/Vue3 包装层都手写 `HTMLElement` + `createApp().mount(this)`（Vue3）/ `new Vue().$mount()`（Vue2），挂载到 light DOM。
+  - 包装层已加运行时守卫：`connectedCallback` 中检测到 `this.shadowRoot` 立即 `console.error` 告警。
 
 ## 二、快速迁移（自动化 CLI）
 

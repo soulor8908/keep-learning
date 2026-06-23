@@ -182,7 +182,7 @@ import './wc/mock-aui/index.js';  // 注册 aui-card / aui-statistic 等到全�
 
 Vue2 组件和 Vue3 组件互不兼容，无法共享。用 Web Components 实现的 aui 组件可以被任何框架使用，真正做到"基座加载一次，所有物料复用"。
 
-> 注意：Vue2 物料的包装层需要禁用 Shadow DOM（`shadow: false`），否则 aui 的全局样式无法穿透到物料内部。
+> **禁止 Shadow DOM（重要）**：Vue2/Vue3 物料包装层都挂载到 light DOM，**不要**改用 Vue3 官方的 `defineCustomElement()`（它默认调用 `attachShadow()`），否则 aui 全局样式、主题变量、字体图标会被隔离，物料内部样式异常。包装层已加运行时守卫：检测到 `shadowRoot` 会在控制台报错。详见 [5.2 样式隔离](#52-样式隔离)。
 
 ### 2.1 公共依赖版本契约（版本治理）
 
@@ -423,7 +423,11 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 
 ### 5.2 样式隔离
 
-当前方案不开启 Shadow DOM，依赖各部门自觉加命名空间前缀（如 `.bi-sales-panel`）。后续可：
+当前方案**不开启 Shadow DOM**，依赖各部门自觉加命名空间前缀（如 `.bi-sales-panel`）。
+
+**为什么不用 Shadow DOM / `defineCustomElement`**：Vue3 官方的 `defineCustomElement()` 默认调用 `attachShadow()`，会把物料样式完全隔离，导致基座注入的 aui 全局样式、主题变量、字体图标无法穿透。因此 Vue2/Vue3 包装层都手写 `HTMLElement` + 挂载到 light DOM，并在 `connectedCallback` 里加了运行时守卫：检测到 `shadowRoot` 立即报错，防止未来误改回归。
+
+后续可：
 
 - 制定 CSS 命名规范，强制要求物料根类名为 `bi-xxx`。
 - 在构建插件里加入 CSS 检查，自动提示未加命名空间的选择器。
