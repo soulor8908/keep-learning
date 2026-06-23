@@ -1,15 +1,17 @@
 <template>
-  <aui-card :title="config.title || '销售看板'">
+  <aui-card :title="config.title || t('sales.title')">
     <aui-row>
-      <aui-statistic label="销售额" :prefix="symbol" :value="summary.amount.toLocaleString()" />
-      <aui-statistic label="订单数" :value="summary.orderCount" />
+      <aui-statistic :label="t('sales.amount_label')" :prefix="symbol" :value="summary.amount.toLocaleString()" />
+      <aui-statistic :label="t('sales.order_label')" :value="summary.orderCount" />
     </aui-row>
     <aui-progress v-if="config.showTrend" :percent="trendPercent" />
-    <aui-footer>周期：{{ periodText }}</aui-footer>
+    <aui-footer>{{ t('sales.period_label') }}：{{ periodText }}</aui-footer>
   </aui-card>
 </template>
 
 <script>
+import { t, onLocaleChange } from 'wc-i18n';
+
 export default {
   name: 'SalesPanel',
   props: {
@@ -21,6 +23,8 @@ export default {
   },
   data() {
     return {
+      // 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
+      localeTick: 0,
       summary: {
         amount: 128000,
         orderCount: 342
@@ -28,17 +32,24 @@ export default {
     };
   },
   computed: {
+    // 暴露 t 给模板使用
+    t() {
+      // 引用 localeTick 使其成为依赖，locale 变化时重新求值
+      void this.localeTick;
+      return t;
+    },
     symbol() {
       return this.config.currency === 'USD' ? '$' : '¥';
     },
     periodText() {
+      void this.localeTick;
       const map = {
-        day: '今日',
-        week: '本周',
-        month: '本月',
-        year: '本年'
+        day: t('sales.period_day'),
+        week: t('sales.period_week'),
+        month: t('sales.period_month'),
+        year: t('sales.period_year')
       };
-      return map[this.config.period] || '本月';
+      return map[this.config.period] || t('sales.period_month');
     },
     trendPercent() {
       return Math.min(100, (this.summary.orderCount / 500) * 100);
@@ -53,9 +64,12 @@ export default {
         this.summary.orderCount += Math.floor(Math.random() * 10);
       });
     }
+    // 监听语言切换，触发重渲染
+    this._offLocale = onLocaleChange(() => { this.localeTick++; });
   },
   beforeDestroy() {
     if (this._offBus) this._offBus();
+    if (this._offLocale) this._offLocale();
   }
 };
 </script>

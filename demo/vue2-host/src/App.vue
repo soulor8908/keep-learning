@@ -1,26 +1,27 @@
 <template>
   <div class="host-app">
-    <h1>Vue2 基座 —— 版本契约 + 错误边界</h1>
-    <p class="desc">
-      纯 Vue2 基座。Vue2 物料正常加载；Vue3 物料被版本契约明确拒绝（确定性错误，无重试）；崩溃物料被错误边界降级隔离，占位提供"点击重试"——只重新加载该物料，不影响其它区域，无需刷新整页。
-    </p>
-    <button class="refresh-btn" @click="refreshWidgets">刷新所有物料</button>
+    <div class="topbar">
+      <h1>{{ $t('title') }}</h1>
+      <button class="lang-btn" @click="toggleLocale">{{ $t('lang_switch') }}</button>
+    </div>
+    <p class="desc">{{ $t('desc') }}</p>
+    <button class="refresh-btn" @click="refreshWidgets">{{ $t('refresh') }}</button>
     <div class="dashboard">
       <div class="widget-slot">
-        <h3>销售部 · Vue2 物料</h3>
+        <h3>{{ $t('slot_sales') }}</h3>
         <div ref="salesPanel" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>财务部 · Vue3 物料（版本契约拒绝加载演示）</h3>
+        <h3>{{ $t('slot_finance') }}</h3>
         <div ref="financePanel" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>风控部 · 崩溃物料（错误边界降级演示）</h3>
+        <h3>{{ $t('slot_broken') }}</h3>
         <div ref="brokenPanel" class="widget-container"></div>
       </div>
     </div>
     <div class="bus-log">
-      <h3>消息总线日志</h3>
+      <h3>{{ $t('log_title') }}</h3>
       <ul>
         <li v-for="(log, idx) in logs" :key="idx">{{ log }}</li>
       </ul>
@@ -32,6 +33,7 @@
 import { mountWidget } from '../../../wc/widget-loader';
 import { on, emit } from '../../../wc/widget-bus';
 import { widgets } from './widgetRegistry';
+import { changeLocale } from './i18n';
 
 export default {
   name: 'App',
@@ -42,7 +44,7 @@ export default {
     };
   },
   async mounted() {
-    this.logs.push('开始加载物料...');
+    this.logs.push(this.$t('log_start'));
 
     // 监听物料加载完成事件
     this.unsubscribe = on('widget:loaded', payload => {
@@ -53,10 +55,10 @@ export default {
     const mountOne = async (refName, widget) => {
       try {
         await mountWidget(this.$refs[refName], widget);
-        this.logs.push(`[ok] ${widget.name} 加载成功`);
+        this.logs.push(this.$t('log_ok', { name: widget.name }));
       } catch (err) {
         // 版本契约错误已在控制台与占位节点中展示，这里只记一条摘要
-        this.logs.push(`[rejected] ${widget.name}：${err.code || 'LOAD_ERROR'} - ${err.message.split('\n')[0]}`);
+        this.logs.push(this.$t('log_rejected', { name: widget.name, code: err.code || 'LOAD_ERROR', msg: err.message.split('\n')[0] }));
         console.error(`[${widget.name}]`, err);
       }
     };
@@ -64,15 +66,18 @@ export default {
     await mountOne('salesPanel', this.widgets[0]);
     await mountOne('financePanel', this.widgets[1]);
     await mountOne('brokenPanel', this.widgets[2]);
-    this.logs.push('物料加载流程结束（崩溃物料的运行时降级由错误边界异步触发）');
+    this.logs.push(this.$t('log_end'));
   },
   beforeDestroy() {
     if (this.unsubscribe) this.unsubscribe();
   },
   methods: {
     refreshWidgets() {
-      this.logs.push('发送 refresh-data 指令');
+      this.logs.push(this.$t('log_refresh'));
       emit('refresh-data', { source: 'vue2-host', timestamp: Date.now() });
+    },
+    toggleLocale() {
+      changeLocale(this.$i18n.locale === 'zh' ? 'en' : 'zh');
     }
   }
 };
@@ -84,6 +89,28 @@ export default {
   margin: 0 auto;
   padding: 24px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.topbar h1 {
+  margin: 0;
+}
+.lang-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lang-btn:hover {
+  background: #e5e7eb;
 }
 .desc {
   color: #6b7280;

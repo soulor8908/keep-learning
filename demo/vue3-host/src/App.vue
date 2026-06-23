@@ -1,22 +1,23 @@
 <template>
   <div class="host-app">
-    <h1>Vue3 基座 —— 跨技术栈看板</h1>
-    <p class="desc">
-      同时加载 Vue2 物料（bi-sales-panel）和 Vue3 物料（bi-finance-panel）
-    </p>
-    <button class="refresh-btn" @click="refreshWidgets">刷新所有物料</button>
+    <div class="topbar">
+      <h1>{{ t('title') }}</h1>
+      <button class="lang-btn" @click="toggleLocale">{{ t('lang_switch') }}</button>
+    </div>
+    <p class="desc">{{ t('desc') }}</p>
+    <button class="refresh-btn" @click="refreshWidgets">{{ t('refresh') }}</button>
     <div class="dashboard">
       <div class="widget-slot">
-        <h3>销售部 · Vue2 物料</h3>
+        <h3>{{ t('slot_sales') }}</h3>
         <div ref="salesPanel" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>财务部 · Vue3 物料</h3>
+        <h3>{{ t('slot_finance') }}</h3>
         <div ref="financePanel" class="widget-container"></div>
       </div>
     </div>
     <div class="bus-log">
-      <h3>消息总线日志</h3>
+      <h3>{{ t('log_title') }}</h3>
       <ul>
         <li v-for="(log, idx) in logs" :key="idx">{{ log }}</li>
       </ul>
@@ -26,10 +27,13 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { mountWidget } from '../../../wc/widget-loader';
 import { on, emit } from '../../../wc/widget-bus';
 import { widgets } from './widgetRegistry';
+import { changeLocale } from './i18n';
 
+const { t, locale } = useI18n();
 const salesPanel = ref(null);
 const financePanel = ref(null);
 const logs = ref([]);
@@ -39,7 +43,7 @@ const logs = ref([]);
 let unsubscribe = null;
 
 onMounted(async () => {
-  logs.value.push('开始加载物料...');
+  logs.value.push(t('log_start'));
 
   unsubscribe = on('widget:loaded', payload => {
     logs.value.push(`[loaded] ${payload.widget}`);
@@ -48,9 +52,9 @@ onMounted(async () => {
   try {
     await mountWidget(salesPanel.value, widgets[0]);
     await mountWidget(financePanel.value, widgets[1]);
-    logs.value.push('物料加载完成');
+    logs.value.push(t('log_done'));
   } catch (err) {
-    logs.value.push(`物料加载失败: ${err.message}`);
+    logs.value.push(t('log_fail', { msg: err.message }));
     console.error(err);
   }
 });
@@ -60,8 +64,12 @@ onUnmounted(() => {
 });
 
 function refreshWidgets() {
-  logs.value.push('发送 refresh-data 指令');
+  logs.value.push(t('log_refresh'));
   emit('refresh-data', { source: 'vue3-host', timestamp: Date.now() });
+}
+
+function toggleLocale() {
+  changeLocale(locale.value === 'zh' ? 'en' : 'zh');
 }
 </script>
 
@@ -71,6 +79,28 @@ function refreshWidgets() {
   margin: 0 auto;
   padding: 24px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.topbar h1 {
+  margin: 0;
+}
+.lang-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lang-btn:hover {
+  background: #e5e7eb;
 }
 .desc {
   color: #6b7280;

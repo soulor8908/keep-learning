@@ -32,6 +32,9 @@ wc/
 │   └── index.js
 ├── widget-bus/                    # 跨技术栈消息总线
 │   └── index.js
+├── i18n/                          # 跨技术栈轻量国际化运行时（aui/loader/物料共用）
+│   ├── index.js
+│   └── locales/                   # 中英语言包
 ├── schema-generator/              # schema.json 自动生成器
 │   └── index.js
 ├── ai-assistant/                  # AI 辅助工具
@@ -336,6 +339,51 @@ import { Vue3BusPlugin } from './wc/widget-bus';
 app.use(Vue3BusPlugin);
 // app.config.globalProperties.$widgetBus.emit('xxx')
 ```
+
+### 2.6 国际化（全链路 i18n）
+
+**问题**：看板需要支持多语言，但基座（Vue2/Vue3）、物料（Vue2/Vue3）、aui（Web Components）、widget-loader（纯 JS）技术栈不一，文案分散在各处。
+
+**方案**：分层 i18n，locale 全局同步。
+
+| 层 | 方案 | 说明 |
+|---|---|---|
+| 基座 Vue UI | vue-i18n（@8/@9 各版本） | 基座自身标题/按钮/日志用 `$t`/`t()` |
+| aui / widget-loader / 物料业务文案 | `wc/i18n` 轻量全局运行时 | 跨技术栈共用，避免 vue-i18n UMD 全局名冲突 |
+
+> **为什么物料不用 vue-i18n？** vue-i18n@8 与 @9 的 UMD 全局名都是 `VueI18n`，跨技术栈物料共存时无法同时 external（后者覆盖前者）。因此物料业务文案统一用 `wc/i18n` 的全局 `t()`，基座提供 `window.__wcI18n__`，物料构建时 external `wc-i18n`。
+
+**`wc/i18n` 运行时**（[wc/i18n/index.js](wc/i18n/index.js)）：
+
+```js
+import { t, setLocale, onLocaleChange } from 'wc/i18n';
+
+t('sales.amount_label');          // 翻译
+setLocale('en');                  // 切换语言，派发 'locale-change' 事件
+onLocaleChange(locale => { ... }); // 订阅切换，物料据此重渲染
+```
+
+**语言切换同步链路**：基座点击语言按钮 → `changeLocale()` 同时更新 vue-i18n.locale 与 `wc/i18n.setLocale()` → `setLocale` 通知所有 `onLocaleChange` 订阅者（aui/loader/物料）+ 通过 widget-bus 广播 `locale-change` → 物料监听后自增 `localeTick` 触发重渲染。
+
+**物料接入**（构建时 external `wc-i18n` → `window.__wcI18n__`）：
+
+```js
+// 物料组件
+import { t, onLocaleChange } from 'wc-i18n';
+
+export default {
+  data: () => ({ localeTick: 0 }),
+  computed: {
+    t() { void this.localeTick; return t; } // 引用 tick 使其成为依赖
+  },
+  mounted() {
+    this._off = onLocaleChange(() => { this.localeTick++; }); // 切换时重渲染
+  },
+  beforeDestroy() { if (this._off) this._off(); }
+};
+```
+
+> demo 中两个基座右上角均有语言切换按钮，点击后基座 UI、物料业务文案（销售/财务看板标签）、widget-loader 错误提示（版本契约拒绝/崩溃降级占位）同步切换中英文。
 
 ---
 

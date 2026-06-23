@@ -88,7 +88,9 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     // external 公共依赖，允许自定义 Vue 全局变量名
     config.externals({
       vue: vueGlobal,
-      aui: 'aui'
+      aui: 'aui',
+      // 国际化运行时：基座提供 window.__wcI18n__，物料共享同一实例与 locale 状态
+      'wc-i18n': '__wcI18n__'
     });
 
     // 注入组件路径别名

@@ -4,7 +4,11 @@
  *
  * 版本契约（Step 2）：加载物料前先做公共依赖版本校验，
  * 不兼容的物料直接拒绝加载并抛出明确错误，避免晦涩的 runtime error。
+ *
+ * 国际化（Step 4）：错误信息通过 wc/i18n 的 t() 翻译，随基座语言切换。
  */
+
+import { t } from '../i18n/index.js';
 
 const loadedResources = new Map();
 const definedElements = new Set();
@@ -90,11 +94,11 @@ export function checkDependencies(widget) {
   const vueRuntime = typeof window !== 'undefined' ? window[vueDep.globalVar] : undefined;
   if (!vueRuntime) {
     errors.push(
-      `物料 "${name}" 依赖 Vue${vueVersion}（${vueDep.compatibleRange}），但基座未提供 ${vueDep.globalVar} 运行时`
+      t('loader.dep_missing', { name, dep: `Vue${vueVersion}`, range: vueDep.compatibleRange, globalVar: vueDep.globalVar })
     );
   } else if (vueRuntime.version && !satisfies(vueRuntime.version, vueDep.compatibleRange)) {
     errors.push(
-      `物料 "${name}" 要求 Vue${vueVersion} ${vueDep.compatibleRange}，但基座提供 ${vueRuntime.version}`
+      t('loader.dep_version', { name, dep: `Vue${vueVersion}`, range: vueDep.compatibleRange, actual: vueRuntime.version })
     );
   }
 
@@ -102,14 +106,14 @@ export function checkDependencies(widget) {
   const auiDep = SUPPORTED_DEPS.aui;
   const auiRuntime = typeof window !== 'undefined' ? window[auiDep.globalVar] : undefined;
   if (!auiRuntime) {
-    errors.push(`物料 "${name}" 依赖 aui（${auiDep.compatibleRange}），但基座未提供 aui 运行时`);
+    errors.push(t('loader.dep_aui_missing', { name, range: auiDep.compatibleRange }));
   } else if (auiRuntime.version && !satisfies(auiRuntime.version, auiDep.compatibleRange)) {
-    errors.push(`物料 "${name}" 要求 aui ${auiDep.compatibleRange}，但基座提供 ${auiRuntime.version}`);
+    errors.push(t('loader.dep_aui_version', { name, range: auiDep.compatibleRange, actual: auiRuntime.version }));
   }
 
   if (errors.length) {
     const err = new Error(
-      `[widget-loader] 版本校验失败，已拒绝加载物料 "${name}"：\n  - ${errors.join('\n  - ')}`
+      `[widget-loader] ${t('loader.version_mismatch', { name })}\n  - ${errors.join('\n  - ')}`
     );
     err.code = 'DEP_VERSION_MISMATCH';
     err.details = errors;
@@ -309,7 +313,7 @@ function renderFallback(container, message, widget, onRetry) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'widget-error-retry';
-    btn.textContent = '点击重试';
+    btn.textContent = t('loader.retry');
     btn.style.cssText =
       'margin-top:10px;padding:5px 16px;font-size:13px;border:1px solid #3b82f6;' +
       'border-radius:4px;background:#3b82f6;color:#fff;cursor:pointer;line-height:1.4;';
@@ -337,7 +341,7 @@ function markWidgetFailed(name, error) {
     container.removeChild(element);
   }
   const reason = (error && error.message) ? error.message : String(error);
-  const message = `[widget-loader] 物料 "${name}" 运行时崩溃，已降级隔离：\n${reason}`;
+  const message = `[widget-loader] ${t('loader.runtime_crash', { name })}\n${reason}`;
   // 运行时崩溃重试：脚本已加载（loadWidget 会短路），重新创建元素实例挂载
   const onRetry = () => {
     mountedWidgets.delete(name); // 清除 failed 标记，允许错误边界重新归因
@@ -456,7 +460,7 @@ function mountWithFallback(container, widget) {
   attemptMount(container, widget)
     .then(() => log('widget mounted:', widget.name))
     .catch(error => {
-      const message = `[widget-loader] 物料 "${widget.name}" 加载失败，已降级：\n${error.message || error}`;
+      const message = `[widget-loader] ${t('loader.load_failed', { name: widget.name })}\n${error.message || error}`;
       // 网络/运行时类失败可重试；点击后再次走 mountWithFallback
       renderFallback(container, message, widget, () =>
         mountWithFallback(container, widget)
@@ -483,7 +487,7 @@ export async function mountWidget(container, widget) {
     const isVersionMismatch = error.code === 'DEP_VERSION_MISMATCH';
     const message = isVersionMismatch
       ? error.message
-      : `[widget-loader] 物料 "${widget.name}" 挂载失败，已降级：\n${error.message || error}`;
+      : `[widget-loader] ${t('loader.mount_failed', { name: widget.name })}\n${error.message || error}`;
     // 版本不兼容是确定性错误，重试无意义，不渲染重试按钮；其余失败可重试
     const onRetry = isVersionMismatch
       ? null

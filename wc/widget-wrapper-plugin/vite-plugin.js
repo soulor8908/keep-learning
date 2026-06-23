@@ -106,11 +106,13 @@ export default function widgetVitePlugin(options = {}) {
           cssFileName
         },
         rollupOptions: {
-          external: ['vue', 'aui'],
+          external: ['vue', 'aui', 'wc-i18n'],
           output: {
             globals: {
               vue: vueGlobal,
-              aui: 'aui'
+              aui: 'aui',
+              // 国际化运行时：基座提供 window.__wcI18n__，物料共享同一实例与 locale 状态
+              'wc-i18n': '__wcI18n__'
             }
           }
         }
