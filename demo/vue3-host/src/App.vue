@@ -28,24 +28,13 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { mountWidget } from '../../../wc/widget-loader';
 import { on, emit } from '../../../wc/widget-bus';
+import { widgets } from './widgetRegistry';
 
 const salesPanel = ref(null);
 const financePanel = ref(null);
 const logs = ref([]);
 
-const widgets = [
-  {
-    name: 'bi-sales-panel',
-    js: '/widgets/bi-sales-panel.js',
-    config: { title: 'Vue3 基座 · 销售看板', period: 'month', showTrend: true }
-  },
-  {
-      name: 'bi-finance-panel',
-      js: '/widgets/bi-finance-panel.js',
-      css: '/widgets/bi-finance-panel.css',
-      config: { title: 'Vue3 基座 · 财务看板', currency: 'CNY', showBreakdown: true }
-    }
-];
+// 物料配置从注册表读取，开发模式自动指向本地热构建服务
 
 let unsubscribe = null;
 

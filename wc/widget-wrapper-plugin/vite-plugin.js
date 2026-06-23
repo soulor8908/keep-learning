@@ -69,7 +69,7 @@ customElements.define('${widgetName}', WidgetElement);
 }
 
 export default function widgetVitePlugin(options = {}) {
-  const { name, component, vueGlobal = 'Vue' } = options;
+  const { name, component, vueGlobal = 'Vue', cssFileName = name } = options;
   if (!name || !component) {
     throw new Error('[widget-vite-plugin] 请配置 name 和 component');
   }
@@ -83,11 +83,14 @@ export default function widgetVitePlugin(options = {}) {
     name: 'widget-wrapper-plugin',
     config: () => ({
       build: {
+        sourcemap: true, // 开启 source map，方便本地调试物料
+        cssCodeSplit: false,
         lib: {
           entry: tmpFile,
           name,
           fileName: () => `${name}.js`,
-          formats: ['umd']
+          formats: ['umd'],
+          cssFileName
         },
         rollupOptions: {
           external: ['vue', 'aui'],

@@ -407,6 +407,10 @@ node wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.v
 </script>
 ```
 
+### 本地热调试
+
+demo 项目已配置完整的本地热调试流程：watch 构建 + 本地静态服务 + 环境感知注册表 + Source Map。详细步骤见 [demo/README.md](demo/README.md#六本地热调试方案推荐开发模式)。
+
 ---
 
 ## 七、总结

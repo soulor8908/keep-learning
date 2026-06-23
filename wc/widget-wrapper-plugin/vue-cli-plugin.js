@@ -71,6 +71,9 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     const componentPath = path.resolve(process.cwd(), component);
     config.resolve.alias.set('__WIDGET_COMPONENT__', componentPath);
 
+    // 开启 source map，方便本地调试物料
+    config.devtool('source-map');
+
     // 清理 html 插件，避免生成 index.html
     config.plugins.delete('html');
 

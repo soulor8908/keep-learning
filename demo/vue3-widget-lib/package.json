@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && node -e \"require('fs').renameSync('dist/style.css','dist/bi-finance-panel.css')\"",
-    "serve": "vite"
+    "build": "vite build",
+    "serve": "vite",
+    "serve:widget": "vite build --watch",
+    "serve:dist": "npx serve dist -l 8082 --cors"
   },
   "dependencies": {
     "vue": "^3.4.21"

@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "build": "vue-cli-service build",
-    "serve": "vue-cli-service serve"
+    "serve": "vue-cli-service serve",
+    "serve:widget": "WIDGET_BUILD=true vue-cli-service build --watch --mode development",
+    "serve:dist": "npx serve dist -l 8081 --cors"
   },
   "dependencies": {
     "vue": "^2.6.14"

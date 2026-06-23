@@ -447,7 +447,91 @@ cp demo/vue3-widget-lib/dist/bi-finance-panel.css demo/vue2-host/public/widgets/
 
 ---
 
-## 六、扩展方向
+## 六、本地热调试方案（推荐开发模式）
+
+手动 `build` + `cp` + 刷新页面的方式效率很低。我们已为插件、物料库和基座提供了一套本地热调试能力：修改物料源码后，watch 会自动重新构建，基座刷新页面即可看到最新效果，且浏览器 DevTools 能直接调试原始 `.vue` 文件。
+
+### 6.1 已具备的调试能力
+
+| 能力 | 实现位置 | 说明 |
+|---|---|---|
+| **Source Map** | `wc/widget-wrapper-plugin/vue-cli-plugin.js` / `vite-plugin.js` | Vue2 开启 `config.devtool('source-map')`，Vue3 开启 `build.sourcemap: true` |
+| **物料热构建** | `demo/vue2-widget-lib/package.json` / `vue3-widget-lib/package.json` | `serve:widget` 以 watch 模式构建物料 |
+| **本地静态服务** | `serve:dist` | 用 `npx serve` 在固定端口（8081 / 8082）提供 UMD 产物，并带 `--cors` |
+| **环境感知注册表** | `demo/vue2-host/src/widgetRegistry.js` / `vue3-host/src/widgetRegistry.js` | 开发模式自动指向 `localhost:8081/8082`，生产环境回退到 `public/widgets` |
+| **加载器调试日志** | `wc/widget-loader/index.js` | 通过 `localStorage.setItem('widget-loader-debug', 'true')` 开启详细日志 |
+
+### 6.2 启动本地热调试
+
+需要同时跑 4 个服务，建议开 4 个终端：
+
+```bash
+# 终端 1：Vue2 物料热构建（监听源码变化并写入 dist）
+cd demo/vue2-widget-lib
+npm run serve:widget
+
+# 终端 2：Vue2 物料静态服务（端口 8081，带 CORS）
+cd demo/vue2-widget-lib
+npm run serve:dist
+
+# 终端 3：Vue3 物料热构建
+cd demo/vue3-widget-lib
+npm run serve:widget
+
+# 终端 4：Vue3 物料静态服务（端口 8082，带 CORS）
+cd demo/vue3-widget-lib
+npm run serve:dist
+
+# 终端 5：启动基座（Vue2 或 Vue3 均可）
+cd demo/vue2-host
+npm run serve
+```
+
+打开基座地址（默认 `http://localhost:8080`），此时基座会从 `http://localhost:8081/bi-sales-panel.js` 和 `http://localhost:8082/bi-finance-panel.js` 加载物料。
+
+### 6.3 开启加载器调试日志
+
+在浏览器 DevTools Console 执行：
+
+```js
+localStorage.setItem('widget-loader-debug', 'true');
+```
+
+刷新页面后，Console 会输出 `[widget-loader]` 开头的详细日志，包括脚本/样式加载、Custom Element 注册等待、渲染过程等。调试结束后可关闭：
+
+```js
+localStorage.removeItem('widget-loader-debug');
+```
+
+### 6.4 在浏览器里调试物料源码
+
+1. 打开 DevTools 的 **Sources** 面板。
+2. 找到 `webpack://`（Vue2）或 `vite-project`（Vue3）下的原始 `.vue` 文件。
+3. 在业务组件（如 `SalesPanel.vue` / `FinancePanel.vue`）里打断点，刷新页面即可命中。
+
+因为物料构建时已生成 Source Map，断点会停在原始 Vue 单文件组件上，而不是压缩后的 UMD 代码。
+
+### 6.5 修改源码后的刷新流程
+
+1. 修改 `demo/vue2-widget-lib/src/components/SalesPanel.vue` 或 `demo/vue3-widget-lib/src/components/FinancePanel.vue`。
+2. `serve:widget` 会自动重新构建，约 1~3 秒后 `dist/` 产物更新。
+3. 在基座页面按 **Ctrl + F5**（或 DevTools Network 面板禁用缓存后刷新），即可看到最新效果。
+
+> 注意：Custom Element 一旦注册不能重复注册，所以修改包装层代码后必须刷新整个页面，不能依赖热替换（HMR）。
+
+### 6.6 常见问题
+
+| 现象 | 可能原因 | 解决 |
+|---|---|---|
+| 基座报 `Failed to load script` | 物料静态服务未启动，或端口 8081/8082 被占用 | 检查 `serve:dist` 是否运行，必要时换端口 |
+| 跨域错误 `CORS policy` | 静态服务没带 `--cors` | 使用 `npm run serve:dist`，它已经包含 `--cors` |
+| 修改代码后页面没变化 | 浏览器缓存了旧 JS | 按 Ctrl + F5 或在 DevTools 中勾选 Disable cache |
+| DevTools 看不到原始 `.vue` | Source Map 未生成 | 检查插件配置中 `sourcemap: true` / `devtool('source-map')` 是否生效 |
+| 基座加载了 `public/widgets` 下的旧产物 | 注册表未识别为开发模式 | Vue2 基座检查 `process.env.NODE_ENV === 'development'`；Vue3 基座检查 `import.meta.env.DEV` |
+
+---
+
+## 七、扩展方向
 
 1. **多入口打包**：一个仓库输出多个物料。
 2. **TypeScript 组件支持**：在插件里解析 `.tsx` / `.vue` + `<script setup lang="ts">`。
@@ -458,7 +542,7 @@ cp demo/vue3-widget-lib/dist/bi-finance-panel.css demo/vue2-host/public/widgets/
 
 ---
 
-## 七、总结
+## 八、总结
 
 本方案的核心思想是：
 

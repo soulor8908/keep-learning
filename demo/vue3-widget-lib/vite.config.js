@@ -11,11 +11,5 @@ export default defineConfig({
       // 使用独立全局名，避免与 Vue2 物料冲突
       vueGlobal: 'Vue3'
     })
-  ],
-  build: {
-    cssCodeSplit: false,
-    lib: {
-      cssFileName: 'bi-finance-panel'
-    }
-  }
+  ]
 });

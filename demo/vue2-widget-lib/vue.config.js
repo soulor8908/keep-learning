@@ -1,21 +1,21 @@
 const widgetPlugin = require('../../wc/widget-wrapper-plugin/vue-cli-plugin');
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isWidgetBuild = process.env.NODE_ENV === 'production' || process.env.WIDGET_BUILD === 'true';
 
 module.exports = {
-  // 生产构建：把 scoped style 注入 JS，避免单独加载 CSS
+  // 构建物料时把 scoped style 注入 JS，避免单独加载 CSS
   css: {
-    extract: isProduction ? false : undefined
+    extract: isWidgetBuild ? false : undefined
   },
-  // 生产构建：用插件输出 UMD 物料
-  chainWebpack: isProduction ? widgetPlugin({
+  // 构建物料：用插件输出 UMD
+  chainWebpack: isWidgetBuild ? widgetPlugin({
     name: 'bi-sales-panel',
     component: './src/components/SalesPanel.vue',
     // 使用独立全局名，避免与 Vue3 物料冲突
     vueGlobal: 'Vue2'
   }) : undefined,
   // 本地开发：用 pages 预览组件
-  pages: isProduction ? undefined : {
+  pages: isWidgetBuild ? undefined : {
     index: {
       entry: 'src/main.js',
       template: 'public/index.html',

@@ -27,25 +27,14 @@
 <script>
 import { mountWidget } from '../../../wc/widget-loader';
 import { on, emit } from '../../../wc/widget-bus';
+import { widgets } from './widgetRegistry';
 
 export default {
   name: 'App',
   data() {
     return {
       logs: [],
-      widgets: [
-        {
-          name: 'bi-sales-panel',
-          js: '/widgets/bi-sales-panel.js',
-          config: { title: 'Vue2 基座 · 销售看板', period: 'month', showTrend: true }
-        },
-        {
-          name: 'bi-finance-panel',
-          js: '/widgets/bi-finance-panel.js',
-          css: '/widgets/bi-finance-panel.css',
-          config: { title: 'Vue2 基座 · 财务看板', currency: 'CNY', showBreakdown: true }
-        }
-      ]
+      widgets
     };
   },
   async mounted() {
