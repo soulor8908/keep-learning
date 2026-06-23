@@ -20,27 +20,64 @@ const { writeSchema } = require('../schema-generator');
 function generateVue2Wrapper(widgetName, vueGlobal) {
   return `
 import Vue from 'vue';
-import wrap from '@vue/web-component-wrapper';
 import Component from '__WIDGET_COMPONENT__';
+
+// 告诉 Vue2 编译器 aui-* 是自定义元素，不要当 Vue 组件解析
+Vue.config.ignoredElements = [/^aui-/];
 
 function parseConfig(value) {
   try { return value ? JSON.parse(value) : {}; } catch { return {}; }
 }
 
-// 桥接组件：把 Custom Element 接收到的 String config 转成 Object 再传给业务组件
-const BridgeComponent = {
-  props: ['config'],
-  render(h) {
-    return h(Component, {
-      props: { config: parseConfig(this.config) }
-    });
+class WidgetElement extends HTMLElement {
+  constructor() {
+    super();
+    this.vm = null;
   }
-};
 
-class WidgetElement extends wrap(Vue, BridgeComponent, {
-  // 禁用 Shadow DOM，让 aui 全局样式能穿透到物料内部
-  shadow: false
-}) {}
+  static get observedAttributes() {
+    return ['config'];
+  }
+
+  connectedCallback() {
+    const config = this.getAttribute('config');
+    // 调试标记：无论如何都会显示
+    const marker = document.createElement('div');
+    marker.style.cssText = 'color:red;padding:4px;border:1px solid red;margin:4px';
+    marker.textContent = '[debug] connectedCallback fired';
+    this.appendChild(marker);
+    // 不使用 Shadow DOM，直接挂载到 light DOM，让 aui 全局样式能穿透
+    try {
+      this.vm = new Vue({
+        render: h => h(Component, { props: { config: parseConfig(config) } })
+      });
+      this.vm.$mount();
+      const info = document.createElement('div');
+      info.style.cssText = 'color:blue;padding:4px';
+      info.textContent = '[debug] $el.tagName=' + (this.vm.$el && this.vm.$el.tagName) + ', childNodes=' + this.vm.$el && this.vm.$el.childNodes && this.vm.$el.childNodes.length;
+      this.appendChild(info);
+      this.appendChild(this.vm.$el);
+    } catch (e) {
+      const errDiv = document.createElement('div');
+      errDiv.style.cssText = 'color:red;padding:4px';
+      errDiv.textContent = '[debug] Error: ' + e.message;
+      this.appendChild(errDiv);
+    }
+  }
+
+  disconnectedCallback() {
+    if (this.vm) {
+      this.vm.$destroy();
+      this.vm = null;
+    }
+  }
+
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (name === 'config' && this.vm && this.vm.$children[0]) {
+      this.vm.$children[0].config = parseConfig(newValue);
+    }
+  }
+}
 
 customElements.define('${widgetName}', WidgetElement);
 `;

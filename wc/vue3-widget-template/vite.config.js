@@ -10,7 +10,14 @@ if (!widgetName || !widgetComponent) {
 }
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue({
+    template: {
+      compilerOptions: {
+        // 告诉 Vue3 编译器 aui-* 是自定义元素，不要当 Vue 组件解析
+        isCustomElement: (tag) => tag.startsWith('aui-')
+      }
+    }
+  })],
   build: {
     lib: {
       entry: path.resolve(__dirname, './widget-wrapper.js'),

@@ -7,6 +7,9 @@
  *
  * 基座引入本文件后，组件会自动注册到全局，物料里直接写 <aui-card> 等标签即可。
  * 物料构建时把 'aui' 设为 external，不打包这些组件，只打包业务逻辑。
+ *
+ * 重要：容器型组件（aui-card / aui-row / aui-footer）不能用 innerHTML，
+ *   否则会销毁 Vue 已渲染的子元素。改用 DOM API 保留子元素。
  */
 
 // ─── 统一样式（只注入一次）───
@@ -105,61 +108,95 @@ function injectStyles() {
   document.head.appendChild(style);
 }
 
-// ─── aui-card：带标题的卡片容器 ───
+/**
+ * 工具函数：把已有子元素移入新容器，不销毁 DOM 节点
+ * 解决 innerHTML 会覆盖 Vue 已渲染子元素的问题
+ */
+function wrapChildren(el, wrapper) {
+  while (el.firstChild) {
+    wrapper.appendChild(el.firstChild);
+  }
+  el.appendChild(wrapper);
+}
+
+// ─── aui-card：带标题的卡片容器（保留子元素）───
 class AuiCard extends HTMLElement {
   connectedCallback() {
+    if (this._auiInit) return;
+    this._auiInit = true;
     injectStyles();
     const title = this.getAttribute('title') || '';
-    this.innerHTML = `
-      <div class="aui-card">
-        ${title ? `<h3 class="aui-card-title">${title}</h3>` : ''}
-        <slot></slot>
-      </div>
-    `;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'aui-card';
+    if (title) {
+      const h3 = document.createElement('h3');
+      h3.className = 'aui-card-title';
+      h3.textContent = title;
+      wrapper.appendChild(h3);
+    }
+    // 把已有子元素（Vue 渲染的）移入 wrapper，不销毁
+    wrapChildren(this, wrapper);
   }
 }
 
-// ─── aui-statistic：统计数值 ───
+// ─── aui-statistic：统计数值（叶子组件，无子元素）───
 class AuiStatistic extends HTMLElement {
   connectedCallback() {
+    if (this._auiInit) return;
+    this._auiInit = true;
     injectStyles();
     const label = this.getAttribute('label') || '';
     const value = this.getAttribute('value') || '0';
     const prefix = this.getAttribute('prefix') || '';
     const suffix = this.getAttribute('suffix') || '';
-    this.innerHTML = `
-      <div class="aui-statistic">
-        <div class="aui-statistic-label">${label}</div>
-        <div class="aui-statistic-value">${prefix}${value}<span class="aui-statistic-suffix">${suffix}</span></div>
-      </div>
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'aui-statistic';
+    wrapper.innerHTML = `
+      <div class="aui-statistic-label">${label}</div>
+      <div class="aui-statistic-value">${prefix}${value}<span class="aui-statistic-suffix">${suffix}</span></div>
     `;
+    this.appendChild(wrapper);
   }
 }
 
 // ─── aui-button：按钮 ───
 class AuiButton extends HTMLElement {
   connectedCallback() {
+    if (this._auiInit) return;
+    this._auiInit = true;
     injectStyles();
     const type = this.getAttribute('type') || 'primary';
     const typeClass = type === 'text' ? 'aui-button--text' : '';
-    this.innerHTML = `<button class="aui-button ${typeClass}"><slot></slot></button>`;
+
+    const btn = document.createElement('button');
+    btn.className = `aui-button ${typeClass}`;
+    // 保留子元素
+    wrapChildren(this, btn);
     this.addEventListener('click', () => {
       this.dispatchEvent(new CustomEvent('aui-click', { bubbles: true }));
     });
   }
 }
 
-// ─── aui-row：横向布局行 ───
+// ─── aui-row：横向布局行（保留子元素）───
 class AuiRow extends HTMLElement {
   connectedCallback() {
+    if (this._auiInit) return;
+    this._auiInit = true;
     injectStyles();
-    this.innerHTML = `<div class="aui-row"><slot></slot></div>`;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'aui-row';
+    wrapChildren(this, wrapper);
   }
 }
 
-// ─── aui-progress：进度条 ───
+// ─── aui-progress：进度条（叶子组件）───
 class AuiProgress extends HTMLElement {
   connectedCallback() {
+    if (this._auiInit) return;
+    this._auiInit = true;
     injectStyles();
     const percent = Math.min(100, Math.max(0, parseFloat(this.getAttribute('percent') || '0')));
     this.innerHTML = `
@@ -170,9 +207,11 @@ class AuiProgress extends HTMLElement {
   }
 }
 
-// ─── aui-list-item：列表项 ───
+// ─── aui-list-item：列表项（叶子组件）───
 class AuiListItem extends HTMLElement {
   connectedCallback() {
+    if (this._auiInit) return;
+    this._auiInit = true;
     injectStyles();
     const label = this.getAttribute('label') || '';
     const value = this.getAttribute('value') || '';
@@ -185,11 +224,15 @@ class AuiListItem extends HTMLElement {
   }
 }
 
-// ─── aui-footer：页脚文字 ───
+// ─── aui-footer：页脚文字（保留子元素）───
 class AuiFooter extends HTMLElement {
   connectedCallback() {
+    if (this._auiInit) return;
+    this._auiInit = true;
     injectStyles();
-    this.innerHTML = `<div class="aui-footer"><slot></slot></div>`;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'aui-footer';
+    wrapChildren(this, wrapper);
   }
 }
 

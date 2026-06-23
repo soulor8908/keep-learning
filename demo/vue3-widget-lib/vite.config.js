@@ -4,7 +4,14 @@ import widgetVitePlugin from '../../wc/widget-wrapper-plugin/vite-plugin.js';
 
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({
+      template: {
+        compilerOptions: {
+          // 告诉 Vue3 编译器 aui-* 是自定义元素，不要当 Vue 组件解析
+          isCustomElement: (tag) => tag.startsWith('aui-')
+        }
+      }
+    }),
     widgetVitePlugin({
       name: 'bi-finance-panel',
       component: './src/components/FinancePanel.vue',
