@@ -37,7 +37,10 @@ const BridgeComponent = {
   }
 };
 
-class WidgetElement extends wrap(Vue, BridgeComponent) {}
+class WidgetElement extends wrap(Vue, BridgeComponent, {
+  // 禁用 Shadow DOM，让 aui 全局样式能穿透到物料内部
+  shadow: false
+}) {}
 
 customElements.define('${widgetName}', WidgetElement);
 `;

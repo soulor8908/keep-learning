@@ -15,6 +15,8 @@
 
 ```
 wc/
+├── mock-aui/                      # 统一 UI 组件库（Web Components，跨 Vue2/Vue3）
+│   └── index.js
 ├── vue2-widget-template/          # Vue2 物料零改造模板
 │   ├── widget-wrapper.js          # Custom Element 包装入口
 │   ├── vue.config.js              # UMD 打包配置示例
@@ -154,6 +156,33 @@ node wc/schema-generator/index.js bi-sales-panel ./src/components/SalesPanel.vue
 ---
 
 ## 二、基座如何改造
+
+### 2.0 加载统一 UI 组件库（统一 UI 层）
+
+基座负责加载统一 UI 组件库（如 `aui`），挂载到全局。物料构建时把 `aui` 设为 external，只打包业务逻辑，运行时直接使用基座提供的 UI 组件。
+
+```js
+// main.js
+import './wc/mock-aui/index.js';  // 注册 aui-card / aui-statistic 等到全局，挂载 window.aui
+```
+
+物料组件里直接使用 aui 标签，无需 import：
+
+```vue
+<template>
+  <aui-card title="销售看板">
+    <aui-row>
+      <aui-statistic label="销售额" prefix="¥" :value="amount" />
+    </aui-row>
+  </aui-card>
+</template>
+```
+
+**为什么用 Web Components 实现 aui？**
+
+Vue2 组件和 Vue3 组件互不兼容，无法共享。用 Web Components 实现的 aui 组件可以被任何框架使用，真正做到"基座加载一次，所有物料复用"。
+
+> 注意：Vue2 物料的包装层需要禁用 Shadow DOM（`shadow: false`），否则 aui 的全局样式无法穿透到物料内部。
 
 ### 2.1 引入物料加载器
 

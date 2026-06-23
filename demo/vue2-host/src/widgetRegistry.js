@@ -20,9 +20,6 @@ export const widgets = [
     js: isLocal
       ? 'http://localhost:8082/bi-finance-panel.js'
       : '/widgets/bi-finance-panel.js',
-    css: isLocal
-      ? 'http://localhost:8082/bi-finance-panel.css'
-      : '/widgets/bi-finance-panel.css',
     config: {
       title: 'Vue2 基座 · 财务看板',
       currency: 'CNY',

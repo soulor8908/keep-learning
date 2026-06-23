@@ -1,26 +1,19 @@
 <template>
-  <div class="bi-finance-panel">
-    <h3 class="title">{{ config.title || '财务看板' }}</h3>
-    <div class="metrics">
-      <div class="metric-card">
-        <div class="metric-label">总收入</div>
-        <div class="metric-value">{{ symbol }}{{ summary.income.toLocaleString() }}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">总支出</div>
-        <div class="metric-value">{{ symbol }}{{ summary.expense.toLocaleString() }}</div>
-      </div>
-    </div>
-    <div v-if="config.showBreakdown" class="breakdown">
-      <div class="breakdown-item" v-for="(item, idx) in breakdown" :key="idx">
-        <span class="breakdown-label">{{ item.label }}</span>
-        <span class="breakdown-value">{{ symbol }}{{ item.value.toLocaleString() }}</span>
-      </div>
-    </div>
-    <div class="footer">
-      币种：{{ currencyText }}
-    </div>
-  </div>
+  <aui-card :title="config.title || '财务看板'">
+    <aui-row>
+      <aui-statistic label="总收入" :prefix="symbol" :value="summary.income.toLocaleString()" />
+      <aui-statistic label="总支出" :prefix="symbol" :value="summary.expense.toLocaleString()" />
+    </aui-row>
+    <template v-if="config.showBreakdown">
+      <aui-list-item
+        v-for="(item, idx) in breakdown"
+        :key="idx"
+        :label="item.label"
+        :value="`${symbol}${item.value.toLocaleString()}`"
+      />
+    </template>
+    <aui-footer>币种：{{ currencyText }}</aui-footer>
+  </aui-card>
 </template>
 
 <script>
@@ -69,63 +62,3 @@ export default {
   }
 };
 </script>
-
-<style scoped>
-.bi-finance-panel {
-  padding: 16px;
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-.bi-finance-panel .title {
-  margin: 0 0 16px 0;
-  font-size: 18px;
-  color: #1f2937;
-}
-.bi-finance-panel .metrics {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.bi-finance-panel .metric-card {
-  flex: 1;
-  padding: 12px;
-  background: #f3f4f6;
-  border-radius: 6px;
-}
-.bi-finance-panel .metric-label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 4px;
-}
-.bi-finance-panel .metric-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
-}
-.bi-finance-panel .breakdown {
-  margin-bottom: 12px;
-}
-.bi-finance-panel .breakdown-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid #f3f4f6;
-  font-size: 13px;
-}
-.bi-finance-panel .breakdown-item:last-child {
-  border-bottom: none;
-}
-.bi-finance-panel .breakdown-label {
-  color: #6b7280;
-}
-.bi-finance-panel .breakdown-value {
-  color: #111827;
-  font-weight: 500;
-}
-.bi-finance-panel .footer {
-  font-size: 12px;
-  color: #6b7280;
-}
-</style>
