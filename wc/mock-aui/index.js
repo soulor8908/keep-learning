@@ -121,6 +121,10 @@ function wrapChildren(el, wrapper) {
 
 // ─── aui-card：带标题的卡片容器（保留子元素）───
 class AuiCard extends HTMLElement {
+  static get observedAttributes() {
+    return ['title'];
+  }
+
   connectedCallback() {
     if (this._auiInit) return;
     this._auiInit = true;
@@ -137,27 +141,58 @@ class AuiCard extends HTMLElement {
     }
     // 把已有子元素（Vue 渲染的）移入 wrapper，不销毁
     wrapChildren(this, wrapper);
+    this._wrapper = wrapper;
+  }
+
+  // 属性变化时更新标题，不触碰 Vue 渲染的子元素
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (!this._auiInit || !this._wrapper || name !== 'title') return;
+    const title = newValue || '';
+    const oldH3 = this._wrapper.querySelector('.aui-card-title');
+    if (title) {
+      if (oldH3) {
+        oldH3.textContent = title;
+      } else {
+        const h3 = document.createElement('h3');
+        h3.className = 'aui-card-title';
+        h3.textContent = title;
+        this._wrapper.insertBefore(h3, this._wrapper.firstChild);
+      }
+    } else if (oldH3) {
+      oldH3.remove();
+    }
   }
 }
 
 // ─── aui-statistic：统计数值（叶子组件，无子元素）───
 class AuiStatistic extends HTMLElement {
+  static get observedAttributes() {
+    return ['label', 'value', 'prefix', 'suffix'];
+  }
+
   connectedCallback() {
     if (this._auiInit) return;
     this._auiInit = true;
     injectStyles();
+    this._render();
+  }
+
+  _render() {
     const label = this.getAttribute('label') || '';
     const value = this.getAttribute('value') || '0';
     const prefix = this.getAttribute('prefix') || '';
     const suffix = this.getAttribute('suffix') || '';
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'aui-statistic';
-    wrapper.innerHTML = `
-      <div class="aui-statistic-label">${label}</div>
-      <div class="aui-statistic-value">${prefix}${value}<span class="aui-statistic-suffix">${suffix}</span></div>
+    this.innerHTML = `
+      <div class="aui-statistic">
+        <div class="aui-statistic-label">${label}</div>
+        <div class="aui-statistic-value">${prefix}${value}<span class="aui-statistic-suffix">${suffix}</span></div>
+      </div>
     `;
-    this.appendChild(wrapper);
+  }
+
+  attributeChangedCallback() {
+    if (!this._auiInit) return;
+    this._render();
   }
 }
 
@@ -194,10 +229,18 @@ class AuiRow extends HTMLElement {
 
 // ─── aui-progress：进度条（叶子组件）───
 class AuiProgress extends HTMLElement {
+  static get observedAttributes() {
+    return ['percent'];
+  }
+
   connectedCallback() {
     if (this._auiInit) return;
     this._auiInit = true;
     injectStyles();
+    this._render();
+  }
+
+  _render() {
     const percent = Math.min(100, Math.max(0, parseFloat(this.getAttribute('percent') || '0')));
     this.innerHTML = `
       <div class="aui-progress">
@@ -205,14 +248,27 @@ class AuiProgress extends HTMLElement {
       </div>
     `;
   }
+
+  attributeChangedCallback() {
+    if (!this._auiInit) return;
+    this._render();
+  }
 }
 
 // ─── aui-list-item：列表项（叶子组件）───
 class AuiListItem extends HTMLElement {
+  static get observedAttributes() {
+    return ['label', 'value'];
+  }
+
   connectedCallback() {
     if (this._auiInit) return;
     this._auiInit = true;
     injectStyles();
+    this._render();
+  }
+
+  _render() {
     const label = this.getAttribute('label') || '';
     const value = this.getAttribute('value') || '';
     this.innerHTML = `
@@ -221,6 +277,11 @@ class AuiListItem extends HTMLElement {
         <span class="aui-list-value">${value}</span>
       </div>
     `;
+  }
+
+  attributeChangedCallback() {
+    if (!this._auiInit) return;
+    this._render();
   }
 }
 
