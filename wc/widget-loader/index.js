@@ -49,10 +49,18 @@ function compareVersion(a, b) {
 }
 
 // 判断单个范围片段（不含 ||）是否满足
+// 支持空格分隔的 AND 复合范围，如 ">=2.6.0 <3.0.0"（两个条件都需满足）
 function satisfiesSingle(version, range) {
   const trimmed = String(range).trim();
   // 通配符 * 或空范围：匹配任意版本
   if (trimmed === '' || trimmed === '*') return true;
+
+  // 空格分隔的多个比较器（AND 语义）：如 ">=2.6.0 <3.0.0"
+  // 注意：每个比较器自身不含空格（op 与版本间无空格），故按空格切分安全
+  const parts = trimmed.split(/\s+/);
+  if (parts.length > 1) {
+    return parts.every(part => satisfiesSingle(version, part));
+  }
 
   const m = trimmed.match(/^([\^~>=<]*)\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?(.*)$/);
   if (!m) return true; // 无法解析的范围，放行
