@@ -31,7 +31,12 @@ export function emit(type, payload, options = {}) {
 export function on(type, handler) {
   const eventType = `${GLOBAL_BUS_NAME}:${type}`;
   const wrappedHandler = event => {
-    handler(event.detail, event);
+    // 包裹 try/catch 避免单个 handler 抛异常阻断 window 上其他同类型监听器
+    try {
+      handler(event.detail, event);
+    } catch (e) {
+      console.error('[widget-bus] listener error:', e);
+    }
   };
   window.addEventListener(eventType, wrappedHandler);
   return () => {
