@@ -90,7 +90,11 @@ function getLocale() {
 
 /**
  * 切换语言：更新状态 + 通知所有订阅者 + 通过 widget-bus 广播
- * @param {'zh'|'en'} locale
+ * @param {string} locale - 目标语言，可为未注册的 locale（如 zh-CN、en-GB），
+ *   t() 会按回退链查找；若回退链中无任何已知 locale 则忽略本次切换
+ * @param {boolean} [force=false] - 是否强制重新广播。
+ *   默认 false：locale 与当前相同时跳过，避免重复通知。
+ *   true：即使 locale 未变也重新派发事件，用于热更新语言包后强制刷新物料文案。
  */
 function setLocale(locale, force = false) {
   // 允许设置未在 messages 中注册的 locale（如 zh-CN、zh-TW、en-GB），
