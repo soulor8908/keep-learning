@@ -169,7 +169,11 @@ function parseDefault(raw) {
 }
 
 function extractPropsScript(source) {
-  // 提取 <script> 内容
+  // 优先匹配 <script setup>（Vue3 组合式 API 定义 props 的位置）
+  // 避免组件同时有 <script> 和 <script setup> 时只解析到无 props 的普通 <script>
+  const setupMatch = source.match(/<script[^>]*\bsetup\b[^>]*>([\s\S]*?)<\/script>/);
+  if (setupMatch) return setupMatch[1];
+  // 回退到普通 <script>
   const scriptMatch = source.match(/<script[^>]*>([\s\S]*?)<\/script>/);
   return scriptMatch ? scriptMatch[1] : source;
 }
@@ -276,6 +280,13 @@ function splitTopLevelFields(body) {
 
     // 逗号（深度 0）作为字段分隔
     if (ch === ',' && depth === 0) {
+      fields.push(body.slice(start, i));
+      start = i + 1;
+      continue;
+    }
+
+    // 分号（深度 0）：TS 接口字段以分号分隔（如 title?: string; count?: number）
+    if (ch === ';' && depth === 0) {
       fields.push(body.slice(start, i));
       start = i + 1;
       continue;
