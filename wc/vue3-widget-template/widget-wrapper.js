@@ -9,7 +9,7 @@
  * 本包装层手写 HTMLElement + createApp().mount(this)，挂载到 light DOM，
  * 与"不开启 Shadow DOM"的架构决策保持一致。
  */
-import { createApp, h } from 'vue';
+import { createApp, h, ref } from 'vue';
 
 function parseConfig(value) {
   try {
@@ -25,6 +25,7 @@ function createWidgetWrapper(Component, widgetName) {
     constructor() {
       super();
       this.app = null;
+      this._configRef = null;
     }
 
     static get observedAttributes() {
@@ -42,32 +43,37 @@ function createWidgetWrapper(Component, widgetName) {
       this._mount();
     }
 
-    // 挂载/重挂载：config 变化时 unmount 旧实例再重建，避免依赖 Vue 内部 API
+    // 挂载：仅首次创建 app 与 reactive config ref
     _mount() {
-      if (this.app) {
-        this.app.unmount();
-        this.app = null;
-      }
-      const config = this.getAttribute('config');
-      // 直接把 Object 传给业务组件，组件内部无需 JSON.parse
-      // mount(this) 挂载到 light DOM，不创建 shadow root
+      if (this.app) return; // 已挂载，config 变化由 _updateConfig 处理
+      // 使用 ref 承载 config，render 中访问 .value 建立响应式依赖
+      // config 变化时只需更新 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
+      this._configRef = ref(parseConfig(this.getAttribute('config')));
       this.app = createApp({
-        render: () => h(Component, { config: parseConfig(config) })
+        render: () => h(Component, { config: this._configRef.value })
       });
       this.app.mount(this);
+    }
+
+    // config 变化时更新 ref，避免 unmount/remount 带来的性能损耗与状态丢失
+    _updateConfig(newValue) {
+      if (this._configRef) {
+        this._configRef.value = parseConfig(newValue);
+      }
     }
 
     disconnectedCallback() {
       if (this.app) {
         this.app.unmount();
         this.app = null;
+        this._configRef = null;
       }
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
-      // config 变化：unmount 后重新挂载，走标准公开 API，不触碰内部 _instance
+      // config 变化：更新 reactive ref，走标准公开 API，不触碰内部 _instance
       if (name === 'config' && this.app && oldValue !== newValue) {
-        this._mount();
+        this._updateConfig(newValue);
       }
     }
   };
