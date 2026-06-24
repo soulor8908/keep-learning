@@ -63,6 +63,8 @@ function extractRules(css) {
   let depth = 0;
   let buffer = '';
   let selectors = '';
+  // 记录每层嵌套的选择器，用于拼接原生 CSS nesting / SCSS & 的完整选择器
+  const selectorStack = [];
   let inSelector = true;
 
   let inString = false;
@@ -89,8 +91,24 @@ function extractRules(css) {
         selectors = buffer.trim();
         buffer = '';
         inSelector = false;
+        selectorStack.push(selectors);
       } else {
-        buffer += ch;
+        // 原生 CSS nesting / SCSS 嵌套：depth>0 时遇到 { 说明是嵌套规则
+        // buffer 中是嵌套选择器（可能含 &），需与父选择器拼接
+        const nestedSelector = buffer.trim();
+        buffer = '';
+        if (nestedSelector) {
+          const parentSelector = selectorStack[selectorStack.length - 1] || '';
+          // SCSS & 语法：& 替换为父选择器；否则用后代选择器拼接
+          const resolved = nestedSelector.includes('&')
+            ? nestedSelector.replace(/&/g, parentSelector)
+            : `${parentSelector} ${nestedSelector}`;
+          selectorStack.push(resolved);
+          // 嵌套规则本身也需检查命名空间
+          rules.push({ selectors: resolved, declarations: '', nested: true });
+        } else {
+          selectorStack.push(selectors);
+        }
       }
       depth++;
       continue;
@@ -103,8 +121,17 @@ function extractRules(css) {
         rules.push({ selectors, declarations });
         buffer = '';
         inSelector = true;
+        selectorStack.pop();
       } else {
-        buffer += ch;
+        // 嵌套规则结束：把 buffer 作为声明（可能为空或含子规则）
+        const declarations = buffer.trim();
+        if (declarations && !declarations.includes('{')) {
+          // 纯声明，附加到最近的嵌套规则
+          const lastNested = [...rules].reverse().find(r => r.nested);
+          if (lastNested) lastNested.declarations = declarations;
+        }
+        buffer = '';
+        selectorStack.pop();
       }
       continue;
     }
