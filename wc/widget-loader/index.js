@@ -10,11 +10,6 @@
 
 import { t } from '../i18n/index.js';
 
-const loadedResources = new Map();
-const definedElements = new Set();
-// 物料名 -> { js, css }：记录每个物料加载的资源 URL，供 unloadWidget 清理
-const widgetResources = new Map();
-
 // ─── 公共依赖版本契约 ───
 // 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖。
 const SUPPORTED_DEPS = {
@@ -187,252 +182,6 @@ function createError(message, code) {
 // 资源加载默认超时：CDN 抖动/网络挂起时避免 Promise 永不 settle
 const DEFAULT_LOAD_TIMEOUT = 15000;
 
-/**
- * 加载 JS 脚本
- *
- * 竞态修复：将"真实加载结果"与"超时"分离。
- * - loadPromise 由 onload/onerror 决定，缓存它：即使超时后脚本最终加载成功，
- *   后续调用复用已 resolve 的 loadPromise，不会重复创建 <script> 标签。
- * - 调用方拿到的是 Promise.race(loadPromise, timeout)：超时只 reject 给调用方，
- *   不移除 script 节点（可能仍在加载）、不删除缓存（避免重复加载）。
- * - 真正的 onerror 失败才清理缓存，允许重试。
- *
- * @param {string} url
- * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒，超时后 reject（不清理节点/缓存）
- * @returns {Promise<void>}
- */
-function loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
-  if (loadedResources.has(url)) {
-    log('script cached:', url);
-    return loadedResources.get(url);
-  }
-
-  log('loading script:', url);
-  const loadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = url;
-    script.async = true;
-    script.onload = () => {
-      log('script loaded:', url);
-      resolve();
-    };
-    script.onerror = () => {
-      // 真正的加载失败：移除节点，允许后续重试
-      if (script.parentNode) script.parentNode.removeChild(script);
-      reject(createError(`Failed to load script: ${url}`, WidgetError.SCRIPT_ERROR));
-    };
-    document.head.appendChild(script);
-  });
-
-  // 真正失败时清理缓存，允许重试（仅当缓存仍指向当前 promise）
-  loadPromise.catch(() => {
-    if (loadedResources.get(url) === loadPromise) {
-      loadedResources.delete(url);
-    }
-  });
-
-  // 缓存真实加载结果：即使超时后脚本最终加载成功，后续调用复用此 promise
-  loadedResources.set(url, loadPromise);
-
-  // 调用方拿到 race 结果：超时只 reject 给调用方，不清理 script 节点与缓存
-  return Promise.race([
-    loadPromise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(createError(`Timeout loading script: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout)
-    )
-  ]);
-}
-
-/**
- * 加载 CSS 样式
- *
- * 竞态修复：同 loadScript，将真实加载结果与超时分离，避免超时误删已加载样式
- * 导致下次重复加载。详见 loadScript 注释。
- *
- * @param {string} url
- * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒
- * @returns {Promise<void>}
- */
-function loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
-  if (!url) {
-    return Promise.resolve();
-  }
-  if (loadedResources.has(url)) {
-    log('style cached:', url);
-    return loadedResources.get(url);
-  }
-
-  log('loading style:', url);
-  const loadPromise = new Promise((resolve, reject) => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = url;
-    link.onload = () => {
-      log('style loaded:', url);
-      resolve();
-    };
-    link.onerror = () => {
-      if (link.parentNode) link.parentNode.removeChild(link);
-      reject(createError(`Failed to load style: ${url}`, WidgetError.CSS_ERROR));
-    };
-    document.head.appendChild(link);
-  });
-
-  loadPromise.catch(() => {
-    if (loadedResources.get(url) === loadPromise) {
-      loadedResources.delete(url);
-    }
-  });
-
-  loadedResources.set(url, loadPromise);
-
-  return Promise.race([
-    loadPromise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(createError(`Timeout loading style: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout)
-    )
-  ]);
-}
-
-/**
- * 等待 Custom Element 注册完成
- * 优先使用原生 customElements.whenDefined（基于内部注册回调，无 CPU 开销），
- * 降级到轮询（针对不支持 whenDefined 的旧浏览器）。
- * @param {string} name
- * @param {number} timeout
- * @returns {Promise<void>}
- */
-function waitForCustomElement(name, timeout = 5000) {
-  // 优先使用原生 whenDefined API
-  if (typeof customElements.whenDefined === 'function') {
-    return Promise.race([
-      customElements.whenDefined(name),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(createError(`Timeout waiting for custom element: ${name}`, WidgetError.ELEMENT_TIMEOUT)), timeout)
-      )
-    ]);
-  }
-
-  // 降级：轮询 customElements.get（旧浏览器兼容）
-  let timer;
-  const promise = new Promise((resolve, reject) => {
-    if (customElements.get(name)) {
-      log('custom element already defined:', name);
-      resolve();
-      return;
-    }
-
-    log('waiting for custom element (polling):', name);
-    const start = Date.now();
-    timer = setInterval(() => {
-      if (customElements.get(name)) {
-        clearInterval(timer);
-        timer = null;
-        log('custom element defined:', name, `(${Date.now() - start}ms)`);
-        resolve();
-        return;
-      }
-      if (Date.now() - start > timeout) {
-        clearInterval(timer);
-        timer = null;
-        reject(createError(`Timeout waiting for custom element: ${name}`, WidgetError.ELEMENT_TIMEOUT));
-      }
-    }, 50);
-  });
-  promise.cancel = () => {
-    if (timer) { clearInterval(timer); timer = null; }
-  };
-  return promise;
-}
-
-/**
- * 加载单个物料
- * @param {Object} widget
- * @param {string} widget.name Custom Element 名称
- * @param {string} widget.js JS 文件 URL
- * @param {string} [widget.css] CSS 文件 URL
- * @returns {Promise<void>}
- */
-export async function loadWidget(widget) {
-  const { name, js, css } = widget;
-
-  if (!name || !js) {
-    throw createError('widget name and js URL are required', WidgetError.NOT_FOUND);
-  }
-
-  if (definedElements.has(name)) {
-    log('widget already loaded:', name);
-    return;
-  }
-
-  // 版本契约校验：不兼容直接拒绝加载，给出明确提示而非晦涩的 runtime error
-  checkDependencies(widget);
-
-  log('start loading widget:', name, { js, css });
-  try {
-    await Promise.all([loadScript(js), loadStyle(css)]);
-    await waitForCustomElement(name);
-    definedElements.add(name);
-    // 记录资源 URL，供 unloadWidget 清理
-    widgetResources.set(name, { js, css });
-    log('widget loaded:', name);
-  } catch (error) {
-    console.error(`[widget-loader] load widget "${name}" failed:`, error);
-    throw error;
-  }
-}
-
-/**
- * 批量加载物料
- * @param {Array<Object>} widgets
- * @returns {Promise<Array<{name: string, success: boolean, error?: Error}>>}
- */
-export async function loadWidgets(widgets) {
-  const results = await Promise.all(
-    widgets.map(async widget => {
-      try {
-        await loadWidget(widget);
-        return { name: widget.name, success: true };
-      } catch (error) {
-        return { name: widget.name, success: false, error };
-      }
-    })
-  );
-  return results;
-}
-
-// ─── 错误边界（Step 3）：单点失败不影响整体 ───
-// 跟踪已挂载物料，全局监听运行时错误并归因到对应物料，
-// 命中后用降级占位替换崩溃物料，避免整个看板白屏。
-// key 用 DOM 元素实例（WeakMap），同一物料多实例互不覆盖，元素销毁后自动回收。
-const mountedWidgets = new WeakMap(); // element -> { container, widget, failed }
-let globalErrorListenerInstalled = false;
-
-// ─── 生命周期钩子 ───
-// 基座可订阅物料 loading/loaded/error/unmount 事件，统一监控看板状态
-const lifecycleHooks = { loading: [], loaded: [], error: [], unmount: [] };
-
-function emitLifecycle(event, payload) {
-  (lifecycleHooks[event] || []).forEach(cb => {
-    try { cb(payload); } catch (e) { console.error('[widget-loader] lifecycle hook error:', e); }
-  });
-}
-
-/**
- * 订阅物料生命周期事件
- * @param {'loading'|'loaded'|'error'|'unmount'} event
- * @param {Function} cb 回调，参数为 { name, element?, container, error? }
- * @returns {Function} 取消订阅
- */
-export function onWidgetLifecycle(event, cb) {
-  if (!lifecycleHooks[event]) return () => {};
-  lifecycleHooks[event].push(cb);
-  return () => {
-    const idx = lifecycleHooks[event].indexOf(cb);
-    if (idx >= 0) lifecycleHooks[event].splice(idx, 1);
-  };
-}
-
 // 降级占位默认样式（只注入一次）。基座可通过覆盖 .widget-error-placeholder /
 // .widget-error-retry 类实现主题化，无需改 loader 源码。
 let fallbackStyleInjected = false;
@@ -507,226 +256,503 @@ function renderFallback(container, message, widget, onRetry) {
   return errorNode;
 }
 
-function markWidgetFailed(element, error) {
-  const entry = mountedWidgets.get(element);
-  if (!entry || entry.failed) return; // 已降级则不重复处理
-  entry.failed = true;
-  const { container, widget } = entry;
-  const name = widget.name;
-  // 移除崩溃的物料元素，避免残留破坏节点影响布局
-  if (element && element.parentNode === container) {
-    container.removeChild(element);
-  }
-  emitLifecycle('error', { name, error, container });
-  const reason = (error && error.message) ? error.message : String(error);
-  const message = `[widget-loader] ${t('loader.runtime_crash', { name })}\n${reason}`;
-  // 运行时崩溃重试：脚本已加载（loadWidget 会短路），重新创建元素实例挂载
-  const onRetry = () => {
-    mountedWidgets.delete(element); // 清除 failed 标记，允许错误边界重新归因
-    mountWithFallback(container, widget);
-  };
-  renderFallback(container, message, widget, onRetry);
-  console.error(`[widget-loader] 物料 "${name}" 运行时崩溃:`, error);
-}
+// ─── WidgetLoader：支持多 Host 状态隔离的物料加载器实例 ───
+// 每个实例持有独立的 loadedResources / definedElements / widgetResources /
+// mountedWidgets / globalErrorListenerInstalled / lifecycleHooks，
+// 避免同页多 Host（iframe 嵌套、微前端）共享状态导致 A Host 的加载记录干扰 B Host。
+// 模块级默认导出仍可用（委托到下方 defaultLoader 单例），保持向后兼容。
+class WidgetLoader {
+  constructor() {
+    this.loadedResources = new Map();
+    this.definedElements = new Set();
+    // 物料名 -> { js, css }：记录每个物料加载的资源 URL，供 unloadWidget 清理
+    this.widgetResources = new Map();
 
-function attributeErrorToWidget(event) {
-  // 1. 资源错误（img/script 加载失败）：target 是元素，看落在哪个物料里
-  const target = event.target;
-  if (target && target instanceof Element) {
-    for (const [element, entry] of mountedWidgets) {
-      if (!entry.failed && element.contains(target)) {
-        return element;
+    // ─── 错误边界（Step 3）：单点失败不影响整体 ───
+    // 跟踪已挂载物料，全局监听运行时错误并归因到对应物料，
+    // 命中后用降级占位替换崩溃物料，避免整个看板白屏。
+    // key 用 DOM 元素实例（WeakMap），同一物料多实例互不覆盖，元素销毁后自动回收。
+    this.mountedWidgets = new WeakMap(); // element -> { container, widget, failed }
+    this.globalErrorListenerInstalled = false;
+
+    // ─── 生命周期钩子 ───
+    // 基座可订阅物料 loading/loaded/error/unmount 事件，统一监控看板状态
+    this.lifecycleHooks = { loading: [], loaded: [], error: [], unmount: [] };
+  }
+
+  /**
+   * 加载 JS 脚本
+   *
+   * 竞态修复：将"真实加载结果"与"超时"分离。
+   * - loadPromise 由 onload/onerror 决定，缓存它：即使超时后脚本最终加载成功，
+   *   后续调用复用已 resolve 的 loadPromise，不会重复创建 <script> 标签。
+   * - 调用方拿到的是 Promise.race(loadPromise, timeout)：超时只 reject 给调用方，
+   *   不移除 script 节点（可能仍在加载）、不删除缓存（避免重复加载）。
+   * - 真正的 onerror 失败才清理缓存，允许重试。
+   *
+   * @param {string} url
+   * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒，超时后 reject（不清理节点/缓存）
+   * @returns {Promise<void>}
+   */
+  loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
+    if (this.loadedResources.has(url)) {
+      log('script cached:', url);
+      return this.loadedResources.get(url);
+    }
+
+    log('loading script:', url);
+    const loadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = url;
+      script.async = true;
+      script.onload = () => {
+        log('script loaded:', url);
+        resolve();
+      };
+      script.onerror = () => {
+        // 真正的加载失败：移除节点，允许后续重试
+        if (script.parentNode) script.parentNode.removeChild(script);
+        reject(createError(`Failed to load script: ${url}`, WidgetError.SCRIPT_ERROR));
+      };
+      document.head.appendChild(script);
+    });
+
+    // 真正失败时清理缓存，允许重试（仅当缓存仍指向当前 promise）
+    loadPromise.catch(() => {
+      if (this.loadedResources.get(url) === loadPromise) {
+        this.loadedResources.delete(url);
       }
-    }
-  }
-  // 2. JS 运行时错误：按 filename / message / 堆栈匹配物料 JS URL 或物料名
-  const source = [
-    event.filename,
-    event.message,
-    (event.error && event.error.stack) || ''
-  ].filter(Boolean).join('\n');
-  if (source) {
-    for (const [element, entry] of mountedWidgets) {
-      if (entry.failed) continue;
-      const jsUrl = entry.widget.js || '';
-      const name = entry.widget.name || '';
-      if (jsUrl && source.includes(jsUrl)) return element;
-      if (name && source.includes(name)) return element;
-    }
-  }
-  return null;
-}
+    });
 
-function ensureGlobalErrorListener() {
-  if (globalErrorListenerInstalled) return;
-  globalErrorListenerInstalled = true;
-  // 捕获阶段监听 error：资源错误 target=元素，JS 错误 target=window，都能收到
-  window.addEventListener('error', (event) => {
-    const element = attributeErrorToWidget(event);
-    if (element) {
-      const error = event.error || new Error(event.message || 'widget runtime error');
-      markWidgetFailed(element, error);
-      // 已降级处理，抑制浏览器默认报错，避免干扰基座
-      event.preventDefault();
+    // 缓存真实加载结果：即使超时后脚本最终加载成功，后续调用复用此 promise
+    this.loadedResources.set(url, loadPromise);
+
+    // 调用方拿到 race 结果：超时只 reject 给调用方，不清理 script 节点与缓存
+    return Promise.race([
+      loadPromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(createError(`Timeout loading script: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout)
+      )
+    ]);
+  }
+
+  /**
+   * 加载 CSS 样式
+   *
+   * 竞态修复：同 loadScript，将真实加载结果与超时分离，避免超时误删已加载样式
+   * 导致下次重复加载。详见 loadScript 注释。
+   *
+   * @param {string} url
+   * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒
+   * @returns {Promise<void>}
+   */
+  loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
+    if (!url) {
+      return Promise.resolve();
     }
-  }, true);
-  // 未捕获的 Promise rejection：按堆栈归因
-  window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason;
-    const stack = (reason && reason.stack) || String(reason || '');
-    for (const [element, entry] of mountedWidgets) {
-      if (entry.failed) continue;
-      const jsUrl = entry.widget.js || '';
-      const name = entry.widget.name || '';
-      if ((jsUrl && stack.includes(jsUrl)) || (name && stack.includes(name))) {
-        markWidgetFailed(
-          element,
-          reason instanceof Error ? reason : new Error(String(reason))
-        );
-        // 已归因并降级，阻止控制台未处理 rejection 告警
-        event.preventDefault();
-        break;
+    if (this.loadedResources.has(url)) {
+      log('style cached:', url);
+      return this.loadedResources.get(url);
+    }
+
+    log('loading style:', url);
+    const loadPromise = new Promise((resolve, reject) => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = url;
+      link.onload = () => {
+        log('style loaded:', url);
+        resolve();
+      };
+      link.onerror = () => {
+        if (link.parentNode) link.parentNode.removeChild(link);
+        reject(createError(`Failed to load style: ${url}`, WidgetError.CSS_ERROR));
+      };
+      document.head.appendChild(link);
+    });
+
+    loadPromise.catch(() => {
+      if (this.loadedResources.get(url) === loadPromise) {
+        this.loadedResources.delete(url);
       }
-    }
-  });
-}
+    });
 
-/**
- * 渲染物料到指定容器
- * @param {HTMLElement} container
- * @param {Object} widget
- * @param {string} widget.name
- * @param {Object} [widget.config]
- * @returns {HTMLElement}
- */
-export function renderWidget(container, widget) {
-  const { name, config = {} } = widget;
-  const element = document.createElement(name);
-  element.setAttribute('config', JSON.stringify(config));
-  try {
-    container.appendChild(element); // 触发 connectedCallback
-  } catch (error) {
-    // connectedCallback 同步抛错：移除半挂载元素，向上抛出由 mountWidget 降级
-    if (element.parentNode === container) {
+    this.loadedResources.set(url, loadPromise);
+
+    return Promise.race([
+      loadPromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(createError(`Timeout loading style: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout)
+      )
+    ]);
+  }
+
+  /**
+   * 等待 Custom Element 注册完成
+   * 优先使用原生 customElements.whenDefined（基于内部注册回调，无 CPU 开销），
+   * 降级到轮询（针对不支持 whenDefined 的旧浏览器）。
+   * @param {string} name
+   * @param {number} timeout
+   * @returns {Promise<void>}
+   */
+  waitForCustomElement(name, timeout = 5000) {
+    // 优先使用原生 whenDefined API
+    if (typeof customElements.whenDefined === 'function') {
+      return Promise.race([
+        customElements.whenDefined(name),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(createError(`Timeout waiting for custom element: ${name}`, WidgetError.ELEMENT_TIMEOUT)), timeout)
+        )
+      ]);
+    }
+
+    // 降级：轮询 customElements.get（旧浏览器兼容）
+    let timer;
+    const promise = new Promise((resolve, reject) => {
+      if (customElements.get(name)) {
+        log('custom element already defined:', name);
+        resolve();
+        return;
+      }
+
+      log('waiting for custom element (polling):', name);
+      const start = Date.now();
+      timer = setInterval(() => {
+        if (customElements.get(name)) {
+          clearInterval(timer);
+          timer = null;
+          log('custom element defined:', name, `(${Date.now() - start}ms)`);
+          resolve();
+          return;
+        }
+        if (Date.now() - start > timeout) {
+          clearInterval(timer);
+          timer = null;
+          reject(createError(`Timeout waiting for custom element: ${name}`, WidgetError.ELEMENT_TIMEOUT));
+        }
+      }, 50);
+    });
+    promise.cancel = () => {
+      if (timer) { clearInterval(timer); timer = null; }
+    };
+    return promise;
+  }
+
+  /**
+   * 加载单个物料
+   * @param {Object} widget
+   * @param {string} widget.name Custom Element 名称
+   * @param {string} widget.js JS 文件 URL
+   * @param {string} [widget.css] CSS 文件 URL
+   * @returns {Promise<void>}
+   */
+  async loadWidget(widget) {
+    const { name, js, css } = widget;
+
+    if (!name || !js) {
+      throw createError('widget name and js URL are required', WidgetError.NOT_FOUND);
+    }
+
+    if (this.definedElements.has(name)) {
+      log('widget already loaded:', name);
+      return;
+    }
+
+    // 版本契约校验：不兼容直接拒绝加载，给出明确提示而非晦涩的 runtime error
+    checkDependencies(widget);
+
+    log('start loading widget:', name, { js, css });
+    try {
+      await Promise.all([this.loadScript(js), this.loadStyle(css)]);
+      await this.waitForCustomElement(name);
+      this.definedElements.add(name);
+      // 记录资源 URL，供 unloadWidget 清理
+      this.widgetResources.set(name, { js, css });
+      log('widget loaded:', name);
+    } catch (error) {
+      console.error(`[widget-loader] load widget "${name}" failed:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 批量加载物料
+   * @param {Array<Object>} widgets
+   * @returns {Promise<Array<{name: string, success: boolean, error?: Error}>>}
+   */
+  async loadWidgets(widgets) {
+    const results = await Promise.all(
+      widgets.map(async widget => {
+        try {
+          await this.loadWidget(widget);
+          return { name: widget.name, success: true };
+        } catch (error) {
+          return { name: widget.name, success: false, error };
+        }
+      })
+    );
+    return results;
+  }
+
+  emitLifecycle(event, payload) {
+    (this.lifecycleHooks[event] || []).forEach(cb => {
+      try { cb(payload); } catch (e) { console.error('[widget-loader] lifecycle hook error:', e); }
+    });
+  }
+
+  /**
+   * 订阅物料生命周期事件
+   * @param {'loading'|'loaded'|'error'|'unmount'} event
+   * @param {Function} cb 回调，参数为 { name, element?, container, error? }
+   * @returns {Function} 取消订阅
+   */
+  onWidgetLifecycle(event, cb) {
+    if (!this.lifecycleHooks[event]) return () => {};
+    this.lifecycleHooks[event].push(cb);
+    return () => {
+      const idx = this.lifecycleHooks[event].indexOf(cb);
+      if (idx >= 0) this.lifecycleHooks[event].splice(idx, 1);
+    };
+  }
+
+  markWidgetFailed(element, error) {
+    const entry = this.mountedWidgets.get(element);
+    if (!entry || entry.failed) return; // 已降级则不重复处理
+    entry.failed = true;
+    const { container, widget } = entry;
+    const name = widget.name;
+    // 移除崩溃的物料元素，避免残留破坏节点影响布局
+    if (element && element.parentNode === container) {
       container.removeChild(element);
     }
-    throw error;
-  }
-  return element;
-}
-
-/**
- * 执行一次"加载 + 渲染 + 注册到错误边界"
- * 不处理降级，失败直接抛出，由调用方决定如何降级/重试。
- * @param {HTMLElement} container
- * @param {Object} widget
- * @returns {Promise<HTMLElement>}
- */
-async function attemptMount(container, widget) {
-  emitLifecycle('loading', { name: widget.name, container });
-  await loadWidget(widget);
-  const element = renderWidget(container, widget);
-  // 注册到错误边界：运行时崩溃时自动降级，单点失败不影响整体
-  // key 用元素实例，同一物料多实例互不覆盖
-  mountedWidgets.set(element, { container, widget, failed: false });
-  ensureGlobalErrorListener();
-  emitLifecycle('loaded', { name: widget.name, element, container });
-  return element;
-}
-
-/**
- * 带降级 + 重试的挂载（重试路径复用）
- * 失败时渲染降级占位并附带"点击重试"按钮，点击后只重新加载该物料。
- * @param {HTMLElement} container
- * @param {Object} widget
- */
-function mountWithFallback(container, widget) {
-  log('mounting widget:', widget.name);
-  attemptMount(container, widget)
-    .then(() => log('widget mounted:', widget.name))
-    .catch(error => {
-      emitLifecycle('error', { name: widget.name, error, container });
-      const message = `[widget-loader] ${t('loader.load_failed', { name: widget.name })}\n${error.message || error}`;
-      // 网络/运行时类失败可重试；点击后再次走 mountWithFallback
-      renderFallback(container, message, widget, () =>
-        mountWithFallback(container, widget)
-      );
-      console.error(`[widget-loader] 物料 "${widget.name}" 加载失败:`, error);
-    });
-}
-
-/**
- * 加载并渲染物料（带错误边界、降级占位与重试）
- * - 加载/版本校验失败：渲染降级占位；非版本不兼容错误附带"点击重试"
- * - 挂载同步抛错：移除崩溃元素并渲染降级占位（可重试）
- * - 运行时崩溃（setTimeout/Promise/事件回调）：全局监听归因后自动降级（可重试）
- * - 重试只重新加载该物料，不影响看板其它区域
- * @param {HTMLElement} container
- * @param {Object} widget
- * @returns {Promise<HTMLElement>}
- */
-export async function mountWidget(container, widget) {
-  log('mounting widget:', widget.name);
-  try {
-    return await attemptMount(container, widget);
-  } catch (error) {
-    emitLifecycle('error', { name: widget.name, error, container });
-    const isVersionMismatch = error.code === WidgetError.VERSION_MISMATCH;
-    const message = isVersionMismatch
-      ? error.message
-      : `[widget-loader] ${t('loader.mount_failed', { name: widget.name })}\n${error.message || error}`;
-    // 版本不兼容是确定性错误，重试无意义，不渲染重试按钮；其余失败可重试
-    const onRetry = isVersionMismatch
-      ? null
-      : () => mountWithFallback(container, widget);
+    this.emitLifecycle('error', { name, error, container });
+    const reason = (error && error.message) ? error.message : String(error);
+    const message = `[widget-loader] ${t('loader.runtime_crash', { name })}\n${reason}`;
+    // 运行时崩溃重试：脚本已加载（loadWidget 会短路），重新创建元素实例挂载
+    const onRetry = () => {
+      this.mountedWidgets.delete(element); // 清除 failed 标记，允许错误边界重新归因
+      this.mountWithFallback(container, widget);
+    };
     renderFallback(container, message, widget, onRetry);
-    throw error;
+    console.error(`[widget-loader] 物料 "${name}" 运行时崩溃:`, error);
+  }
+
+  attributeErrorToWidget(event) {
+    // 1. 资源错误（img/script 加载失败）：target 是元素，看落在哪个物料里
+    const target = event.target;
+    if (target && target instanceof Element) {
+      for (const [element, entry] of this.mountedWidgets) {
+        if (!entry.failed && element.contains(target)) {
+          return element;
+        }
+      }
+    }
+    // 2. JS 运行时错误：按 filename / message / 堆栈匹配物料 JS URL 或物料名
+    const source = [
+      event.filename,
+      event.message,
+      (event.error && event.error.stack) || ''
+    ].filter(Boolean).join('\n');
+    if (source) {
+      for (const [element, entry] of this.mountedWidgets) {
+        if (entry.failed) continue;
+        const jsUrl = entry.widget.js || '';
+        const name = entry.widget.name || '';
+        if (jsUrl && source.includes(jsUrl)) return element;
+        if (name && source.includes(name)) return element;
+      }
+    }
+    return null;
+  }
+
+  ensureGlobalErrorListener() {
+    if (this.globalErrorListenerInstalled) return;
+    this.globalErrorListenerInstalled = true;
+    // 捕获阶段监听 error：资源错误 target=元素，JS 错误 target=window，都能收到
+    window.addEventListener('error', (event) => {
+      const element = this.attributeErrorToWidget(event);
+      if (element) {
+        const error = event.error || new Error(event.message || 'widget runtime error');
+        this.markWidgetFailed(element, error);
+        // 已降级处理，抑制浏览器默认报错，避免干扰基座
+        event.preventDefault();
+      }
+    }, true);
+    // 未捕获的 Promise rejection：按堆栈归因
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason;
+      const stack = (reason && reason.stack) || String(reason || '');
+      for (const [element, entry] of this.mountedWidgets) {
+        if (entry.failed) continue;
+        const jsUrl = entry.widget.js || '';
+        const name = entry.widget.name || '';
+        if ((jsUrl && stack.includes(jsUrl)) || (name && stack.includes(name))) {
+          this.markWidgetFailed(
+            element,
+            reason instanceof Error ? reason : new Error(String(reason))
+          );
+          // 已归因并降级，阻止控制台未处理 rejection 告警
+          event.preventDefault();
+          break;
+        }
+      }
+    });
+  }
+
+  /**
+   * 渲染物料到指定容器
+   * @param {HTMLElement} container
+   * @param {Object} widget
+   * @param {string} widget.name
+   * @param {Object} [widget.config]
+   * @returns {HTMLElement}
+   */
+  renderWidget(container, widget) {
+    const { name, config = {} } = widget;
+    const element = document.createElement(name);
+    element.setAttribute('config', JSON.stringify(config));
+    try {
+      container.appendChild(element); // 触发 connectedCallback
+    } catch (error) {
+      // connectedCallback 同步抛错：移除半挂载元素，向上抛出由 mountWidget 降级
+      if (element.parentNode === container) {
+        container.removeChild(element);
+      }
+      throw error;
+    }
+    return element;
+  }
+
+  /**
+   * 执行一次"加载 + 渲染 + 注册到错误边界"
+   * 不处理降级，失败直接抛出，由调用方决定如何降级/重试。
+   * @param {HTMLElement} container
+   * @param {Object} widget
+   * @returns {Promise<HTMLElement>}
+   */
+  async attemptMount(container, widget) {
+    this.emitLifecycle('loading', { name: widget.name, container });
+    await this.loadWidget(widget);
+    const element = this.renderWidget(container, widget);
+    // 注册到错误边界：运行时崩溃时自动降级，单点失败不影响整体
+    // key 用元素实例，同一物料多实例互不覆盖
+    this.mountedWidgets.set(element, { container, widget, failed: false });
+    this.ensureGlobalErrorListener();
+    this.emitLifecycle('loaded', { name: widget.name, element, container });
+    return element;
+  }
+
+  /**
+   * 带降级 + 重试的挂载（重试路径复用）
+   * 失败时渲染降级占位并附带"点击重试"按钮，点击后只重新加载该物料。
+   * @param {HTMLElement} container
+   * @param {Object} widget
+   */
+  mountWithFallback(container, widget) {
+    log('mounting widget:', widget.name);
+    this.attemptMount(container, widget)
+      .then(() => log('widget mounted:', widget.name))
+      .catch(error => {
+        this.emitLifecycle('error', { name: widget.name, error, container });
+        const message = `[widget-loader] ${t('loader.load_failed', { name: widget.name })}\n${error.message || error}`;
+        // 网络/运行时类失败可重试；点击后再次走 mountWithFallback
+        renderFallback(container, message, widget, () =>
+          this.mountWithFallback(container, widget)
+        );
+        console.error(`[widget-loader] 物料 "${widget.name}" 加载失败:`, error);
+      });
+  }
+
+  /**
+   * 加载并渲染物料（带错误边界、降级占位与重试）
+   * - 加载/版本校验失败：渲染降级占位；非版本不兼容错误附带"点击重试"
+   * - 挂载同步抛错：移除崩溃元素并渲染降级占位（可重试）
+   * - 运行时崩溃（setTimeout/Promise/事件回调）：全局监听归因后自动降级（可重试）
+   * - 重试只重新加载该物料，不影响看板其它区域
+   * @param {HTMLElement} container
+   * @param {Object} widget
+   * @returns {Promise<HTMLElement>}
+   */
+  async mountWidget(container, widget) {
+    log('mounting widget:', widget.name);
+    try {
+      return await this.attemptMount(container, widget);
+    } catch (error) {
+      this.emitLifecycle('error', { name: widget.name, error, container });
+      const isVersionMismatch = error.code === WidgetError.VERSION_MISMATCH;
+      const message = isVersionMismatch
+        ? error.message
+        : `[widget-loader] ${t('loader.mount_failed', { name: widget.name })}\n${error.message || error}`;
+      // 版本不兼容是确定性错误，重试无意义，不渲染重试按钮；其余失败可重试
+      const onRetry = isVersionMismatch
+        ? null
+        : () => this.mountWithFallback(container, widget);
+      renderFallback(container, message, widget, onRetry);
+      throw error;
+    }
+  }
+
+  /**
+   * 卸载物料：移除 DOM 元素并清理错误边界追踪，触发 unmount 生命周期
+   * @param {HTMLElement} element mountWidget 返回的物料元素
+   */
+  unmountWidget(element) {
+    if (!element) return;
+    const entry = this.mountedWidgets.get(element);
+    if (entry) {
+      this.emitLifecycle('unmount', { name: entry.widget.name, element, container: entry.container });
+      this.mountedWidgets.delete(element);
+    }
+    if (element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
+  }
+
+  /**
+   * 卸载并回收物料资源：移除 JS/CSS 标签、清理缓存与已定义元素记录，
+   * 使该物料可被重新加载（用于热更新、版本切换、A/B 测试）。
+   *
+   * 注意：customElements.define 不可撤销，重新加载同名物料时若定义已存在
+   * 浏览器会抛错；此处仅清理 definedElements 记录，使 loadWidget 不再短路。
+   * 若需真正重新注册同名 Custom Element，需刷新页面或使用不同名称。
+   *
+   * @param {string} name 物料名（Custom Element 名）
+   */
+  unloadWidget(name) {
+    if (!name) return;
+    const resources = this.widgetResources.get(name);
+    if (resources) {
+      // 移除 <script> / <link> 标签
+      if (resources.js) {
+        const scripts = document.querySelectorAll(`script[src="${resources.js}"]`);
+        scripts.forEach(s => s.parentNode && s.parentNode.removeChild(s));
+        this.loadedResources.delete(resources.js);
+      }
+      if (resources.css) {
+        const links = document.querySelectorAll(`link[href="${resources.css}"]`);
+        links.forEach(l => l.parentNode && l.parentNode.removeChild(l));
+        this.loadedResources.delete(resources.css);
+      }
+      this.widgetResources.delete(name);
+    }
+    this.definedElements.delete(name);
+    log('widget unloaded:', name);
   }
 }
 
-/**
- * 卸载物料：移除 DOM 元素并清理错误边界追踪，触发 unmount 生命周期
- * @param {HTMLElement} element mountWidget 返回的物料元素
- */
-export function unmountWidget(element) {
-  if (!element) return;
-  const entry = mountedWidgets.get(element);
-  if (entry) {
-    emitLifecycle('unmount', { name: entry.widget.name, element, container: entry.container });
-    mountedWidgets.delete(element);
-  }
-  if (element.parentNode) {
-    element.parentNode.removeChild(element);
-  }
-}
+// 默认单例：模块级导出委托到该实例，保持向后兼容
+const defaultLoader = new WidgetLoader();
 
-/**
- * 卸载并回收物料资源：移除 JS/CSS 标签、清理缓存与已定义元素记录，
- * 使该物料可被重新加载（用于热更新、版本切换、A/B 测试）。
- *
- * 注意：customElements.define 不可撤销，重新加载同名物料时若定义已存在
- * 浏览器会抛错；此处仅清理 definedElements 记录，使 loadWidget 不再短路。
- * 若需真正重新注册同名 Custom Element，需刷新页面或使用不同名称。
- *
- * @param {string} name 物料名（Custom Element 名）
- */
-export function unloadWidget(name) {
-  if (!name) return;
-  const resources = widgetResources.get(name);
-  if (resources) {
-    // 移除 <script> / <link> 标签
-    if (resources.js) {
-      const scripts = document.querySelectorAll(`script[src="${resources.js}"]`);
-      scripts.forEach(s => s.parentNode && s.parentNode.removeChild(s));
-      loadedResources.delete(resources.js);
-    }
-    if (resources.css) {
-      const links = document.querySelectorAll(`link[href="${resources.css}"]`);
-      links.forEach(l => l.parentNode && l.parentNode.removeChild(l));
-      loadedResources.delete(resources.css);
-    }
-    widgetResources.delete(name);
-  }
-  definedElements.delete(name);
-  log('widget unloaded:', name);
-}
+// 工厂：为多 Host 场景（iframe 嵌套、微前端）创建独立状态的加载器实例
+const createWidgetLoader = () => new WidgetLoader();
+
+// ─── 向后兼容的模块级导出（委托到默认单例）───
+export const loadWidget = (widget) => defaultLoader.loadWidget(widget);
+export const loadWidgets = (widgets) => defaultLoader.loadWidgets(widgets);
+export const mountWidget = (container, widget) => defaultLoader.mountWidget(container, widget);
+export const unmountWidget = (element) => defaultLoader.unmountWidget(element);
+export const unloadWidget = (name) => defaultLoader.unloadWidget(name);
+export const renderWidget = (container, widget) => defaultLoader.renderWidget(container, widget);
+export const onWidgetLifecycle = (event, cb) => defaultLoader.onWidgetLifecycle(event, cb);
+
+export { WidgetLoader, createWidgetLoader };
