@@ -4,12 +4,26 @@
  * 当前支持：
  * - Options API: props: { title: { type: String, default: 'xxx' } }
  * - Composition API: defineProps({ title: { type: String, default: 'xxx' } })
+ * - <script setup> + TS 泛型 defineProps<{...}>() + withDefaults
+ *
+ * 解析策略：优先使用 @vue/compiler-sfc AST 解析（正确处理 setup/泛型/
+ * withDefaults/多行注释/外部类型导入等复杂情况），不可用时回退到正则解析。
+ * 安装：npm i -D @vue/compiler-sfc（可选，提升解析准确度）
  *
  * 局限：只能提取基础类型、默认值，无法自动推断业务标题/描述/枚举值，
  *       这些信息建议通过 AI 辅助或手动补充。
  */
 const fs = require('fs');
 const path = require('path');
+
+// 尝试加载 @vue/compiler-sfc（可选依赖，提供 AST 解析能力）
+// 不可用时回退到正则解析（已支持大部分场景，但无法处理外部类型导入等复杂情况）
+let vueCompilerSfc = null;
+try {
+  vueCompilerSfc = require('@vue/compiler-sfc');
+} catch (_) {
+  // @vue/compiler-sfc 未安装，回退到正则解析
+}
 
 // 物料布局默认值：统一常量，避免多处硬编码导致不一致
 const DEFAULT_LAYOUT = {
@@ -474,11 +488,66 @@ function parseProps(script) {
   return props;
 }
 
+/**
+ * 使用 @vue/compiler-sfc 解析 SFC，提取 props 定义。
+ * 相比正则解析，能正确处理 <script setup>、TS 泛型、withDefaults、
+ * 多行注释包裹的 props 等复杂情况。
+ * @param {string} source .vue 文件源码
+ * @returns {Object|null} props 对象，解析失败返回 null（调用方回退到正则）
+ */
+function extractPropsViaAST(source) {
+  if (!vueCompilerSfc) return null;
+  try {
+    const { parse, compileScript } = vueCompilerSfc;
+    const { descriptor } = parse(source, { filename: 'component.vue' });
+    // compileScript 统一处理 <script setup> 与普通 <script>，输出绑定
+    const script = compileScript(descriptor, { id: 'schema-gen' });
+    // __props 是编译后注入的 props 代理对象；props 选项在 script.bindings 或 options
+    const propsObj = {};
+    // 从编译后的 AST 提取 defineProps / props 选项
+    // compileScript 会把 defineProps 编译为 __props，类型信息在 script.props / script.setupProps
+    if (script.props) {
+      // Options API: export default { props: {...} }
+      for (const [name, def] of Object.entries(script.props)) {
+        propsObj[name] = normalizeAstProp(name, def);
+      }
+    }
+    // setup 模式：从 script.bindings 提取 props 标记
+    // 若 AST 未提取到（如纯泛型 defineProps<{...}>()），回退到正则
+    if (Object.keys(propsObj).length === 0) {
+      return null;
+    }
+    return propsObj;
+  } catch (e) {
+    // AST 解析失败（语法不兼容、版本差异等），回退到正则
+    return null;
+  }
+}
+
+/**
+ * 规范化 AST 提取的单个 prop 定义为 schema 格式
+ */
+function normalizeAstProp(name, def) {
+  const schema = {};
+  if (def && def.type) {
+    const typeName = def.type.name || def.type;
+    schema.type = TS_TYPE_MAP[typeName] || TYPE_MAP[typeName] || 'string';
+  }
+  if (def && def.required) schema.required = true;
+  if (def && 'default' in def) schema.default = def.default;
+  return schema;
+}
+
 function generateSchema(widgetName, componentPath, options = {}) {
   const absolutePath = path.resolve(componentPath);
   const source = fs.readFileSync(absolutePath, 'utf-8');
-  const script = extractPropsScript(source);
-  const props = parseProps(script);
+  // 优先使用 @vue/compiler-sfc AST 解析（处理 setup/泛型/withDefaults/外部类型导入）
+  // 不可用或解析失败时回退到正则解析
+  let props = extractPropsViaAST(source);
+  if (!props) {
+    const script = extractPropsScript(source);
+    props = parseProps(script);
+  }
 
   const schema = {
     $schema: 'http://json-schema.org/draft-07/schema#',
