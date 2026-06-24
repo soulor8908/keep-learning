@@ -1,0 +1,6 @@
+- [x] `.trae/specs/` 目录存在且可访问
+- [x] `initialize-spec-workflow/` 目录下包含 `spec.md`、`tasks.md`、`checklist.md` 三份文档
+- [x] `spec.md` 完整包含 Why / What Changes / Impact / ADDED/MODIFIED/REMOVED Requirements 章节
+- [x] `tasks.md` 拆分为可验证任务，并标注了依赖关系
+- [x] `checklist.md` 包含实施后可逐项验证的验收点
+- [x] `README.md` 补充了 spec 驱动开发流程说明
