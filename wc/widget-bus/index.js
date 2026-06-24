@@ -60,6 +60,9 @@ export function once(type, handler) {
 export const Vue2BusPlugin = {
   install(Vue) {
     Vue.prototype.$widgetBus = { emit, on, once };
+  },
+  uninstall(Vue) {
+    delete Vue.prototype.$widgetBus;
   }
 };
 
@@ -70,6 +73,9 @@ export const Vue2BusPlugin = {
 export const Vue3BusPlugin = {
   install(app) {
     app.config.globalProperties.$widgetBus = { emit, on, once };
+  },
+  uninstall(app) {
+    delete app.config.globalProperties.$widgetBus;
   }
 };
 

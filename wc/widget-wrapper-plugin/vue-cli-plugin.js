@@ -125,6 +125,11 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     } catch (e) {
       console.warn('[widget-vue-cli-plugin] 自动生成 schema.json 失败:', e.message);
     }
+
+    // 构建进程结束后清理临时 wrapper 文件，避免 tmp 目录堆积
+    process.once('exit', () => {
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
+    });
   };
 };
 

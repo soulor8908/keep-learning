@@ -69,6 +69,12 @@ function addConfigProp(source) {
       return `${open}${before}\n  config: { type: Object, default: () => ({}) },${after}${close}`;
     }
 
+    // 情况 4：<script setup> 使用类型式 defineProps<{}> 或无参 defineProps()，
+    //   无法安全注入对象式 config prop，保持原样不改写（hasConfigProp 未命中时会提示）
+    if (/defineProps\s*\(\s*\)/.test(script) || /defineProps\s*</.test(script)) {
+      return match;
+    }
+
     return match;
   });
 }
@@ -166,14 +172,22 @@ function migrate(widgetName, filePath, vueVersion) {
     report.changes.push('根元素已包含命名空间类名');
   }
 
-  // 3. CSS 命名空间检查
-  const cssIssues = checkCssNamespace(filePath, widgetName);
+  // 3. CSS 命名空间检查（扫描迁移后的内容，而非原始文件）
+  const tmpMigrated = path.join(require('os').tmpdir(), `widget-migrate-check-${Date.now()}.vue`);
+  fs.writeFileSync(tmpMigrated, migrated);
+  let cssIssues = [];
+  let jsRisks = [];
+  try {
+    cssIssues = checkCssNamespace(tmpMigrated, widgetName);
+    jsRisks = scanJsRisk(tmpMigrated);
+  } finally {
+    try { fs.unlinkSync(tmpMigrated); } catch (_) {}
+  }
   if (cssIssues.length > 0) {
     report.warnings.push(`发现 ${cssIssues.length} 个 CSS 选择器未加命名空间`);
   }
 
   // 4. JS 风险扫描
-  const jsRisks = scanJsRisk(filePath);
   if (jsRisks.length > 0) {
     const highRisks = jsRisks.filter(r => r.level === 'high').length;
     report.warnings.push(`发现 ${jsRisks.length} 个 JS 风险（其中 ${highRisks} 个高危）`);

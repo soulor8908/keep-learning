@@ -65,9 +65,24 @@ function extractRules(css) {
   let selectors = '';
   let inSelector = true;
 
+  let inString = false;
+  let stringChar = '';
   for (let i = 0; i < css.length; i++) {
     const ch = css[i];
     const next = css[i + 1];
+
+    // 跳过字符串字面量内容（CSS 中 content: "..." 可能含花括号）
+    if (inString) {
+      if (ch === stringChar && css[i - 1] !== '\\') inString = false;
+      buffer += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringChar = ch;
+      buffer += ch;
+      continue;
+    }
 
     if (ch === '{') {
       if (depth === 0) {
@@ -97,7 +112,8 @@ function extractRules(css) {
     buffer += ch;
   }
 
-  // 处理 @media / @supports 等嵌套规则：把内部选择器取出来
+  // 处理嵌套规则：@media / @supports 递归提取内部选择器；
+  // @keyframes / @font-face / @page 内部是关键帧/字体声明，不是样式选择器，直接跳过
   const flattened = [];
   rules.forEach(rule => {
     if (rule.selectors.startsWith('@media') || rule.selectors.startsWith('@supports')) {
@@ -109,6 +125,14 @@ function extractRules(css) {
           nested: true
         });
       });
+    } else if (
+      rule.selectors.startsWith('@keyframes') ||
+      rule.selectors.startsWith('@-webkit-keyframes') ||
+      rule.selectors.startsWith('@font-face') ||
+      rule.selectors.startsWith('@page')
+    ) {
+      // 关键帧/字体声明内部的选择器（0%/from/to/@font-face 内部）不是样式选择器，跳过
+      return;
     } else {
       flattened.push(rule);
     }

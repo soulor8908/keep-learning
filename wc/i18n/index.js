@@ -56,8 +56,10 @@ function getLocale() {
  * 切换语言：更新状态 + 通知所有订阅者 + 通过 widget-bus 广播
  * @param {'zh'|'en'} locale
  */
-function setLocale(locale) {
-  if (!messages[locale] || locale === currentLocale) return;
+function setLocale(locale, force = false) {
+  if (!messages[locale]) return;
+  // 相同 locale 默认跳过；force=true 时强制重新广播（用于热更新语言包后刷新物料）
+  if (!force && locale === currentLocale) return;
   currentLocale = locale;
   for (const cb of listeners) {
     try { cb(locale); } catch (e) { console.error('[wc/i18n] locale change listener error:', e); }
@@ -78,12 +80,25 @@ function onLocaleChange(cb) {
   return () => listeners.delete(cb);
 }
 
-const i18n = { t, getLocale, setLocale, onLocaleChange };
+/**
+ * 运行时追加语言包（部门/物料可注入自己的文案）
+ * @param {string} locale 目标语言，如 'zh' / 'en'
+ * @param {Object} msgs 待合并的字典，会深合并到现有字典
+ */
+function addMessages(locale, msgs) {
+  if (!messages[locale]) messages[locale] = {};
+  // 浅层合并顶层 key（按命名空间覆盖），避免深合并复杂度
+  Object.keys(msgs).forEach(ns => {
+    messages[locale][ns] = Object.assign({}, messages[locale][ns], msgs[ns]);
+  });
+}
+
+const i18n = { t, getLocale, setLocale, onLocaleChange, addMessages };
 
 // 挂载到全局，供物料 external 引用
 if (typeof window !== 'undefined') {
   window.__wcI18n__ = i18n;
 }
 
-export { t, getLocale, setLocale, onLocaleChange };
+export { t, getLocale, setLocale, onLocaleChange, addMessages };
 export default i18n;

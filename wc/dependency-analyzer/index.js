@@ -44,10 +44,8 @@ function collectDeps(projectDir) {
     throw new Error(`未找到 ${path.join(projectDir, 'package.json')}`);
   }
 
-  const allDeps = {
-    ...pkg.dependencies,
-    ...pkg.devDependencies
-  };
+  // 只收集运行时依赖；devDependencies（构建工具等）不应 external
+  const allDeps = { ...pkg.dependencies };
 
   const result = {
     name: pkg.name,
@@ -158,9 +156,11 @@ function printReport(analysis) {
   }
 
   console.log('\n========== 推荐 external 依赖 ==========');
-  const recommendedExternals = commonDeps
-    .filter(({ depName }) => depName !== projectDeps[0]?.name) // 排除项目自身
-    .map(({ depName }) => depName);
+  // 排除项目自身的包名（dependencies 里不会出现自身，但防御性处理）
+  const projectNames = new Set(projectDeps.map(p => p.name).filter(Boolean));
+  // 只推荐 dependencies（运行时依赖），devDependencies 如构建工具不应 external
+  const runtimeCommonDeps = commonDeps.filter(({ depName }) => !projectNames.has(depName));
+  const recommendedExternals = runtimeCommonDeps.map(({ depName }) => depName);
 
   if (recommendedExternals.length === 0) {
     console.log('无');
@@ -168,7 +168,7 @@ function printReport(analysis) {
     recommendedExternals.forEach(dep => {
       console.log(`   - ${dep}`);
     });
-    console.log('\n建议：把以上依赖声明为 external，由基座统一提供，避免重复打包和版本冲突。');
+    console.log('\n建议：把以上运行时依赖声明为 external，由基座统一提供，避免重复打包和版本冲突。');
   }
 
   console.log('\n========== Vue 运行时 manifest（供基座自动注入） ==========');

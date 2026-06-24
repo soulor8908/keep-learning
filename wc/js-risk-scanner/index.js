@@ -119,12 +119,41 @@ function scanFile(filePath) {
     // 计算 script 块在文件中的起始行号
     const blockStartLine = source.substring(0, block.start).split('\n').length;
 
+    // 剥离行内注释和字符串字面量内容，避免注释/字符串中的关键词被误判为风险
+    function stripCommentsAndStrings(line) {
+      let result = '';
+      let inString = false;
+      let stringChar = '';
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        const next = line[i + 1];
+        // 行内注释 // 直接截断
+        if (!inString && ch === '/' && next === '/') break;
+        if (inString) {
+          // 字符串内容用空格占位（保留列宽，避免列号错位），但保留结束引号以便状态机复位
+          if (ch === stringChar && line[i - 1] !== '\\') {
+            inString = false;
+            result += ch;
+          } else {
+            result += ' ';
+          }
+        } else {
+          if (ch === '"' || ch === "'" || ch === '`') {
+            inString = true;
+            stringChar = ch;
+          }
+          result += ch;
+        }
+      }
+      return result;
+    }
+
     const lines = block.content.split('\n');
     lines.forEach((line, lineIndex) => {
       const lineNumber = blockStartLine + lineIndex;
       RISK_PATTERNS.forEach(risk => {
         risk.patterns.forEach(pattern => {
-          if (pattern.test(line)) {
+          if (pattern.test(stripCommentsAndStrings(line))) {
             findings.push({
               file: filePath,
               line: lineNumber,

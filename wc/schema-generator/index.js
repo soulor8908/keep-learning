@@ -25,6 +25,101 @@ const TYPE_MAP = {
   Object: 'object'
 };
 
+// TypeScript 类型 -> JSON Schema type 映射（用于 defineProps<{...}>() 泛型语法）
+const TS_TYPE_MAP = {
+  string: 'string',
+  number: 'number',
+  boolean: 'boolean',
+  bool: 'boolean',
+  String: 'string',
+  Number: 'number',
+  Boolean: 'boolean',
+  Array: 'array',
+  Object: 'object',
+  any: 'string',
+  unknown: 'string',
+  null: 'null'
+};
+
+/**
+ * 把 JS 风格的对象/数组字面量（单引号字符串）安全转成 JSON 字符串。
+ * 逐字符扫描，仅在字符串字面量边界替换单引号，避免破坏字符串内部的单引号。
+ * 例如 "it's" 内部的单引号不会被误转。
+ */
+function singleQuoteToJson(str) {
+  let result = '';
+  let i = 0;
+  while (i < str.length) {
+    const ch = str[i];
+
+    // 双引号字符串：原样复制，处理转义
+    if (ch === '"') {
+      result += ch;
+      i++;
+      while (i < str.length) {
+        const c = str[i];
+        if (c === '\\' && i + 1 < str.length) {
+          result += c + str[i + 1];
+          i += 2;
+          continue;
+        }
+        result += c;
+        i++;
+        if (c === '"') break;
+      }
+      continue;
+    }
+
+    // 单引号字符串：转成双引号字符串
+    if (ch === "'") {
+      result += '"';
+      i++;
+      while (i < str.length) {
+        const c = str[i];
+        if (c === '\\' && i + 1 < str.length) {
+          const next = str[i + 1];
+          if (next === "'") {
+            // \' -> ' （JSON 双引号字符串里不需要转义单引号）
+            result += "'";
+            i += 2;
+            continue;
+          }
+          result += c + next;
+          i += 2;
+          continue;
+        }
+        if (c === "'") {
+          result += '"';
+          i++;
+          break;
+        }
+        if (c === '"') {
+          // 字符串内部的双引号需要转义
+          result += '\\"';
+          i++;
+          continue;
+        }
+        result += c;
+        i++;
+      }
+      continue;
+    }
+
+    result += ch;
+    i++;
+  }
+  return result;
+}
+
+/**
+ * 尝试把 JS 字面量解析为 JS 值：先按 JSON 解析，失败再用单引号转换重试。
+ * 仍失败则返回 null。
+ */
+function tryParseJsonLike(raw) {
+  try { return JSON.parse(raw); } catch (_) { /* fallthrough */ }
+  try { return JSON.parse(singleQuoteToJson(raw)); } catch (_) { return null; }
+}
+
 function parseDefault(raw) {
   const trimmed = raw.trim();
   if (trimmed === '' || trimmed === 'undefined') return undefined;
@@ -53,24 +148,20 @@ function parseDefault(raw) {
     return Number(trimmed);
   }
 
-  // 数组/对象：尝试 JSON.parse
+  // 数组/对象：先按 JSON 解析，失败再用单引号感知转换，避免破坏字符串内部单引号
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-    try {
-      return JSON.parse(trimmed.replace(/'/g, '"'));
-    } catch {
-      return trimmed;
-    }
+    const parsed = tryParseJsonLike(trimmed);
+    if (parsed !== null) return parsed;
+    return trimmed;
   }
 
   // 处理 ({}) 这种箭头函数返回对象的写法
   if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
     const inner = trimmed.slice(1, -1).trim();
     if (inner.startsWith('{') || inner.startsWith('[')) {
-      try {
-        return JSON.parse(inner.replace(/'/g, '"'));
-      } catch {
-        return inner;
-      }
+      const parsed = tryParseJsonLike(inner);
+      if (parsed !== null) return parsed;
+      return inner;
     }
   }
 
@@ -183,9 +274,21 @@ function splitTopLevelFields(body) {
     if (ch === '{' || ch === '(' || ch === '[') depth++;
     if (ch === '}' || ch === ')' || ch === ']') depth--;
 
+    // 逗号（深度 0）作为字段分隔
     if (ch === ',' && depth === 0) {
       fields.push(body.slice(start, i));
       start = i + 1;
+      continue;
+    }
+
+    // 换行（深度 0）：TS 接口字段以换行分隔。仅当下一段非空内容像
+    // "标识符 ?:" 的新字段时才切分，避免把跨行的值（如联合类型 | string）误切。
+    if (ch === '\n' && depth === 0) {
+      const rest = body.slice(i + 1);
+      if (/^\s*[\w$]+\s*\??\s*:/.test(rest)) {
+        fields.push(body.slice(start, i));
+        start = i + 1;
+      }
     }
   }
 
@@ -193,7 +296,122 @@ function splitTopLevelFields(body) {
   return fields.filter(f => f.trim());
 }
 
+/**
+ * 把 TypeScript 类型字符串转成 JSON Schema type。
+ * 支持：string/number/boolean 等基础类型、string[] 数组语法、Array<T> 泛型、
+ * string | number 联合类型（返回数组）。
+ */
+function tsTypeToJsonType(tsType) {
+  const t = tsType.trim().replace(/[;,]\s*$/, '');
+  if (!t) return 'string';
+
+  // 联合类型: string | number
+  if (t.includes('|')) {
+    const types = t
+      .split('|')
+      .map(s => tsTypeToJsonType(s.trim()))
+      .filter(s => s && s !== 'string' || s === 'string');
+    // 去重
+    const unique = [...new Set(types)];
+    return unique.length === 1 ? unique[0] : unique;
+  }
+
+  // string[] / number[] 等
+  if (/^\w+\[\]$/.test(t)) {
+    return 'array';
+  }
+  // Array<string> / Array<T>
+  if (/^Array<.+>$/.test(t)) {
+    return 'array';
+  }
+  // 对象类型字面量 { foo: string } 或 Record<...>
+  if (t.startsWith('{') || /^Record<.+>$/.test(t)) {
+    return 'object';
+  }
+
+  return TS_TYPE_MAP[t] || 'string';
+}
+
+/**
+ * 提取 defineProps<{ ... }>() 泛型语法中的接口体（不含外层花括号）。
+ */
+function extractTsPropsBody(script) {
+  const startIdx = script.search(/defineProps\s*<\s*\{/);
+  if (startIdx === -1) return '';
+
+  const braceIdx = script.indexOf('{', startIdx);
+  if (braceIdx === -1) return '';
+
+  const endIdx = findMatchedBrace(script, braceIdx);
+  if (endIdx === -1) return '';
+
+  return removeComments(script.slice(braceIdx + 1, endIdx));
+}
+
+/**
+ * 提取 withDefaults(defineProps<{...}>(), { ... }) 中的默认值对象体。
+ */
+function extractWithDefaultsBody(script) {
+  const m = script.match(/withDefaults\s*\(\s*defineProps[\s\S]*?\)\s*,\s*(\{)/);
+  if (!m) return '';
+  const braceIdx = m.index + m[0].length - 1;
+  const endIdx = findMatchedBrace(script, braceIdx);
+  if (endIdx === -1) return '';
+  return removeComments(script.slice(braceIdx + 1, endIdx));
+}
+
+/**
+ * 解析 defineProps<{...}>() 泛型语法的 props。
+ * 支持：
+ *   title?: string          -> { type: 'string' }
+ *   count: number           -> { type: 'number', required: true }
+ *   items?: string[]        -> { type: 'array' }
+ *   tags?: Array<string>    -> { type: 'array' }
+ *   flag?: string | number  -> { type: ['string','number'] }
+ */
+function parseTsProps(script) {
+  const props = {};
+  const body = extractTsPropsBody(script);
+  if (!body) return props;
+
+  const fields = splitTopLevelFields(body);
+  fields.forEach(field => {
+    // title?: string  /  title: string  /  title? : string
+    const fieldMatch = field.match(/^\s*(\w+)\s*(\?)?\s*:\s*([\s\S]+?)\s*$/);
+    if (!fieldMatch) return;
+
+    const name = fieldMatch[1];
+    const optional = !!fieldMatch[2];
+    const typeStr = fieldMatch[3].replace(/[;,]\s*$/, '').trim();
+
+    const schema = { type: tsTypeToJsonType(typeStr) };
+    if (!optional) schema.required = true;
+    props[name] = schema;
+  });
+
+  // 合并 withDefaults 提供的默认值
+  const defaultsBody = extractWithDefaultsBody(script);
+  if (defaultsBody) {
+    const defaultFields = splitTopLevelFields(defaultsBody);
+    defaultFields.forEach(field => {
+      const fm = field.match(/^\s*(\w+)\s*:\s*([\s\S]+?)\s*$/);
+      if (!fm) return;
+      const name = fm[1];
+      if (props[name]) {
+        props[name].default = parseDefault(fm[2]);
+      }
+    });
+  }
+
+  return props;
+}
+
 function parseProps(script) {
+  // TS 泛型语法: defineProps<{ title?: string }>() 或 withDefaults(defineProps<{...}>(), {...})
+  if (/defineProps\s*</.test(script)) {
+    return parseTsProps(script);
+  }
+
   const props = {};
   const body = extractPropsBody(script);
   if (!body) return props;
@@ -215,12 +433,21 @@ function parseProps(script) {
     }
 
     // 对象形式: { type: String, default: 'xxx' }
+    // 数组类型: type: [String, Number]
+    const typeArrayMatch = rest.match(/type\s*:\s*\[([^\]]+)\]/);
     const typeMatch = rest.match(/type\s*:\s*(\w+)/);
     const defaultMatch = rest.match(/default\s*:\s*([^,\n]+)/);
     const requiredMatch = rest.match(/required\s*:\s*true/);
 
     const schema = {};
-    if (typeMatch) {
+    if (typeArrayMatch) {
+      const types = typeArrayMatch[1]
+        .split(',')
+        .map(t => t.trim())
+        .map(t => TYPE_MAP[t] || t.toLowerCase())
+        .filter(Boolean);
+      schema.type = types.length === 1 ? types[0] : types;
+    } else if (typeMatch) {
       schema.type = TYPE_MAP[typeMatch[1]] || 'string';
     }
     if (defaultMatch) {
