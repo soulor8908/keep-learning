@@ -22,8 +22,8 @@ function generateVue2Wrapper(widgetName, vueGlobal) {
 import Vue from 'vue';
 import Component from '__WIDGET_COMPONENT__';
 
-// 告诉 Vue2 编译器 aui-* 是自定义元素，不要当 Vue 组件解析
-Vue.config.ignoredElements = [/^aui-/];
+// 告诉 Vue2 编译器 el-* 是自定义元素，不要当 Vue 组件解析
+Vue.config.ignoredElements = [/^el-/];
 
 function parseConfig(value) {
   try { return value ? JSON.parse(value) : {}; } catch { return {}; }
@@ -102,7 +102,7 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     // external 公共依赖，允许自定义 Vue 全局变量名
     config.externals({
       vue: vueGlobal,
-      aui: 'aui',
+      'element-ui': 'ELEMENT',
       // 国际化运行时：基座提供 window.__wcI18n__，物料共享同一实例与 locale 状态
       'wc-i18n': '__wcI18n__'
     });
