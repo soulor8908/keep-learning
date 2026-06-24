@@ -42,7 +42,9 @@ export default defineConfig({
     }
   },
   define: {
-    'import.meta.env.VITE_WIDGET_NAME': JSON.stringify(widgetName),
-    'import.meta.env.VITE_WIDGET_COMPONENT': JSON.stringify('__WIDGET_COMPONENT__')
+    // 注入全局变量供 widget-wrapper.js 使用（不依赖 Vite 特有的 import.meta.env，
+    // 使 wrapper 文件可被 webpack 等其他工具处理）
+    __WIDGET_NAME__: JSON.stringify(widgetName),
+    __WIDGET_COMPONENT__: JSON.stringify('__WIDGET_COMPONENT__')
   }
 });

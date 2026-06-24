@@ -1,7 +1,11 @@
 /**
  * Vue3 物料组件自动包装器
  * 使用方式：vite.config.js 中把入口设为此文件
- * 通过 import.meta.env.VITE_WIDGET_NAME 和 VITE_WIDGET_COMPONENT 指定
+ * 通过构建工具注入的全局变量 __WIDGET_NAME__ 和 __WIDGET_COMPONENT__ 指定
+ *
+ * 说明：不使用 import.meta.env（Vite 特有），改用构建工具 define 注入的
+ * 全局变量 __WIDGET_NAME__ / __WIDGET_COMPONENT__，使本文件可被 webpack 等
+ * 其他工具处理（通过 NormalModuleReplacementPlugin 或 DefinePlugin 注入）。
  *
  * ─── 重要：禁止使用 Shadow DOM ───
  * 不要改用 Vue3 官方的 defineCustomElement()——它默认调用 attachShadow()，
@@ -15,7 +19,7 @@ function parseConfig(value) {
   try {
     return value ? JSON.parse(value) : {};
   } catch (e) {
-    console.error(`[${import.meta.env.VITE_WIDGET_NAME}] config parse error:`, e);
+    console.error(`[${__WIDGET_NAME__}] config parse error:`, e);
     return {};
   }
 }
@@ -79,11 +83,11 @@ function createWidgetWrapper(Component, widgetName) {
   };
 }
 
-const widgetName = import.meta.env.VITE_WIDGET_NAME;
-const componentPath = import.meta.env.VITE_WIDGET_COMPONENT;
+const widgetName = __WIDGET_NAME__;
+const componentPath = __WIDGET_COMPONENT__;
 
 if (!widgetName || !componentPath) {
-  throw new Error('VITE_WIDGET_NAME 和 VITE_WIDGET_COMPONENT 环境变量必须设置');
+  throw new Error('__WIDGET_NAME__ 和 __WIDGET_COMPONENT__ 必须由构建工具注入');
 }
 
 // 动态引入业务组件
