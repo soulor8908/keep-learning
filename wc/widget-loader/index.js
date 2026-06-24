@@ -364,8 +364,46 @@ export function onWidgetLifecycle(event, cb) {
   };
 }
 
+// 降级占位默认样式（只注入一次）。基座可通过覆盖 .widget-error-placeholder /
+// .widget-error-retry 类实现主题化，无需改 loader 源码。
+let fallbackStyleInjected = false;
+function injectFallbackStyles() {
+  if (fallbackStyleInjected) return;
+  if (typeof document === 'undefined') return;
+  fallbackStyleInjected = true;
+  const style = document.createElement('style');
+  style.setAttribute('data-widget-loader', 'fallback');
+  style.textContent = `
+    .widget-error-placeholder {
+      padding: 12px 16px;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      background: #fef2f2;
+      color: #b91c1c;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .widget-error-retry {
+      margin-top: 10px;
+      padding: 5px 16px;
+      font-size: 13px;
+      border: 1px solid #3b82f6;
+      border-radius: 4px;
+      background: #3b82f6;
+      color: #fff;
+      cursor: pointer;
+      line-height: 1.4;
+    }
+    .widget-error-retry:hover { opacity: 0.9; }
+  `;
+  document.head.appendChild(style);
+}
+
 /**
  * 渲染降级占位（含"点击重试"按钮）
+ * 样式通过注入的样式表 + CSS 类提供，基座可覆盖类名实现主题化。
  * @param {HTMLElement} container
  * @param {string} message 错误信息
  * @param {Object} widget 物料配置（重试时复用）
@@ -373,6 +411,7 @@ export function onWidgetLifecycle(event, cb) {
  * @returns {HTMLElement} 占位节点
  */
 function renderFallback(container, message, widget, onRetry) {
+  injectFallbackStyles();
   const errorNode = document.createElement('div');
   errorNode.className = 'widget-error-placeholder';
 
@@ -385,9 +424,6 @@ function renderFallback(container, message, widget, onRetry) {
     btn.type = 'button';
     btn.className = 'widget-error-retry';
     btn.textContent = t('loader.retry');
-    btn.style.cssText =
-      'margin-top:10px;padding:5px 16px;font-size:13px;border:1px solid #3b82f6;' +
-      'border-radius:4px;background:#3b82f6;color:#fff;cursor:pointer;line-height:1.4;';
     btn.addEventListener('click', () => {
       // 移除占位，触发只针对该物料的重新加载，不影响看板其它区域
       if (errorNode.parentNode === container) {

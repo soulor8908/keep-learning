@@ -119,6 +119,23 @@ function wrapChildren(el, wrapper) {
   el.appendChild(wrapper);
 }
 
+/**
+ * 工具函数：为叶子组件获取/创建一个内部渲染容器。
+ * 叶子组件（statistic/progress/list-item）直接用 this.innerHTML 会清空 slot
+ * 投影的子内容；改用内部容器渲染，既保留 slot 又避免重建整个子树。
+ * @param {HTMLElement} el 宿主元素
+ * @param {string} className 容器类名
+ * @returns {HTMLElement} 内部容器（复用引用）
+ */
+function getInner(el, className) {
+  if (el._inner) return el._inner;
+  const inner = document.createElement('div');
+  inner.className = className;
+  el.appendChild(inner);
+  el._inner = inner;
+  return inner;
+}
+
 // ─── aui-card：带标题的卡片容器（保留子元素）───
 class AuiCard extends HTMLElement {
   static get observedAttributes() {
@@ -182,7 +199,8 @@ class AuiStatistic extends HTMLElement {
     const value = this.getAttribute('value') || '0';
     const prefix = this.getAttribute('prefix') || '';
     const suffix = this.getAttribute('suffix') || '';
-    this.innerHTML = `
+    // 用内部容器渲染，避免 this.innerHTML 清空 slot 投影内容
+    getInner(this, 'aui-statistic-root').innerHTML = `
       <div class="aui-statistic">
         <div class="aui-statistic-label">${label}</div>
         <div class="aui-statistic-value">${prefix}${value}<span class="aui-statistic-suffix">${suffix}</span></div>
@@ -251,7 +269,8 @@ class AuiProgress extends HTMLElement {
 
   _render() {
     const percent = Math.min(100, Math.max(0, parseFloat(this.getAttribute('percent') || '0')));
-    this.innerHTML = `
+    // 用内部容器渲染，避免 this.innerHTML 清空 slot 投影内容
+    getInner(this, 'aui-progress-root').innerHTML = `
       <div class="aui-progress">
         <div class="aui-progress-bar" style="width: ${percent}%"></div>
       </div>
@@ -280,7 +299,8 @@ class AuiListItem extends HTMLElement {
   _render() {
     const label = this.getAttribute('label') || '';
     const value = this.getAttribute('value') || '';
-    this.innerHTML = `
+    // 用内部容器渲染，避免 this.innerHTML 清空 slot 投影内容
+    getInner(this, 'aui-list-item-root').innerHTML = `
       <div class="aui-list-item">
         <span class="aui-list-label">${label}</span>
         <span class="aui-list-value">${value}</span>

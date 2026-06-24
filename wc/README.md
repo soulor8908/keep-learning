@@ -53,23 +53,20 @@ wc/
 
 #### Vue2 + Vue CLI
 
-```bash
-npm i @vue/web-component-wrapper
-```
-
 `vue.config.js`：
 
 ```js
 const widgetPlugin = require('./wc/widget-wrapper-plugin/vue-cli-plugin');
 
 module.exports = {
-  pluginOptions: {
-    widget: {
-      name: 'bi-sales-panel',
-      component: './src/components/SalesPanel.vue'
-    }
-  },
-  configureWebpack: widgetPlugin()
+  // 构建物料时把 scoped style 注入 JS，避免单独加载 CSS
+  css: { extract: false },
+  // 插件返回 chainWebpack 函数，需传入 name / component / vueGlobal
+  chainWebpack: widgetPlugin({
+    name: 'bi-sales-panel',
+    component: './src/components/SalesPanel.vue',
+    vueGlobal: 'Vue2'
+  })
 };
 ```
 

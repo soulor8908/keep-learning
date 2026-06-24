@@ -7,9 +7,13 @@
  *   node ai-assistant/cli.js readme <widget-name> <component-path>
  *
  * 说明：
- * - 本 CLI 只负责读取提示词模板和组件源码，输出建议的 AI Prompt。
- * - 实际调用大模型（OpenAI / 豆包 / 文心等）需要接入对应 API，这里预留了 callAI 接口。
- * - 接入 AI 后，可直接把输出写回文件，实现自动化迁移/文档生成。
+ * - 本 CLI 读取提示词模板和组件源码，构建 AI Prompt。
+ * - 默认通过环境变量接入大模型（OpenAI 兼容接口）：
+ *     AI_API_KEY  - API 密钥（必填，未设置时回退到仅打印 Prompt 的占位模式）
+ *     AI_API_URL  - 接口地址（默认 https://api.openai.com/v1/chat/completions）
+ *     AI_MODEL    - 模型名（默认 gpt-4o-mini）
+ * - 未配置 AI_API_KEY 时仅打印 Prompt，便于人工复制到任意模型对话框。
+ * - 接入 AI 后，结果会自动写回对应文件。
  */
 const fs = require('fs');
 const path = require('path');
@@ -24,14 +28,54 @@ function loadComponent(componentPath) {
   return fs.readFileSync(path.resolve(componentPath), 'utf-8');
 }
 
-// 预留：接入大模型 API
+/**
+ * 调用大模型。优先用环境变量配置的 OpenAI 兼容接口；
+ * 未配置 AI_API_KEY 时回退到仅打印 Prompt 的占位模式。
+ * @param {string} prompt
+ * @returns {Promise<string>} 模型返回的文本
+ */
 async function callAI(prompt) {
-  // TODO: 接入实际 AI 服务
-  // 例如：return await openai.chat.completions.create({...})
-  console.log('\n========== AI Prompt ==========\n');
-  console.log(prompt);
-  console.log('\n================================\n');
-  return '[AI 返回结果占位，接入 API 后可替换为真实返回值]';
+  const apiKey = process.env.AI_API_KEY;
+  const apiUrl = process.env.AI_API_URL || 'https://api.openai.com/v1/chat/completions';
+  const model = process.env.AI_MODEL || 'gpt-4o-mini';
+
+  // 未配置密钥：仅打印 Prompt，便于人工使用
+  if (!apiKey) {
+    console.log('\n========== AI Prompt（未配置 AI_API_KEY，仅打印） ==========\n');
+    console.log(prompt);
+    console.log('\n============================================================\n');
+    console.log('提示：设置环境变量 AI_API_KEY / AI_API_URL / AI_MODEL 后可自动调用大模型。');
+    return '';
+  }
+
+  // 调用 OpenAI 兼容接口
+  const resp = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: '你是一个资深前端工程师，擅长 Vue 组件迁移与文档生成。请严格按用户要求输出，不要多余解释。' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.2
+    })
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`AI 接口请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('AI 接口返回为空，请检查 AI_API_URL / AI_MODEL 配置');
+  }
+  return content;
 }
 
 function buildPrompt(task, widgetName, componentPath) {
@@ -54,6 +98,10 @@ async function main() {
     console.log('  node ai-assistant/cli.js migrate <widget-name> <component-path>');
     console.log('  node ai-assistant/cli.js schema  <widget-name> <component-path>');
     console.log('  node ai-assistant/cli.js readme  <widget-name> <component-path>');
+    console.log('\n环境变量（可选，配置后自动调用大模型）：');
+    console.log('  AI_API_KEY  - API 密钥');
+    console.log('  AI_API_URL  - 接口地址（默认 OpenAI）');
+    console.log('  AI_MODEL    - 模型名（默认 gpt-4o-mini）');
     process.exit(1);
   }
 
@@ -65,10 +113,13 @@ async function main() {
   const prompt = buildPrompt(task, widgetName, componentPath);
   const result = await callAI(prompt);
 
-  // 示例：把 AI 结果写入文件（接入 API 后打开注释）
-  // const outputFile = `${widgetName}.${task === 'migrate' ? 'vue' : task === 'schema' ? 'schema.json' : 'md'}`;
-  // fs.writeFileSync(outputFile, result);
-  // console.log(`已生成: ${outputFile}`);
+  // 有真实返回时写回文件；占位模式（空串）跳过
+  if (result) {
+    const ext = task === 'migrate' ? 'vue' : task === 'schema' ? 'schema.json' : 'md';
+    const outputFile = `${widgetName}.${ext}`;
+    fs.writeFileSync(outputFile, result);
+    console.log(`已生成: ${outputFile}`);
+  }
 }
 
 main().catch(console.error);
