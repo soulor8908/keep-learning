@@ -19,7 +19,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { generateSchema } = require('../schema-generator');
+const { generateSchema, DEFAULT_LAYOUT } = require('../schema-generator');
 
 // 规则库：根据常见 prop 名自动补全语义
 const SEMANTIC_RULES = {
@@ -148,12 +148,9 @@ function enrichSchema(schema, widgetName) {
     });
   }
 
-  // 如果没有 layout，给一个合理默认值
+  // 如果没有 layout，给一个合理默认值（复用 schema-generator 统一常量）
   if (!enriched.layout) {
-    enriched.layout = {
-      defaultSize: { w: 6, h: 4 },
-      minSize: { w: 3, h: 2 }
-    };
+    enriched.layout = DEFAULT_LAYOUT;
   }
 
   return enriched;

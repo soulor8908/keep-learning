@@ -2,9 +2,11 @@
  * Vue2 物料组件自动包装器
  * 使用方式：在 vue.config.js 的 configureWebpack.entry 中引用此文件
  * 通过环境变量 WIDGET_NAME 和 WIDGET_COMPONENT 指定组件名和入口组件路径
+ *
+ * 重要：不使用 @vue/web-component-wrapper（默认创建 Shadow DOM），
+ *   改为手写 HTMLElement 挂载到 light DOM，让 aui 全局样式与主题变量能穿透。
  */
 import Vue from 'vue';
-import wrap from '@vue/web-component-wrapper';
 
 function parseConfig(value) {
   try {
@@ -26,7 +28,42 @@ function createWidgetWrapper(Component, widgetName) {
     }
   };
 
-  return wrap(Vue, BridgeComponent);
+  // 手写 HTMLElement，挂载到 light DOM（不使用 Shadow DOM）
+  // 原因：aui 全局样式与主题变量需要穿透到物料内部，Shadow DOM 会隔离样式
+  class WidgetElement extends HTMLElement {
+    constructor() {
+      super();
+      this.vm = null;
+    }
+
+    static get observedAttributes() {
+      return ['config'];
+    }
+
+    connectedCallback() {
+      const config = this.getAttribute('config');
+      this.vm = new Vue({
+        render: h => h(BridgeComponent, { props: { config } })
+      });
+      this.vm.$mount();
+      this.appendChild(this.vm.$el);
+    }
+
+    disconnectedCallback() {
+      if (this.vm) {
+        this.vm.$destroy();
+        this.vm = null;
+      }
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+      if (name === 'config' && this.vm && this.vm.$children[0]) {
+        this.vm.$children[0].config = parseConfig(newValue);
+      }
+    }
+  }
+
+  return WidgetElement;
 }
 
 const widgetName = process.env.WIDGET_NAME;

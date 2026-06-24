@@ -79,7 +79,21 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
     fs.writeFileSync(tmpFile, wrapperCode);
 
-    config.entry('app').clear().add(tmpFile);
+    // 替换入口为 wrapper：不假设入口名为 'app'，读取实际入口并替换
+    // 避免用户自定义入口名（如 'main'）时残留旧入口导致多 chunk 打包
+    // 注意：webpack-chain 的 entryPoints.store 是底层 Map，不同版本 entryPoints 无 keys()
+    const entryStore = config.entryPoints.store;
+    const entryNames = Array.from(entryStore.keys());
+    if (entryNames.length === 0) {
+      config.entry('app').add(tmpFile);
+    } else {
+      const keep = entryNames[0];
+      // 删除除第一个外的所有入口，避免产出多余 chunk
+      for (const n of entryNames) {
+        if (n !== keep) entryStore.delete(n);
+      }
+      config.entry(keep).clear().add(tmpFile);
+    }
     config.output
       .filename(`${name}.js`)
       .library(name)

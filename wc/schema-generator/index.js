@@ -11,6 +11,12 @@
 const fs = require('fs');
 const path = require('path');
 
+// 物料布局默认值：统一常量，避免多处硬编码导致不一致
+const DEFAULT_LAYOUT = {
+  defaultSize: { w: 6, h: 4 },
+  minSize: { w: 3, h: 2 }
+};
+
 const TYPE_MAP = {
   String: 'string',
   Number: 'number',
@@ -247,8 +253,8 @@ function generateSchema(widgetName, componentPath, options = {}) {
       .filter(([, cfg]) => cfg.required)
       .map(([name]) => name),
     layout: {
-      defaultSize: options.defaultSize || { w: 6, h: 4 },
-      minSize: options.minSize || { w: 3, h: 2 }
+      defaultSize: options.defaultSize || DEFAULT_LAYOUT.defaultSize,
+      minSize: options.minSize || DEFAULT_LAYOUT.minSize
     }
   };
 
@@ -263,7 +269,8 @@ function writeSchema(widgetName, componentPath, outputPath, options) {
 
 module.exports = {
   generateSchema,
-  writeSchema
+  writeSchema,
+  DEFAULT_LAYOUT
 };
 
 // CLI 用法
