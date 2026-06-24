@@ -544,3 +544,33 @@ const widget = {
 | `/workspace/demo/vue3-widget-lib/vite.config.js` | 增加 `element-plus` external |
 
 > 注：本文档为策略设计，不直接修改源码。实际迁移时请按上述清单分步实施，并在每个 widget 迁移完成后执行测试 checklist。
+
+---
+
+## 10. 按需加载补充（生产环境推荐）
+
+> ⚠️ **结论更新**：本文第 2.2 节与第 3 节推荐的「基座提供完整 ElementUI 全量包」方案在生产环境已被**注册表驱动按需加载**方案取代。全量加载仅作为按需加载的**降级兜底**保留，不再作为生产环境首屏加载的首选方案。
+
+### 10.1 为什么不再推荐首屏全量加载
+
+调研数据表明，基座首屏一次性加载完整 ElementUI 的成本偏高：
+
+| 库 | 全量 JS（gzip） | 全量 CSS（未压缩） |
+| --- | --- | --- |
+| `element-ui@2.15.14` | ~198.6 kB | 240 kB |
+| `element-plus@2.7.0` | ~353.5 kB | 320 kB |
+
+而典型 BI 看板卡片往往只用到 5～10 个组件。全量加载会让首屏承担数百 kB 的无效 UI 体积，与项目「最大化页面性能」的首要目标冲突。
+
+### 10.2 新方案：注册表驱动按需加载
+
+新方案通过 `schema.json` 的 `uiDependencies` 字段声明每个物料所需的 UI 组件，由基座在挂载物料前按需并行加载并注册到对应 Vue 运行时，多物料共享同一份组件缓存。典型看板首屏 UI 体积可从 ~350 kB 降至 ~60～100 kB。
+
+- 方案设计与架构图：见 [`elementui-on-demand-loading.md`](./elementui-on-demand-loading.md)
+- `uiDependencies` 字段格式、预加载流程、chunk URL 规范、缓存与降级策略、4 方案对比与实施路线图均在上述文档中详述。
+
+### 10.3 与本文档的关系
+
+- 本文第 4 节「基座注入设计」、第 5 节「构建配置改造（externalize）」、第 6 节「迁移步骤」、第 7 节「回滚方案」仍然适用——物料侧 externalize 与基座托管公共依赖的契约不变。
+- 区别仅在于：基座不再「首屏全量 `app.use(ElementPlus)`」，而是「按 `uiDependencies` 注册表按需加载 per-component chunk，失败时降级到全量包」。
+- 迁移顺序建议：先按本文完成基座 externalize 与物料迁移，再按 [`elementui-on-demand-loading.md`](./elementui-on-demand-loading.md) 第 7.3 节路线图接入按需加载。
