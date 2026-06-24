@@ -7,6 +7,9 @@ import { setupElementPlus } from './element-plus';
 // 把当前 Vue3 暴露给 Vue3 物料 UMD 使用
 window.Vue3 = Vue;
 
+// aui 兼容层：ElementUI 迁移后，只设置 window.aui 版本号通过版本契约校验
+import './aui-compat';
+
 const app = createApp(App);
 // 按需注册 element-plus 组件，并挂载到 window.ElementPlus 供物料复用
 setupElementPlus(app);

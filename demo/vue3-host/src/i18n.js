@@ -5,9 +5,9 @@ import { setLocale } from '../../../wc/i18n/index.js';
 
 const messages = {
   zh: {
-    title: 'Vue3 基座 —— 跨技术栈看板 + 国际化',
-    desc: '同时加载 Vue2 物料（bi-sales-panel）和 Vue3 物料（bi-finance-panel）。切换语言后，基座 UI、物料业务文案、加载器错误提示同步切换。',
-    refresh: '刷新所有物料',
+    title: 'BI 看板 · 框架能力验证',
+    desc: '此看板验证 wc 框架的 10 项关键技术能力',
+    refresh: '刷新数据',
     slot_sales: '销售部 · Vue2 物料',
     slot_finance: '财务部 · Vue3 物料',
     log_title: '消息总线日志',
@@ -18,9 +18,9 @@ const messages = {
     lang_switch: 'English'
   },
   en: {
-    title: 'Vue3 Host — Cross-stack Dashboard + i18n',
-    desc: 'Loads both Vue2 widget (bi-sales-panel) and Vue3 widget (bi-finance-panel). Switching language updates host UI, widget business copy and loader messages together.',
-    refresh: 'Refresh all widgets',
+    title: 'BI Dashboard · Framework Capability Verification',
+    desc: 'This dashboard verifies 10 key technical capabilities of the wc framework',
+    refresh: 'Refresh',
     slot_sales: 'Sales · Vue2 widget',
     slot_finance: 'Finance · Vue3 widget',
     log_title: 'Bus log',

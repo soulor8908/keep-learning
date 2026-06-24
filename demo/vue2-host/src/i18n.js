@@ -8,9 +8,9 @@ Vue.use(VueI18n);
 
 const messages = {
   zh: {
-    title: 'Vue2 基座 —— 版本契约 + 错误边界 + 国际化',
-    desc: '纯 Vue2 基座。Vue2 物料正常加载；Vue3 物料被版本契约明确拒绝（确定性错误，无重试）；崩溃物料被错误边界降级隔离，占位提供"点击重试"。切换语言后，基座 UI、物料业务文案、加载器错误提示同步切换。',
-    refresh: '刷新所有物料',
+    title: 'BI 看板 · 框架能力验证',
+    desc: '此看板验证 wc 框架的 10 项关键技术能力',
+    refresh: '刷新数据',
     slot_sales: '销售部 · Vue2 物料',
     slot_finance: '财务部 · Vue3 物料（版本契约拒绝加载演示）',
     slot_broken: '风控部 · 崩溃物料（错误边界降级演示）',
@@ -23,9 +23,9 @@ const messages = {
     lang_switch: 'English'
   },
   en: {
-    title: 'Vue2 Host — Version Contract + Error Boundary + i18n',
-    desc: 'Pure Vue2 host. Vue2 widget loads normally; Vue3 widget is rejected by version contract (deterministic, no retry); crashing widget is isolated by error boundary with a "Retry" button. Switching language updates host UI, widget business copy and loader messages together.',
-    refresh: 'Refresh all widgets',
+    title: 'BI Dashboard · Framework Capability Verification',
+    desc: 'This dashboard verifies 10 key technical capabilities of the wc framework',
+    refresh: 'Refresh',
     slot_sales: 'Sales · Vue2 widget',
     slot_finance: 'Finance · Vue3 widget (version contract rejection demo)',
     slot_broken: 'Risk · Crashing widget (error boundary demo)',
