@@ -20,24 +20,60 @@ const listeners = new Set();
 let currentLocale = 'zh';
 
 /**
- * 翻译函数
- * @param {string} key 形如 'loader.version_mismatch' 的点分键
- * @param {Object} [params] 插值参数，替换 {name} 等
- * @returns {string}
+ * 解析 locale 的回退链
+ * 例如 'zh-CN' -> ['zh-CN', 'zh', 'en']，'zh-TW' -> ['zh-TW', 'zh', 'en']
+ * 'en-GB' -> ['en-GB', 'en']，'fr' -> ['fr', 'en']
+ * @param {string} locale
+ * @returns {string[]} 按优先级排列的 locale 列表
  */
-function t(key, params) {
-  const dict = messages[currentLocale] || messages.zh;
+function getLocaleFallbackChain(locale) {
+  const chain = [locale];
+  // 提取基础语言（如 zh-CN -> zh）
+  const base = String(locale).split('-')[0];
+  if (base !== locale) chain.push(base);
+  // 最终回退到 en（若尚未包含）
+  if (!chain.includes('en')) chain.push('en');
+  // 最终回退到 zh（若 en 也没有，作为最后保障）
+  if (!chain.includes('zh')) chain.push('zh');
+  return chain;
+}
+
+/**
+ * 在指定 locale 字典中查找点分键
+ * @param {string} locale
+ * @param {string} key
+ * @returns {string|undefined}
+ */
+function lookupInLocale(locale, key) {
+  const dict = messages[locale];
+  if (!dict) return undefined;
   const parts = String(key).split('.');
   let val = dict;
   for (const p of parts) {
     if (val && typeof val === 'object' && p in val) {
       val = val[p];
     } else {
-      val = undefined;
-      break;
+      return undefined;
     }
   }
-  let str = typeof val === 'string' ? val : key; // 缺失键回退到 key 本身
+  return typeof val === 'string' ? val : undefined;
+}
+
+/**
+ * 翻译函数
+ * @param {string} key 形如 'loader.version_mismatch' 的点分键
+ * @param {Object} [params] 插值参数，替换 {name} 等
+ * @returns {string}
+ */
+function t(key, params) {
+  // 按 locale 回退链查找：currentLocale -> 基础语言 -> en -> zh
+  const chain = getLocaleFallbackChain(currentLocale);
+  let str;
+  for (const locale of chain) {
+    str = lookupInLocale(locale, key);
+    if (str !== undefined) break;
+  }
+  if (str === undefined) str = key; // 缺失键回退到 key 本身
   if (params) {
     str = str.replace(/\{(\w+)\}/g, (_, k) => (params[k] != null ? params[k] : `{${k}}`));
   }
@@ -57,7 +93,11 @@ function getLocale() {
  * @param {'zh'|'en'} locale
  */
 function setLocale(locale, force = false) {
-  if (!messages[locale]) return;
+  // 允许设置未在 messages 中注册的 locale（如 zh-CN、zh-TW、en-GB），
+  // t() 会按回退链查找；但若回退链中无任何已知 locale 则忽略
+  const chain = getLocaleFallbackChain(locale);
+  const hasKnown = chain.some(l => messages[l]);
+  if (!hasKnown) return;
   // 相同 locale 默认跳过；force=true 时强制重新广播（用于热更新语言包后刷新物料）
   if (!force && locale === currentLocale) return;
   currentLocale = locale;
