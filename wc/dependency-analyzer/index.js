@@ -22,6 +22,37 @@ function readPackageJson(dir) {
   return JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 }
 
+/**
+ * 解析声明的依赖版本，处理特殊协议：
+ * - workspace:* / workspace:^ / workspace:~ -> 标记为 workspace 协议，实际版本读 node_modules
+ * - npm:vue3@3.4.21 (npm alias) -> 提取实际包名与版本
+ * - link:./path / file:./path -> 标记为本地链接，实际版本读 node_modules
+ * @param {string} declared 原始声明的版本字符串
+ * @returns {{raw: string, protocol?: string, aliasName?: string, aliasVersion?: string}}
+ */
+function resolveDeclaredVersion(declared) {
+  const raw = String(declared || '');
+  // workspace 协议（pnpm/yarn monorepo）
+  if (raw.startsWith('workspace:')) {
+    return { raw, protocol: 'workspace' };
+  }
+  // link:/file: 本地链接
+  if (raw.startsWith('link:') || raw.startsWith('file:')) {
+    return { raw, protocol: 'link' };
+  }
+  // npm alias：npm:<real-pkg>@<version>
+  const aliasMatch = raw.match(/^npm:([^@]+)@(.+)$/);
+  if (aliasMatch) {
+    return {
+      raw,
+      protocol: 'alias',
+      aliasName: aliasMatch[1],
+      aliasVersion: aliasMatch[2]
+    };
+  }
+  return { raw };
+}
+
 function getInstalledVersion(projectDir, depName) {
   // 优先读取项目自身 node_modules
   const projectModulePkg = path.join(projectDir, 'node_modules', depName, 'package.json');
@@ -55,9 +86,16 @@ function collectDeps(projectDir) {
   };
 
   Object.keys(allDeps).forEach(depName => {
+    const resolved = resolveDeclaredVersion(allDeps[depName]);
+    // npm alias 场景：声明的 depName 是别名，实际包名是 resolved.aliasName
+    // 读取已安装版本时需用实际包名查找 node_modules
+    const lookupName = resolved.aliasName || depName;
     result.dependencies[depName] = {
-      declared: allDeps[depName],
-      installed: getInstalledVersion(projectDir, depName)
+      declared: resolved.raw,
+      // alias 协议下，声明的版本即 aliasVersion（更准确）；其余读 node_modules
+      installed: resolved.aliasVersion || getInstalledVersion(projectDir, lookupName),
+      protocol: resolved.protocol || null,
+      aliasName: resolved.aliasName || null
     };
   });
 
@@ -78,7 +116,9 @@ function analyze(projects) {
         project: project.name,
         dir: project.dir,
         declared: info.declared,
-        installed: info.installed
+        installed: info.installed,
+        protocol: info.protocol,
+        aliasName: info.aliasName
       });
     });
   });
@@ -138,7 +178,8 @@ function printReport(analysis) {
       const icon = hasConflict ? '🔴' : '🟢';
       console.log(`\n${icon} ${depName}`);
       usages.forEach(u => {
-        console.log(`   ${u.project}: declared=${u.declared}, installed=${u.installed || '未安装'}`);
+        const protoTag = u.protocol ? ` [${u.protocol}]` : '';
+        console.log(`   ${u.project}: declared=${u.declared}${protoTag}, installed=${u.installed || '未安装'}`);
       });
       if (hasConflict) {
         console.log(`   ⚠️  版本冲突: ${installedVersions.join(' vs ')}`);
