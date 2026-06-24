@@ -24,33 +24,50 @@ const SUPPORTED_DEPS = {
 };
 
 // ─── 轻量 semver 实现（避免引入外部依赖）───
-// 支持 ^、~、>=、>、<=、<、= 与精确版本，足以覆盖 compatibleRange 场景。
+// 支持 ^、~、>=、>、<=、<、= 与精确版本、||（或范围）、*（通配符）、预发布版本。
 function parseVersion(v) {
   const clean = String(v).trim().replace(/^[v=]+/, '');
-  const [main] = clean.split(/[-+]/);
+  // 分离主版本与预发布（如 1.0.0-beta.1）与 build metadata（如 +sha）
+  const [main, prerelease] = clean.split(/[-+]/);
   const parts = main.split('.');
   return {
     major: parseInt(parts[0], 10) || 0,
     minor: parseInt(parts[1], 10) || 0,
-    patch: parseInt(parts[2], 10) || 0
+    patch: parseInt(parts[2], 10) || 0,
+    // 预发布标识：undefined 表示正式版，非空字符串表示预发布（比较时正式版 > 预发布）
+    prerelease: prerelease || undefined
   };
 }
 
 function compareVersion(a, b) {
   if (a.major !== b.major) return a.major - b.major;
   if (a.minor !== b.minor) return a.minor - b.minor;
-  return a.patch - b.patch;
+  if (a.patch !== b.patch) return a.patch - b.patch;
+  // 预发布比较：无预发布（正式版）> 有预发布
+  if (!a.prerelease && b.prerelease) return 1;
+  if (a.prerelease && !b.prerelease) return -1;
+  if (a.prerelease && b.prerelease) {
+    return a.prerelease < b.prerelease ? -1 : a.prerelease > b.prerelease ? 1 : 0;
+  }
+  return 0;
 }
 
-export function satisfies(version, range) {
-  const m = String(range).trim().match(/^([\^~>=<]*)\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+// 判断单个范围片段（不含 ||）是否满足
+function satisfiesSingle(version, range) {
+  const trimmed = String(range).trim();
+  // 通配符 * 或空范围：匹配任意版本
+  if (trimmed === '' || trimmed === '*') return true;
+
+  const m = trimmed.match(/^([\^~>=<]*)\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?(.*)$/);
   if (!m) return true; // 无法解析的范围，放行
   const op = m[1] || '';
   const req = {
     major: parseInt(m[2], 10) || 0,
     minor: parseInt(m[3], 10) || 0,
-    patch: parseInt(m[4], 10) || 0
+    patch: parseInt(m[4], 10) || 0,
+    prerelease: m[6] || undefined
   };
+  // 四段版本（如 1.0.0.0）视为 1.0.0，忽略第四段
   const v = parseVersion(version);
 
   switch (op) {
@@ -81,6 +98,15 @@ export function satisfies(version, range) {
     default:
       return compareVersion(v, req) === 0;
   }
+}
+
+export function satisfies(version, range) {
+  const r = String(range).trim();
+  // 支持 || 或范围：任一片段满足即可
+  if (r.includes('||')) {
+    return r.split('||').some(part => satisfiesSingle(version, part));
+  }
+  return satisfiesSingle(version, r);
 }
 
 /**
