@@ -139,6 +139,23 @@ function log(...args) {
   }
 }
 
+// ─── 错误码枚举 ───
+// 基座可根据 err.code 做差异化降级（如超时重试、404 直接弃用）
+export const WidgetError = {
+  LOAD_TIMEOUT: 'LOAD_TIMEOUT',         // 资源加载超时
+  SCRIPT_ERROR: 'SCRIPT_ERROR',         // JS 脚本加载/执行失败
+  CSS_ERROR: 'CSS_ERROR',               // CSS 样式加载失败
+  VERSION_MISMATCH: 'DEP_VERSION_MISMATCH', // 公共依赖版本不兼容
+  NOT_FOUND: 'NOT_FOUND',               // 物料未找到（name/js 缺失）
+  ELEMENT_TIMEOUT: 'ELEMENT_TIMEOUT'    // Custom Element 注册超时
+};
+
+function createError(message, code) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
 // 资源加载默认超时：CDN 抖动/网络挂起时避免 Promise 永不 settle
 const DEFAULT_LOAD_TIMEOUT = 15000;
 
@@ -165,7 +182,7 @@ function loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
       settled = true;
       if (script.parentNode) script.parentNode.removeChild(script);
       loadedResources.delete(url);
-      reject(new Error(`Timeout loading script: ${url}`));
+      reject(createError(`Timeout loading script: ${url}`, WidgetError.LOAD_TIMEOUT));
     }, timeout);
     script.onload = () => {
       if (settled) return;
@@ -180,7 +197,7 @@ function loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
       clearTimeout(timer);
       if (script.parentNode) script.parentNode.removeChild(script);
       loadedResources.delete(url);
-      reject(new Error(`Failed to load script: ${url}`));
+      reject(createError(`Failed to load script: ${url}`, WidgetError.SCRIPT_ERROR));
     };
     document.head.appendChild(script);
   });
@@ -215,7 +232,7 @@ function loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
       settled = true;
       if (link.parentNode) link.parentNode.removeChild(link);
       loadedResources.delete(url);
-      reject(new Error(`Timeout loading style: ${url}`));
+      reject(createError(`Timeout loading style: ${url}`, WidgetError.LOAD_TIMEOUT));
     }, timeout);
     link.onload = () => {
       if (settled) return;
@@ -230,7 +247,7 @@ function loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
       clearTimeout(timer);
       if (link.parentNode) link.parentNode.removeChild(link);
       loadedResources.delete(url);
-      reject(new Error(`Failed to load style: ${url}`));
+      reject(createError(`Failed to load style: ${url}`, WidgetError.CSS_ERROR));
     };
     document.head.appendChild(link);
   });
@@ -253,7 +270,7 @@ function waitForCustomElement(name, timeout = 5000) {
     return Promise.race([
       customElements.whenDefined(name),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Timeout waiting for custom element: ${name}`)), timeout)
+        setTimeout(() => reject(createError(`Timeout waiting for custom element: ${name}`, WidgetError.ELEMENT_TIMEOUT)), timeout)
       )
     ]);
   }
@@ -280,7 +297,7 @@ function waitForCustomElement(name, timeout = 5000) {
       if (Date.now() - start > timeout) {
         clearInterval(timer);
         timer = null;
-        reject(new Error(`Timeout waiting for custom element: ${name}`));
+        reject(createError(`Timeout waiting for custom element: ${name}`, WidgetError.ELEMENT_TIMEOUT));
       }
     }, 50);
   });
@@ -302,7 +319,7 @@ export async function loadWidget(widget) {
   const { name, js, css } = widget;
 
   if (!name || !js) {
-    throw new Error('widget name and js URL are required');
+    throw createError('widget name and js URL are required', WidgetError.NOT_FOUND);
   }
 
   if (definedElements.has(name)) {
@@ -614,7 +631,7 @@ export async function mountWidget(container, widget) {
     return await attemptMount(container, widget);
   } catch (error) {
     emitLifecycle('error', { name: widget.name, error, container });
-    const isVersionMismatch = error.code === 'DEP_VERSION_MISMATCH';
+    const isVersionMismatch = error.code === WidgetError.VERSION_MISMATCH;
     const message = isVersionMismatch
       ? error.message
       : `[widget-loader] ${t('loader.mount_failed', { name: widget.name })}\n${error.message || error}`;
