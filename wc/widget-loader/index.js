@@ -161,8 +161,16 @@ const DEFAULT_LOAD_TIMEOUT = 15000;
 
 /**
  * 加载 JS 脚本
+ *
+ * 竞态修复：将"真实加载结果"与"超时"分离。
+ * - loadPromise 由 onload/onerror 决定，缓存它：即使超时后脚本最终加载成功，
+ *   后续调用复用已 resolve 的 loadPromise，不会重复创建 <script> 标签。
+ * - 调用方拿到的是 Promise.race(loadPromise, timeout)：超时只 reject 给调用方，
+ *   不移除 script 节点（可能仍在加载）、不删除缓存（避免重复加载）。
+ * - 真正的 onerror 失败才清理缓存，允许重试。
+ *
  * @param {string} url
- * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒，超时后 reject 并清理节点
+ * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒，超时后 reject（不清理节点/缓存）
  * @returns {Promise<void>}
  */
 function loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
@@ -172,42 +180,47 @@ function loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
   }
 
   log('loading script:', url);
-  const promise = new Promise((resolve, reject) => {
+  const loadPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = url;
     script.async = true;
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      if (script.parentNode) script.parentNode.removeChild(script);
-      loadedResources.delete(url);
-      reject(createError(`Timeout loading script: ${url}`, WidgetError.LOAD_TIMEOUT));
-    }, timeout);
     script.onload = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
       log('script loaded:', url);
       resolve();
     };
     script.onerror = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
+      // 真正的加载失败：移除节点，允许后续重试
       if (script.parentNode) script.parentNode.removeChild(script);
-      loadedResources.delete(url);
       reject(createError(`Failed to load script: ${url}`, WidgetError.SCRIPT_ERROR));
     };
     document.head.appendChild(script);
   });
 
-  loadedResources.set(url, promise);
-  return promise;
+  // 真正失败时清理缓存，允许重试（仅当缓存仍指向当前 promise）
+  loadPromise.catch(() => {
+    if (loadedResources.get(url) === loadPromise) {
+      loadedResources.delete(url);
+    }
+  });
+
+  // 缓存真实加载结果：即使超时后脚本最终加载成功，后续调用复用此 promise
+  loadedResources.set(url, loadPromise);
+
+  // 调用方拿到 race 结果：超时只 reject 给调用方，不清理 script 节点与缓存
+  return Promise.race([
+    loadPromise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(createError(`Timeout loading script: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout)
+    )
+  ]);
 }
 
 /**
  * 加载 CSS 样式
+ *
+ * 竞态修复：同 loadScript，将真实加载结果与超时分离，避免超时误删已加载样式
+ * 导致下次重复加载。详见 loadScript 注释。
+ *
  * @param {string} url
  * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒
  * @returns {Promise<void>}
@@ -222,38 +235,35 @@ function loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
   }
 
   log('loading style:', url);
-  const promise = new Promise((resolve, reject) => {
+  const loadPromise = new Promise((resolve, reject) => {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = url;
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      if (link.parentNode) link.parentNode.removeChild(link);
-      loadedResources.delete(url);
-      reject(createError(`Timeout loading style: ${url}`, WidgetError.LOAD_TIMEOUT));
-    }, timeout);
     link.onload = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
       log('style loaded:', url);
       resolve();
     };
     link.onerror = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
       if (link.parentNode) link.parentNode.removeChild(link);
-      loadedResources.delete(url);
       reject(createError(`Failed to load style: ${url}`, WidgetError.CSS_ERROR));
     };
     document.head.appendChild(link);
   });
 
-  loadedResources.set(url, promise);
-  return promise;
+  loadPromise.catch(() => {
+    if (loadedResources.get(url) === loadPromise) {
+      loadedResources.delete(url);
+    }
+  });
+
+  loadedResources.set(url, loadPromise);
+
+  return Promise.race([
+    loadPromise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(createError(`Timeout loading style: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout)
+    )
+  ]);
 }
 
 /**
