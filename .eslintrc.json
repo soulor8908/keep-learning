@@ -1,0 +1,39 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2022": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "globals": {
+    "customElements": "readonly",
+    "HTMLElement": "readonly",
+    "CustomEvent": "readonly",
+    "MutationObserver": "readonly",
+    "AbortController": "readonly",
+    "fetch": "readonly",
+    "window": "readonly",
+    "document": "readonly",
+    "console": "readonly",
+    "process": "readonly",
+    "setTimeout": "readonly",
+    "clearTimeout": "readonly",
+    "Promise": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-undef": "error",
+    "no-redeclare": "error",
+    "no-dupe-keys": "error",
+    "no-unreachable": "error",
+    "no-constant-condition": "error",
+    "no-debugger": "error",
+    "no-console": "off",
+    "prefer-const": "warn",
+    "eqeqeq": ["warn", "smart"]
+  }
+}
