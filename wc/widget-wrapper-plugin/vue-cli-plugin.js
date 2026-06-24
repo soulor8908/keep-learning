@@ -23,7 +23,9 @@ import Vue from 'vue';
 import Component from '__WIDGET_COMPONENT__';
 
 // 告诉 Vue2 编译器 el-* 是自定义元素，不要当 Vue 组件解析
-Vue.config.ignoredElements = [/^el-/];
+// 使用合并而非覆盖，避免污染基座或其他物料的 ignoredElements 配置
+const _existing = Array.isArray(Vue.config.ignoredElements) ? Vue.config.ignoredElements : [];
+Vue.config.ignoredElements = [..._existing, /^el-/];
 
 function parseConfig(value) {
   try { return value ? JSON.parse(value) : {}; } catch { return {}; }
