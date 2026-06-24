@@ -1,19 +1,21 @@
 <template>
-  <aui-card :title="config.title || t('finance.title')">
-    <aui-row>
-      <aui-statistic :label="t('finance.income_label')" :prefix="symbol" :value="summary.income.toLocaleString()" />
-      <aui-statistic :label="t('finance.expense_label')" :prefix="symbol" :value="summary.expense.toLocaleString()" />
-    </aui-row>
+  <el-card :header="config.title || t('finance.title')">
+    <el-row>
+      <el-statistic :title="t('finance.income_label')" :prefix="symbol" :value="summary.income" />
+      <el-statistic :title="t('finance.expense_label')" :prefix="symbol" :value="summary.expense" />
+    </el-row>
     <template v-if="config.showBreakdown">
-      <aui-list-item
+      <div
         v-for="(item, idx) in breakdown"
         :key="idx"
-        :label="item.label"
-        :value="`${symbol}${item.value.toLocaleString()}`"
-      />
+        class="finance-list-item"
+      >
+        <span class="finance-list-label">{{ item.label }}</span>
+        <span class="finance-list-value">{{ `${symbol}${item.value.toLocaleString()}` }}</span>
+      </div>
     </template>
-    <aui-footer>{{ t('finance.currency_label') }}：{{ currencyText }}</aui-footer>
-  </aui-card>
+    <div class="finance-footer">{{ t('finance.currency_label') }}：{{ currencyText }}</div>
+  </el-card>
 </template>
 
 <script>
@@ -78,3 +80,28 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.finance-list-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+}
+.finance-list-item:last-child {
+  border-bottom: none;
+}
+.finance-list-label {
+  color: #6b7280;
+}
+.finance-list-value {
+  color: #111827;
+  font-weight: 500;
+}
+.finance-footer {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #6b7280;
+}
+</style>

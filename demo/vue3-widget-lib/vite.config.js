@@ -7,8 +7,8 @@ export default defineConfig({
     vue({
       template: {
         compilerOptions: {
-          // 告诉 Vue3 编译器 aui-* 是自定义元素，不要当 Vue 组件解析
-          isCustomElement: (tag) => tag.startsWith('aui-')
+          // 告诉 Vue3 编译器 el-* 是自定义元素，不要当 Vue 组件解析
+          isCustomElement: (tag) => tag.startsWith('el-')
         }
       }
     }),
