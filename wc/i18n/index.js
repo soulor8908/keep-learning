@@ -121,16 +121,38 @@ function onLocaleChange(cb) {
 }
 
 /**
+ * 深合并两个对象：递归合并嵌套对象，非对象值直接覆盖
+ * @param {Object} target 目标对象（会被修改）
+ * @param {Object} source 源对象
+ * @returns {Object} 合并后的 target
+ */
+function deepMerge(target, source) {
+  if (!source || typeof source !== 'object') return target;
+  Object.keys(source).forEach(key => {
+    const tVal = target[key];
+    const sVal = source[key];
+    if (tVal && typeof tVal === 'object' && !Array.isArray(tVal)
+        && sVal && typeof sVal === 'object' && !Array.isArray(sVal)) {
+      // 两边都是普通对象，递归合并
+      target[key] = deepMerge({ ...tVal }, sVal);
+    } else {
+      // 非对象或数组，直接覆盖
+      target[key] = sVal;
+    }
+  });
+  return target;
+}
+
+/**
  * 运行时追加语言包（部门/物料可注入自己的文案）
  * @param {string} locale 目标语言，如 'zh' / 'en'
  * @param {Object} msgs 待合并的字典，会深合并到现有字典
  */
 function addMessages(locale, msgs) {
   if (!messages[locale]) messages[locale] = {};
-  // 浅层合并顶层 key（按命名空间覆盖），避免深合并复杂度
-  Object.keys(msgs).forEach(ns => {
-    messages[locale][ns] = Object.assign({}, messages[locale][ns], msgs[ns]);
-  });
+  // 深合并：递归合并嵌套对象，避免部门注入文案时意外覆盖基座已有的其他 key
+  // 例如 msgs.loader.dep_missing 不会覆盖基座的 loader.dep_version
+  deepMerge(messages[locale], msgs);
 }
 
 const i18n = { t, getLocale, setLocale, onLocaleChange, addMessages };
