@@ -1,0 +1,6 @@
+- [x] README.md 包含项目定位、核心概念、目录结构、快速开始、迁移流程、Spec 工作流
+- [x] README.md 语言通俗易懂，能在 5 分钟内让新成员理解项目
+- [x] docs/architecture.md 存在并完整说明 Vue 2/Vue 3 隔离、widget-loader、external 设计
+- [x] docs/elementui-migration-strategy.md 存在并覆盖版本选择、按需引入、基座 external、迁移步骤
+- [x] 所有新增/修改文档的 Markdown 语法正确
+- [x] 文档内部链接与代码引用均有效
