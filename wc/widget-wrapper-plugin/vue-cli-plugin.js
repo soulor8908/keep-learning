@@ -44,8 +44,13 @@ class WidgetElement extends HTMLElement {
   connectedCallback() {
     const config = this.getAttribute('config');
     // 不使用 Shadow DOM，直接挂载到 light DOM，让 aui 全局样式能穿透
+    // 使用 reactive data 承载 config，attributeChangedCallback 中更新
+    // this.vm.widgetConfig 即可触发响应式重渲染，无需依赖 $children 内部 API
     this.vm = new Vue({
-      render: h => h(Component, { props: { config: parseConfig(config) } })
+      data: { widgetConfig: parseConfig(config) },
+      render(h) {
+        return h(Component, { props: { config: this.widgetConfig } });
+      }
     });
     this.vm.$mount();
     this.appendChild(this.vm.$el);
@@ -59,8 +64,9 @@ class WidgetElement extends HTMLElement {
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (name === 'config' && this.vm && this.vm.$children[0]) {
-      this.vm.$children[0].config = parseConfig(newValue);
+    // 更新 reactive data，Vue 自动触发重渲染，不依赖 $children[0] 顺序
+    if (name === 'config' && this.vm) {
+      this.vm.widgetConfig = parseConfig(newValue);
     }
   }
 }
