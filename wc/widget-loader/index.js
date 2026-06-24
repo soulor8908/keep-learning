@@ -12,6 +12,8 @@ import { t } from '../i18n/index.js';
 
 const loadedResources = new Map();
 const definedElements = new Set();
+// 物料名 -> { js, css }：记录每个物料加载的资源 URL，供 unloadWidget 清理
+const widgetResources = new Map();
 
 // ─── 公共依赖版本契约 ───
 // 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖。
@@ -345,6 +347,8 @@ export async function loadWidget(widget) {
     await Promise.all([loadScript(js), loadStyle(css)]);
     await waitForCustomElement(name);
     definedElements.add(name);
+    // 记录资源 URL，供 unloadWidget 清理
+    widgetResources.set(name, { js, css });
     log('widget loaded:', name);
   } catch (error) {
     console.error(`[widget-loader] load widget "${name}" failed:`, error);
@@ -668,4 +672,35 @@ export function unmountWidget(element) {
   if (element.parentNode) {
     element.parentNode.removeChild(element);
   }
+}
+
+/**
+ * 卸载并回收物料资源：移除 JS/CSS 标签、清理缓存与已定义元素记录，
+ * 使该物料可被重新加载（用于热更新、版本切换、A/B 测试）。
+ *
+ * 注意：customElements.define 不可撤销，重新加载同名物料时若定义已存在
+ * 浏览器会抛错；此处仅清理 definedElements 记录，使 loadWidget 不再短路。
+ * 若需真正重新注册同名 Custom Element，需刷新页面或使用不同名称。
+ *
+ * @param {string} name 物料名（Custom Element 名）
+ */
+export function unloadWidget(name) {
+  if (!name) return;
+  const resources = widgetResources.get(name);
+  if (resources) {
+    // 移除 <script> / <link> 标签
+    if (resources.js) {
+      const scripts = document.querySelectorAll(`script[src="${resources.js}"]`);
+      scripts.forEach(s => s.parentNode && s.parentNode.removeChild(s));
+      loadedResources.delete(resources.js);
+    }
+    if (resources.css) {
+      const links = document.querySelectorAll(`link[href="${resources.css}"]`);
+      links.forEach(l => l.parentNode && l.parentNode.removeChild(l));
+      loadedResources.delete(resources.css);
+    }
+    widgetResources.delete(name);
+  }
+  definedElements.delete(name);
+  log('widget unloaded:', name);
 }
