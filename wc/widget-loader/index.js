@@ -12,7 +12,8 @@ import { t } from '../i18n/index.js';
 
 // ─── 公共依赖版本契约 ───
 // 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖。
-const SUPPORTED_DEPS = {
+// 导出供基座（如 aui-compat）读取实际承诺版本，避免硬编码导致版本不一致
+export const SUPPORTED_DEPS = {
   vue2: { version: '2.6.14', compatibleRange: '^2.6.0', globalVar: 'Vue2' },
   vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' },
   aui:  { version: '1.8.2',  compatibleRange: '^1.8.0', globalVar: 'aui'  }

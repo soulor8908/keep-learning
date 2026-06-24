@@ -7,5 +7,10 @@
  *
  * 本文件只设置 window.aui 版本号，不注册任何 aui-* 组件，
  * 让版本契约校验通过，同时避免 aui 与 ElementUI 组件冲突。
+ *
+ * 版本号从 widget-loader 的 SUPPORTED_DEPS 读取，保持与基座承诺一致，
+ * 避免硬编码导致版本号与实际契约不一致。
  */
-window.aui = { version: '1.8.2' };
+import { SUPPORTED_DEPS } from '../../../wc/widget-loader/index.js';
+
+window.aui = { version: SUPPORTED_DEPS.aui.version };
