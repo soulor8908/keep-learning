@@ -241,11 +241,24 @@ function loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
 
 /**
  * 等待 Custom Element 注册完成
+ * 优先使用原生 customElements.whenDefined（基于内部注册回调，无 CPU 开销），
+ * 降级到轮询（针对不支持 whenDefined 的旧浏览器）。
  * @param {string} name
  * @param {number} timeout
  * @returns {Promise<void>}
  */
 function waitForCustomElement(name, timeout = 5000) {
+  // 优先使用原生 whenDefined API
+  if (typeof customElements.whenDefined === 'function') {
+    return Promise.race([
+      customElements.whenDefined(name),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Timeout waiting for custom element: ${name}`)), timeout)
+      )
+    ]);
+  }
+
+  // 降级：轮询 customElements.get（旧浏览器兼容）
   let timer;
   const promise = new Promise((resolve, reject) => {
     if (customElements.get(name)) {
@@ -254,7 +267,7 @@ function waitForCustomElement(name, timeout = 5000) {
       return;
     }
 
-    log('waiting for custom element:', name);
+    log('waiting for custom element (polling):', name);
     const start = Date.now();
     timer = setInterval(() => {
       if (customElements.get(name)) {
@@ -271,7 +284,6 @@ function waitForCustomElement(name, timeout = 5000) {
       }
     }, 50);
   });
-  // 挂载取消方法：调用方放弃等待时可清理定时器，避免泄漏
   promise.cancel = () => {
     if (timer) { clearInterval(timer); timer = null; }
   };
