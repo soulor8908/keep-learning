@@ -39,6 +39,15 @@ function createWidgetWrapper(Component, widgetName) {
           'aui 全局样式将无法穿透。请勿使用 defineCustomElement 或 attachShadow。'
         );
       }
+      this._mount();
+    }
+
+    // 挂载/重挂载：config 变化时 unmount 旧实例再重建，避免依赖 Vue 内部 API
+    _mount() {
+      if (this.app) {
+        this.app.unmount();
+        this.app = null;
+      }
       const config = this.getAttribute('config');
       // 直接把 Object 传给业务组件，组件内部无需 JSON.parse
       // mount(this) 挂载到 light DOM，不创建 shadow root
@@ -56,9 +65,9 @@ function createWidgetWrapper(Component, widgetName) {
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
-      if (name === 'config' && this.app) {
-        // Vue3 直接更新根组件 props，触发重新渲染
-        this.app._instance.props.config = parseConfig(newValue);
+      // config 变化：unmount 后重新挂载，走标准公开 API，不触碰内部 _instance
+      if (name === 'config' && this.app && oldValue !== newValue) {
+        this._mount();
       }
     }
   };

@@ -53,13 +53,17 @@ export function satisfies(version, range) {
 
   switch (op) {
     case '^':
-      // >= req 且 < (major+1).0.0；0.x 收紧到同 minor
+      // >= req 且 < (major+1).0.0；0.x 收紧到同 minor 且 patch >= req.patch；0.0.x 收紧到同 patch
       if (compareVersion(v, req) < 0) return false;
       if (req.major === 0) {
+        if (req.minor === 0) {
+          return v.major === 0 && v.minor === 0 && v.patch === req.patch;
+        }
         return v.major === 0 && v.minor === req.minor;
       }
       return v.major === req.major;
     case '~':
+      // >= req 且 < (major).(minor+1).0
       if (compareVersion(v, req) < 0) return false;
       return v.major === req.major && v.minor === req.minor;
     case '>=':
@@ -135,12 +139,16 @@ function log(...args) {
   }
 }
 
+// 资源加载默认超时：CDN 抖动/网络挂起时避免 Promise 永不 settle
+const DEFAULT_LOAD_TIMEOUT = 15000;
+
 /**
  * 加载 JS 脚本
  * @param {string} url
+ * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒，超时后 reject 并清理节点
  * @returns {Promise<void>}
  */
-function loadScript(url) {
+function loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
   if (loadedResources.has(url)) {
     log('script cached:', url);
     return loadedResources.get(url);
@@ -151,12 +159,28 @@ function loadScript(url) {
     const script = document.createElement('script');
     script.src = url;
     script.async = true;
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      // 超时：移除节点，清除缓存，允许重试
+      if (script.parentNode) script.parentNode.removeChild(script);
+      loadedResources.delete(url);
+      reject(new Error(`Timeout loading script: ${url}`));
+    }, timeout);
     script.onload = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       log('script loaded:', url);
       resolve();
     };
     script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       // 失败时清除缓存，允许"点击重试"重新拉取（应对 CDN 偶发网络抖动）
+      if (script.parentNode) script.parentNode.removeChild(script);
       loadedResources.delete(url);
       reject(new Error(`Failed to load script: ${url}`));
     };
@@ -170,9 +194,10 @@ function loadScript(url) {
 /**
  * 加载 CSS 样式
  * @param {string} url
+ * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒
  * @returns {Promise<void>}
  */
-function loadStyle(url) {
+function loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
   if (!url) {
     return Promise.resolve();
   }
@@ -186,12 +211,27 @@ function loadStyle(url) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = url;
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      if (link.parentNode) link.parentNode.removeChild(link);
+      loadedResources.delete(url);
+      reject(new Error(`Timeout loading style: ${url}`));
+    }, timeout);
     link.onload = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       log('style loaded:', url);
       resolve();
     };
     link.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       // 失败时清除缓存，允许重试
+      if (link.parentNode) link.parentNode.removeChild(link);
       loadedResources.delete(url);
       reject(new Error(`Failed to load style: ${url}`));
     };
@@ -290,7 +330,8 @@ export async function loadWidgets(widgets) {
 // ─── 错误边界（Step 3）：单点失败不影响整体 ───
 // 跟踪已挂载物料，全局监听运行时错误并归因到对应物料，
 // 命中后用降级占位替换崩溃物料，避免整个看板白屏。
-const mountedWidgets = new Map(); // name -> { element, container, widget, failed }
+// key 用 DOM 元素实例（WeakMap），同一物料多实例互不覆盖，元素销毁后自动回收。
+const mountedWidgets = new WeakMap(); // element -> { container, widget, failed }
 let globalErrorListenerInstalled = false;
 
 /**
@@ -331,11 +372,12 @@ function renderFallback(container, message, widget, onRetry) {
   return errorNode;
 }
 
-function markWidgetFailed(name, error) {
-  const entry = mountedWidgets.get(name);
+function markWidgetFailed(element, error) {
+  const entry = mountedWidgets.get(element);
   if (!entry || entry.failed) return; // 已降级则不重复处理
   entry.failed = true;
-  const { element, container, widget } = entry;
+  const { container, widget } = entry;
+  const name = widget.name;
   // 移除崩溃的物料元素，避免残留破坏节点影响布局
   if (element && element.parentNode === container) {
     container.removeChild(element);
@@ -344,7 +386,7 @@ function markWidgetFailed(name, error) {
   const message = `[widget-loader] ${t('loader.runtime_crash', { name })}\n${reason}`;
   // 运行时崩溃重试：脚本已加载（loadWidget 会短路），重新创建元素实例挂载
   const onRetry = () => {
-    mountedWidgets.delete(name); // 清除 failed 标记，允许错误边界重新归因
+    mountedWidgets.delete(element); // 清除 failed 标记，允许错误边界重新归因
     mountWithFallback(container, widget);
   };
   renderFallback(container, message, widget, onRetry);
@@ -355,9 +397,9 @@ function attributeErrorToWidget(event) {
   // 1. 资源错误（img/script 加载失败）：target 是元素，看落在哪个物料里
   const target = event.target;
   if (target && target instanceof Element) {
-    for (const [name, entry] of mountedWidgets) {
-      if (!entry.failed && entry.element && entry.element.contains(target)) {
-        return name;
+    for (const [element, entry] of mountedWidgets) {
+      if (!entry.failed && element.contains(target)) {
+        return element;
       }
     }
   }
@@ -368,11 +410,12 @@ function attributeErrorToWidget(event) {
     (event.error && event.error.stack) || ''
   ].filter(Boolean).join('\n');
   if (source) {
-    for (const [name, entry] of mountedWidgets) {
+    for (const [element, entry] of mountedWidgets) {
       if (entry.failed) continue;
       const jsUrl = entry.widget.js || '';
-      if (jsUrl && source.includes(jsUrl)) return name;
-      if (source.includes(name)) return name;
+      const name = entry.widget.name || '';
+      if (jsUrl && source.includes(jsUrl)) return element;
+      if (name && source.includes(name)) return element;
     }
   }
   return null;
@@ -383,10 +426,10 @@ function ensureGlobalErrorListener() {
   globalErrorListenerInstalled = true;
   // 捕获阶段监听 error：资源错误 target=元素，JS 错误 target=window，都能收到
   window.addEventListener('error', (event) => {
-    const name = attributeErrorToWidget(event);
-    if (name) {
+    const element = attributeErrorToWidget(event);
+    if (element) {
       const error = event.error || new Error(event.message || 'widget runtime error');
-      markWidgetFailed(name, error);
+      markWidgetFailed(element, error);
       // 已降级处理，抑制浏览器默认报错，避免干扰基座
       event.preventDefault();
     }
@@ -395,14 +438,17 @@ function ensureGlobalErrorListener() {
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
     const stack = (reason && reason.stack) || String(reason || '');
-    for (const [name, entry] of mountedWidgets) {
+    for (const [element, entry] of mountedWidgets) {
       if (entry.failed) continue;
       const jsUrl = entry.widget.js || '';
-      if ((jsUrl && stack.includes(jsUrl)) || stack.includes(name)) {
+      const name = entry.widget.name || '';
+      if ((jsUrl && stack.includes(jsUrl)) || (name && stack.includes(name))) {
         markWidgetFailed(
-          name,
+          element,
           reason instanceof Error ? reason : new Error(String(reason))
         );
+        // 已归因并降级，阻止控制台未处理 rejection 告警
+        event.preventDefault();
         break;
       }
     }
@@ -444,7 +490,8 @@ async function attemptMount(container, widget) {
   await loadWidget(widget);
   const element = renderWidget(container, widget);
   // 注册到错误边界：运行时崩溃时自动降级，单点失败不影响整体
-  mountedWidgets.set(widget.name, { element, container, widget, failed: false });
+  // key 用元素实例，同一物料多实例互不覆盖
+  mountedWidgets.set(element, { container, widget, failed: false });
   ensureGlobalErrorListener();
   return element;
 }

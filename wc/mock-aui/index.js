@@ -209,9 +209,18 @@ class AuiButton extends HTMLElement {
     btn.className = `aui-button ${typeClass}`;
     // 保留子元素
     wrapChildren(this, btn);
-    this.addEventListener('click', () => {
+    // 保存 handler 引用，断开连接时移除，避免重复挂载累积监听器
+    this._auiClickHandler = () => {
       this.dispatchEvent(new CustomEvent('aui-click', { bubbles: true }));
-    });
+    };
+    this.addEventListener('click', this._auiClickHandler);
+  }
+
+  disconnectedCallback() {
+    if (this._auiClickHandler) {
+      this.removeEventListener('click', this._auiClickHandler);
+      this._auiClickHandler = null;
+    }
   }
 }
 
