@@ -134,9 +134,17 @@ module.exports = function widgetVueCliPlugin(options = {}) {
       console.warn('[widget-vue-cli-plugin] 自动生成 schema.json 失败:', e.message);
     }
 
-    // 构建进程结束后清理临时 wrapper 文件，避免 tmp 目录堆积
-    process.once('exit', () => {
-      try { fs.unlinkSync(tmpFile); } catch (_) {}
+    // 构建完成后清理临时 wrapper 文件
+    // 使用 webpack done hook 而非 process.once('exit')，后者在 kill -9 /
+    // 进程崩溃时不会触发，导致 /tmp 目录堆积临时文件
+    config.plugin('widget-wrapper-cleanup').use(class {
+      apply(compiler) {
+        compiler.hooks.done.tap('widget-wrapper-cleanup', () => {
+          // watch 模式下保留文件，避免后续重编译找不到入口
+          if (compiler.options.watch) return;
+          try { fs.unlinkSync(tmpFile); } catch (_) {}
+        });
+      }
     });
   };
 };
