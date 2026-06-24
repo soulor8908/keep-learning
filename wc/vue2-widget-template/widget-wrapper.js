@@ -19,6 +19,8 @@ function parseConfig(value) {
 
 function createWidgetWrapper(Component, widgetName) {
   // 桥接组件：把 Custom Element 接收到的 String config 转成 Object 再传给业务组件
+  // 注意：render 中每次调用 parseConfig 都返回新对象引用，确保业务组件的
+  // watch: { config } / watch: { config: { deep: true } } 都能触发（P2-22）
   const BridgeComponent = {
     props: ['config'],
     render(h) {
