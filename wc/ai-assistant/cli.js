@@ -20,6 +20,12 @@ const path = require('path');
 
 const PROMPT_DIR = path.join(__dirname, 'prompts');
 
+// 物料名只允许小写字母、数字、连字符，防止路径遍历攻击（如 ../../../etc/passwd）
+const WIDGET_NAME_RE = /^[a-z0-9-]+$/;
+
+// AI 接口请求超时（毫秒），避免大模型接口卡死时 CLI 挂起
+const AI_REQUEST_TIMEOUT = 60000;
+
 function loadPrompt(name) {
   return fs.readFileSync(path.join(PROMPT_DIR, `${name}.txt`), 'utf-8');
 }
@@ -49,33 +55,45 @@ async function callAI(prompt) {
   }
 
   // 调用 OpenAI 兼容接口
-  const resp = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: '你是一个资深前端工程师，擅长 Vue 组件迁移与文档生成。请严格按用户要求输出，不要多余解释。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.2
-    })
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT);
+  try {
+    const resp = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个资深前端工程师，擅长 Vue 组件迁移与文档生成。请严格按用户要求输出，不要多余解释。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.2
+      }),
+      signal: controller.signal
+    });
 
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '');
-    throw new Error(`AI 接口请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
-  }
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`AI 接口请求失败 (${resp.status}): ${errText.slice(0, 200)}`);
+    }
 
-  const data = await resp.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error('AI 接口返回为空，请检查 AI_API_URL / AI_MODEL 配置');
+    const data = await resp.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('AI 接口返回为空，请检查 AI_API_URL / AI_MODEL 配置');
+    }
+    return content;
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error(`AI 接口请求超时（${AI_REQUEST_TIMEOUT / 1000}s），请检查网络或增大 AI_REQUEST_TIMEOUT`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return content;
 }
 
 function buildPrompt(task, widgetName, componentPath) {
@@ -107,6 +125,12 @@ async function main() {
 
   if (!['migrate', 'schema', 'readme'].includes(task)) {
     console.error(`未知任务: ${task}`);
+    process.exit(1);
+  }
+
+  // 校验 widgetName：只允许小写字母、数字、连字符，防止路径遍历攻击
+  if (!WIDGET_NAME_RE.test(widgetName)) {
+    console.error(`非法物料名: "${widgetName}"，只允许小写字母、数字、连字符（[a-z0-9-]）`);
     process.exit(1);
   }
 
