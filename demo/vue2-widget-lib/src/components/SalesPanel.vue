@@ -1,12 +1,13 @@
 <template>
-  <aui-card :title="config.title || t('sales.title')">
-    <aui-row>
-      <aui-statistic :label="t('sales.amount_label')" :prefix="symbol" :value="summary.amount.toLocaleString()" />
-      <aui-statistic :label="t('sales.order_label')" :value="summary.orderCount" />
-    </aui-row>
-    <aui-progress v-if="config.showTrend" :percent="trendPercent" />
-    <aui-footer>{{ t('sales.period_label') }}：{{ periodText }}</aui-footer>
-  </aui-card>
+  <el-card>
+    <div slot="header">{{ config.title || t('sales.title') }}</div>
+    <el-row>
+      <el-statistic :label="t('sales.amount_label')" :prefix="symbol" :value="summary.amount.toLocaleString()" />
+      <el-statistic :label="t('sales.order_label')" :value="summary.orderCount" />
+    </el-row>
+    <el-progress v-if="config.showTrend" :percentage="trendPercent" />
+    <el-footer-text>{{ t('sales.period_label') }}：{{ periodText }}</el-footer-text>
+  </el-card>
 </template>
 
 <script>
