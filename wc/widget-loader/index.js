@@ -323,6 +323,9 @@ class WidgetLoader {
       const script = document.createElement('script');
       script.src = url;
       script.async = true;
+      // 设置 crossOrigin 以获取跨域资源的详细错误信息（如 HTTP 状态码）
+      // CDN 需配置 CORS 头，否则资源加载会被拒绝；同源资源不受影响
+      script.crossOrigin = 'anonymous';
       script.onload = () => {
         log('script loaded:', url);
         resolve();
@@ -381,6 +384,8 @@ class WidgetLoader {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = url;
+      // 设置 crossOrigin 以获取跨域资源的详细错误信息（同 loadScript）
+      link.crossOrigin = 'anonymous';
       link.onload = () => {
         log('style loaded:', url);
         resolve();
