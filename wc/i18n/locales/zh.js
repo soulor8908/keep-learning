@@ -9,6 +9,7 @@ export default {
     mount_failed: '物料 "{name}" 挂载失败，已降级：',
     load_failed: '物料 "{name}" 加载失败，已降级：',
     runtime_crash: '物料 "{name}" 运行时崩溃，已降级隔离：',
+    config_serialize_failed: '物料 "{name}" 配置序列化失败（可能含循环引用）',
     retry: '点击重试'
   },
   sales: {

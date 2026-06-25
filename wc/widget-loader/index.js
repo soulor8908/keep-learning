@@ -179,7 +179,8 @@ export const WidgetError = {
   CSS_ERROR: 'CSS_ERROR',               // CSS 样式加载失败
   VERSION_MISMATCH: 'DEP_VERSION_MISMATCH', // 公共依赖版本不兼容
   NOT_FOUND: 'NOT_FOUND',               // 物料未找到（name/js 缺失）
-  ELEMENT_TIMEOUT: 'ELEMENT_TIMEOUT'    // Custom Element 注册超时
+  ELEMENT_TIMEOUT: 'ELEMENT_TIMEOUT',   // Custom Element 注册超时
+  CONFIG_ERROR: 'CONFIG_ERROR'          // 物料 config 序列化失败（如循环引用）
 };
 
 function createError(message, code) {
@@ -619,7 +620,18 @@ class WidgetLoader {
   renderWidget(container, widget) {
     const { name, config = {} } = widget;
     const element = document.createElement(name);
-    element.setAttribute('config', JSON.stringify(config));
+    // config 含循环引用时 JSON.stringify 抛 TypeError，需捕获并转为明确错误码，
+    // 否则物料无法挂载且错误信息晦涩；mountWidget 会据此渲染降级占位
+    let configStr;
+    try {
+      configStr = JSON.stringify(config);
+    } catch (e) {
+      throw createError(
+        `[widget-loader] ${t('loader.config_serialize_failed', { name })}: ${e.message}`,
+        WidgetError.CONFIG_ERROR
+      );
+    }
+    element.setAttribute('config', configStr);
     try {
       container.appendChild(element); // 触发 connectedCallback
     } catch (error) {
