@@ -281,8 +281,11 @@ class WidgetLoader {
     // ─── 错误边界（Step 3）：单点失败不影响整体 ───
     // 跟踪已挂载物料，全局监听运行时错误并归因到对应物料，
     // 命中后用降级占位替换崩溃物料，避免整个看板白屏。
-    // key 用 DOM 元素实例（WeakMap），同一物料多实例互不覆盖，元素销毁后自动回收。
-    this.mountedWidgets = new WeakMap(); // element -> { container, widget, failed }
+    // key 用 DOM 元素实例，同一物料多实例互不覆盖。
+    // 用 Map 而非 WeakMap：错误归因需 for...of 遍历所有已挂载物料，
+    // WeakMap 不可迭代；元素生命周期由 loader 管理（unmountWidget/unloadWidget
+    // 显式 delete），不会内存泄漏。
+    this.mountedWidgets = new Map(); // element -> { container, widget, failed }
     this.globalErrorListenerInstalled = false;
 
     // ─── 生命周期钩子 ───
