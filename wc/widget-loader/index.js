@@ -117,7 +117,8 @@ export function satisfies(version, range) {
  * 物料依赖版本校验
  * @param {Object} widget
  * @param {string} widget.name
- * @param {('2'|'3')} [widget.vueVersion='2'] 物料依赖的 Vue 主版本
+ * @param {('2'|'3'|'none')} [widget.vueVersion='2'] 物料依赖的 Vue 主版本；
+ *   'none' 表示原生 H5 物料，不依赖任何 Vue 运行时，跳过 Vue 校验
  * @throws {Error} code='DEP_VERSION_MISMATCH'，message 含逐条不兼容原因
  */
 export function checkDependencies(widget) {
@@ -125,17 +126,20 @@ export function checkDependencies(widget) {
   const errors = [];
 
   // 1. Vue 运行时校验：按物料声明的 vueVersion 选择对应全局变量
-  const vueKey = vueVersion === '3' ? 'vue3' : 'vue2';
-  const vueDep = SUPPORTED_DEPS[vueKey];
-  const vueRuntime = typeof window !== 'undefined' ? window[vueDep.globalVar] : undefined;
-  if (!vueRuntime) {
-    errors.push(
-      t('loader.dep_missing', { name, dep: `Vue${vueVersion}`, range: vueDep.compatibleRange, globalVar: vueDep.globalVar })
-    );
-  } else if (vueRuntime.version && !satisfies(vueRuntime.version, vueDep.compatibleRange)) {
-    errors.push(
-      t('loader.dep_version', { name, dep: `Vue${vueVersion}`, range: vueDep.compatibleRange, actual: vueRuntime.version })
-    );
+  //    vueVersion='none' 表示原生 H5 物料，不依赖 Vue，跳过校验
+  if (vueVersion !== 'none') {
+    const vueKey = vueVersion === '3' ? 'vue3' : 'vue2';
+    const vueDep = SUPPORTED_DEPS[vueKey];
+    const vueRuntime = typeof window !== 'undefined' ? window[vueDep.globalVar] : undefined;
+    if (!vueRuntime) {
+      errors.push(
+        t('loader.dep_missing', { name, dep: `Vue${vueVersion}`, range: vueDep.compatibleRange, globalVar: vueDep.globalVar })
+      );
+    } else if (vueRuntime.version && !satisfies(vueRuntime.version, vueDep.compatibleRange)) {
+      errors.push(
+        t('loader.dep_version', { name, dep: `Vue${vueVersion}`, range: vueDep.compatibleRange, actual: vueRuntime.version })
+      );
+    }
   }
 
   // 2. aui 统一组件库版本校验
