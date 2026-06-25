@@ -239,9 +239,14 @@ function injectFallbackStyles() {
  * @returns {HTMLElement} 占位节点
  */
 function renderFallback(container, message, widget, onRetry) {
+  // 移除该容器内已有的降级占位，避免多次失败时堆叠多个占位（N8）
+  const existingFallbacks = container.querySelectorAll('.widget-error-placeholder');
+  existingFallbacks.forEach(node => container.removeChild(node));
+
   injectFallbackStyles();
   const errorNode = document.createElement('div');
   errorNode.className = 'widget-error-placeholder';
+  errorNode.setAttribute('data-widget-fallback', widget.name || '');
 
   const msg = document.createElement('div');
   msg.textContent = message;
