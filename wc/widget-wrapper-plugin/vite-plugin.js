@@ -22,6 +22,8 @@ import { createNamespacePlugin } from './postcss-namespace.js';
 
 const require = createRequire(import.meta.url);
 const { writeSchema } = require('../schema-generator');
+const { scanTarget, formatFindings } = require('../js-risk-scanner');
+const { checkScopedDir, formatScopedResults } = require('../scoped-style-checker');
 
 function generateVue3Wrapper(widgetName, vueGlobal) {
   return `
@@ -99,7 +101,7 @@ customElements.define('${widgetName}', WidgetElement);
 }
 
 export default function widgetVitePlugin(options = {}) {
-  const { name, component, vueGlobal = 'Vue', cssFileName = name, autoNamespace = true } = options;
+  const { name, component, vueGlobal = 'Vue', cssFileName = name, autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths } = options;
   if (!name || !component) {
     throw new Error('[widget-vite-plugin] 请配置 name 和 component');
   }
@@ -160,10 +162,77 @@ export default function widgetVitePlugin(options = {}) {
         writeSchema(name, componentPath, path.join(outputDir, `${name}.schema.json`));
       } catch (e) {
         console.warn('[widget-vite-plugin] 自动生成 schema.json 失败:', e.message);
-      } finally {
-        // 清理临时 wrapper 文件，避免 tmp 目录堆积
-        try { fs.unlinkSync(tmpFile); } catch (_) {}
       }
+
+      // ─── 强制 Vue scoped CSS 检测（构建期）───
+      // 物料 <style> 不加 scoped 会泄漏全局污染基座；
+      // policy: 'error' 报错(默认) / 'auto-add' 自动补 scoped / 'warn' 告警 / 'off' 关闭
+      if (enforceScoped && enforceScoped !== 'off') {
+        let scopedResults = [];
+        try {
+          const scanPaths = (scopedScanPaths && scopedScanPaths.length)
+            ? scopedScanPaths
+            : [path.dirname(componentPath)];
+          scanPaths.forEach(p => {
+            const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+            const { results } = checkScopedDir(abs, { policy: enforceScoped });
+            scopedResults = scopedResults.concat(results);
+          });
+        } catch (scopedErr) {
+          console.warn('[widget-vite-plugin] scoped 检测失败（不影响构建）:', scopedErr.message);
+        }
+        if (scopedResults.length > 0) {
+          const report = formatScopedResults(scopedResults);
+          if (enforceScoped === 'error') {
+            throw new Error(
+              `[widget-vite-plugin] 物料 ${name} 存在未加 scoped 的 <style>，构建被中止（设置 enforceScoped:'auto-add' 可自动补全，'warn' 仅告警）:\n${report}`
+            );
+          } else if (enforceScoped === 'auto-add') {
+            console.warn(`\n[widget-vite-plugin] 物料 ${name} 已自动为 <style> 补上 scoped:\n${report}`);
+          } else {
+            console.warn(`\n[widget-vite-plugin] 物料 ${name} 存在未加 scoped 的 <style>（仅告警）:\n${report}`);
+          }
+        }
+      }
+
+      // ─── JS 危险 API 静态扫描（构建期）───
+      // 扫描物料源码中的危险模式（document.body 挂载、window 赋值、全局注册等），
+      // 默认仅告警；failOnHighRisk=true 时发现高风险则抛错让构建失败。
+      if (scanRisks) {
+        try {
+          const scanPaths = (riskScanPaths && riskScanPaths.length)
+            ? riskScanPaths
+            : [path.dirname(componentPath)];
+          const allFindings = [];
+          scanPaths.forEach(p => {
+            const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+            const { findings } = scanTarget(abs);
+            allFindings.push(...findings);
+          });
+          if (allFindings.length > 0) {
+            const highCount = allFindings.filter(f => f.level === 'high').length;
+            const report = formatFindings(allFindings);
+            if (highCount > 0) {
+              console.warn(`\n[widget-vite-plugin] 物料 ${name} 危险 API 扫描发现高风险:\n${report}`);
+              if (failOnHighRisk) {
+                throw new Error(
+                  `[widget-vite-plugin] 物料 ${name} 存在 ${highCount} 个高风险 API 调用，构建被中止（设置 failOnHighRisk:false 可降级为告警）:\n${report}`
+                );
+              }
+            } else {
+              console.warn(`\n[widget-vite-plugin] 物料 ${name} 危险 API 扫描（仅中风险，告警）:\n${report}`);
+            }
+          }
+        } catch (scanErr) {
+          if (failOnHighRisk && scanErr && scanErr.message && scanErr.message.includes('高风险')) {
+            throw scanErr;
+          }
+          console.warn('[widget-vite-plugin] 危险 API 扫描失败（不影响构建）:', scanErr.message);
+        }
+      }
+
+      // 清理临时 wrapper 文件，避免 tmp 目录堆积
+      try { fs.unlinkSync(tmpFile); } catch (_) {}
     }
   };
 }

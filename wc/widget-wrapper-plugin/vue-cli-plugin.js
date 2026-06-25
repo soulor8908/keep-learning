@@ -17,6 +17,8 @@ const fs = require('fs');
 const os = require('os');
 const { writeSchema } = require('../schema-generator');
 const { createNamespacePlugin } = require('./postcss-namespace');
+const { scanTarget, formatFindings } = require('../js-risk-scanner');
+const { checkScopedDir, formatScopedResults } = require('../scoped-style-checker');
 
 function generateVue2Wrapper(widgetName, vueGlobal) {
   return `
@@ -83,7 +85,7 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     throw new Error('[widget-vue-cli-plugin] 请配置 name 和 component');
   }
 
-  const { name, component, vueGlobal = 'Vue', autoNamespace = true } = options;
+  const { name, component, vueGlobal = 'Vue', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths } = options;
 
   return function chainWebpack(config) {
     const wrapperCode = generateVue2Wrapper(name, vueGlobal);
@@ -168,10 +170,77 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     // 进程崩溃时不会触发，导致 /tmp 目录堆积临时文件
     config.plugin('widget-wrapper-cleanup').use(class {
       apply(compiler) {
-        compiler.hooks.done.tap('widget-wrapper-cleanup', () => {
+        compiler.hooks.done.tap('widget-wrapper-cleanup', stats => {
           // watch 模式下保留文件，避免后续重编译找不到入口
           if (compiler.options.watch) return;
           try { fs.unlinkSync(tmpFile); } catch (_) {}
+
+          // ─── 强制 Vue scoped CSS 检测（构建期）───
+          // 物料 <style> 不加 scoped 会泄漏全局污染基座；
+          // policy: 'error' 报错(默认) / 'auto-add' 自动补 scoped / 'warn' 告警 / 'off' 关闭
+          if (enforceScoped && enforceScoped !== 'off') {
+            try {
+              const scanPaths = (scopedScanPaths && scopedScanPaths.length)
+                ? scopedScanPaths
+                : [path.dirname(componentPath)];
+              let allResults = [];
+              scanPaths.forEach(p => {
+                const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+                const { results } = checkScopedDir(abs, { policy: enforceScoped });
+                allResults = allResults.concat(results);
+              });
+              if (allResults.length > 0) {
+                const report = formatScopedResults(allResults);
+                if (enforceScoped === 'error') {
+                  console.error(`\n[widget-vue-cli-plugin] 物料 ${name} 存在未加 scoped 的 <style>:\n${report}`);
+                  if (stats && stats.compilation) {
+                    stats.compilation.errors.push(new Error(
+                      `[widget-vue-cli-plugin] 物料 ${name} 存在未加 scoped 的 <style>，构建被中止（设置 enforceScoped:'auto-add' 可自动补全，'warn' 仅告警）:\n${report}`
+                    ));
+                  }
+                } else if (enforceScoped === 'auto-add') {
+                  console.warn(`\n[widget-vue-cli-plugin] 物料 ${name} 已自动为 <style> 补上 scoped:\n${report}`);
+                } else {
+                  console.warn(`\n[widget-vue-cli-plugin] 物料 ${name} 存在未加 scoped 的 <style>（仅告警）:\n${report}`);
+                }
+              }
+            } catch (scopedErr) {
+              console.warn('[widget-vue-cli-plugin] scoped 检测失败（不影响构建）:', scopedErr.message);
+            }
+          }
+
+          // ─── JS 危险 API 静态扫描（构建期）───
+          // 扫描物料源码中的危险模式（document.body 挂载、window 赋值、全局注册等），
+          // 默认仅告警；failOnHighRisk=true 时发现高风险则让构建失败。
+          if (scanRisks) {
+            try {
+              const scanPaths = (riskScanPaths && riskScanPaths.length)
+                ? riskScanPaths
+                : [path.dirname(componentPath)];
+              const allFindings = [];
+              scanPaths.forEach(p => {
+                const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+                const { findings } = scanTarget(abs);
+                allFindings.push(...findings);
+              });
+              if (allFindings.length > 0) {
+                const highCount = allFindings.filter(f => f.level === 'high').length;
+                const report = formatFindings(allFindings);
+                if (highCount > 0) {
+                  console.warn(`\n[widget-vue-cli-plugin] 物料 ${name} 危险 API 扫描发现高风险:\n${report}`);
+                  if (failOnHighRisk && stats && stats.compilation) {
+                    stats.compilation.errors.push(new Error(
+                      `[widget-vue-cli-plugin] 物料 ${name} 存在 ${highCount} 个高风险 API 调用，构建被中止（设置 failOnHighRisk:false 可降级为告警）:\n${report}`
+                    ));
+                  }
+                } else {
+                  console.warn(`\n[widget-vue-cli-plugin] 物料 ${name} 危险 API 扫描（仅中风险，告警）:\n${report}`);
+                }
+              }
+            } catch (scanErr) {
+              console.warn('[widget-vue-cli-plugin] 危险 API 扫描失败（不影响构建）:', scanErr.message);
+            }
+          }
         });
       }
     });

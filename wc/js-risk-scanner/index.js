@@ -171,6 +171,11 @@ function scanFile(filePath) {
   return findings;
 }
 
+/**
+ * 扫描目录下所有 .vue 文件（递归）
+ * @param {string} dir
+ * @returns {string[]}
+ */
 function findVueFiles(dir) {
   const files = [];
   function walk(current) {
@@ -187,6 +192,61 @@ function findVueFiles(dir) {
   }
   walk(dir);
   return files;
+}
+
+/**
+ * 扫描单个文件（可编程入口，供构建插件调用）
+ * 与 scanFile 一致，但返回的 finding 增加归一化字段，方便插件聚合输出。
+ * @param {string} filePath
+ * @returns {Array<{file:string,line:number,column:number,level:string,name:string,code:string}>}
+ */
+function scanSourceFile(filePath) {
+  return scanFile(filePath);
+}
+
+/**
+ * 扫描文件或目录，聚合所有 findings
+ * @param {string} target 文件或目录绝对路径
+ * @returns {{findings: Array, files: number}}
+ */
+function scanTarget(target) {
+  const targetPath = path.resolve(target);
+  if (!fs.existsSync(targetPath)) {
+    return { findings: [], files: 0 };
+  }
+  const files = fs.statSync(targetPath).isDirectory() ? findVueFiles(targetPath) : [targetPath];
+  const findings = [];
+  files.forEach(file => {
+    findings.push(...scanFile(file));
+  });
+  return { findings, files: files.length };
+}
+
+/**
+ * 格式化扫描结果为可读字符串（供构建插件输出）
+ * @param {Array} findings
+ * @returns {string}
+ */
+function formatFindings(findings) {
+  if (!findings || findings.length === 0) return '';
+  const byFile = new Map();
+  findings.forEach(f => {
+    if (!byFile.has(f.file)) byFile.set(f.file, []);
+    byFile.get(f.file).push(f);
+  });
+  const lines = [];
+  byFile.forEach((fileFindings, file) => {
+    lines.push(`  ⚠️  ${path.relative(process.cwd(), file)}`);
+    fileFindings.forEach(f => {
+      const icon = f.level === 'high' ? '🔴' : '🟡';
+      lines.push(`     ${icon} [${f.level.toUpperCase()}] ${f.name}`);
+      lines.push(`        行 ${f.line}: ${f.code}`);
+    });
+  });
+  const high = findings.filter(f => f.level === 'high').length;
+  const medium = findings.filter(f => f.level === 'medium').length;
+  lines.push(`  总计: ${high} 个高风险, ${medium} 个中风险`);
+  return lines.join('\n');
 }
 
 function main() {
@@ -235,4 +295,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { scanFile, extractScriptBlocks, RISK_PATTERNS };
+module.exports = { scanFile, scanSourceFile, scanTarget, findVueFiles, formatFindings, extractScriptBlocks, RISK_PATTERNS };
