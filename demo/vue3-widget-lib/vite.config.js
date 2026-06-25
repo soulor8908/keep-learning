@@ -9,7 +9,8 @@ const WIDGET_MAP = {
   'bi-finance-panel': './src/components/FinancePanel.vue',
   'bi-data-source': './src/components/bi-data-source.vue',
   'bi-metric-cards': './src/components/bi-metric-cards.vue',
-  'bi-crash-tester': './src/components/bi-crash-tester.vue'
+  'bi-crash-tester': './src/components/bi-crash-tester.vue',
+  'bi-payment-panel': './src/components/PaymentPanel.vue'
 };
 
 export default defineConfig(({ command }) => {
