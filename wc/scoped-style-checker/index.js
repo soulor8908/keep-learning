@@ -93,13 +93,17 @@ function checkScopedFile(filePath, opts = {}) {
   });
 
   if (policy === 'auto-add') {
-    // 从后往前替换，避免索引偏移
+    // 从后往前插入 scoped 属性，避免索引偏移。
+    // 采用"定点插入"而非"整块重建"：仅在 <style ...> 开标签的 '>' 前插入 ' scoped'，
+    // <style> 内容、</style> 闭合标签及紧邻的 <script>/<template> 等文本完全不动，
+    // 避免按 b.start/b.end 字符串拼接重建整块时，因 b.content/newRaw 与原文长度差
+    // 或边界相邻文本造成的索引错位与 .vue 结构破坏风险。
     let newSource = source;
     for (let i = unscoped.length - 1; i >= 0; i--) {
       const b = unscoped[i];
-      const newAttrs = addScopedAttr(b.attrs);
-      const newRaw = `<style${newAttrs}>${b.content}</style>`;
-      newSource = newSource.slice(0, b.start) + newRaw + newSource.slice(b.end);
+      // 开标签 = '<style' + attrs + '>'；'>' 位于 b.start + '<style'.length + b.attrs.length
+      const gtPos = b.start + '<style'.length + b.attrs.length;
+      newSource = newSource.slice(0, gtPos) + ' scoped' + newSource.slice(gtPos);
     }
     try {
       fs.writeFileSync(filePath, newSource, 'utf-8');

@@ -74,10 +74,18 @@ function hasNamespace(selector, namespaceClass) {
   return trimmed.includes(`.${namespaceClass}`);
 }
 
+// Vue 深度选择器组合器：>>> 与 /deep/ 是组合器（combinator）而非普通选择器，
+// 其后的后代选择器属于"穿透目标"，不应再加命名空间前缀，否则会破坏深度穿透语义。
+// （:deep() / ::v-deep 是伪类/伪元素形式，已由 isGlobalSelector 的 ^:deep( / ^::v-deep 处理）
+const DEEP_COMBINATOR_REGEX = /(?:>>>|\/deep\/)/;
+
 /**
  * 为单个选择器添加命名空间前缀
  * 策略：在选择器最前面插入 .{namespaceClass} + 空格（后代选择器）
  * 不用 & 拼接，保持简单可预测
+ *
+ * 深度组合器（>>> / /deep/）特判：仅给组合器之前的部分按需加前缀，
+ * 组合器本身及其后的穿透目标保持原样。
  *
  * @param {string} selector
  * @param {string} namespaceClass
@@ -87,6 +95,21 @@ function prefixSelector(selector, namespaceClass) {
   const trimmed = selector.trim();
   if (!trimmed) return selector;
   if (isGlobalSelector(trimmed)) return selector;
+
+  // 识别 >>> / /deep/ 组合器：
+  //   .title >>> .child    →  .bi-xxx .title >>> .child
+  //   .title /deep/ .child →  .bi-xxx .title /deep/ .child
+  //   .bi-xxx >>> .child   →  已含命名空间，原样返回（不双重前缀）
+  //   >>> .child           →  已被 isGlobalSelector (^>>>) 命中，原样返回
+  const combinatorMatch = trimmed.match(DEEP_COMBINATOR_REGEX);
+  if (combinatorMatch) {
+    const before = trimmed.slice(0, combinatorMatch.index).trim();
+    const rest = trimmed.slice(combinatorMatch.index);
+    if (!before) return rest; // 组合器开头（兜底，正常路径已被 isGlobalSelector 覆盖）
+    if (hasNamespace(before, namespaceClass)) return trimmed; // 前缀已存在，避免双重前缀
+    return `.${namespaceClass} ${before} ${rest}`;
+  }
+
   if (hasNamespace(trimmed, namespaceClass)) return selector;
 
   // 后代选择器拼接：.bi-xxx 原选择器

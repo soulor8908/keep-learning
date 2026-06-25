@@ -334,11 +334,21 @@ export function createWidgetScope(opts = {}) {
 
 /**
  * 判断一个对象是否为 widgetScope 实例
+ *
+ * 身份判据统一收敛到 meta.__isWidgetScope：meta 在创建时即 Object.freeze，
+ * 是 scope 的身份对象，会随任何合理的拷贝（解构、Object.assign、展开）自然传递。
+ *
+ * 不再同时校验顶层 __noGlobalAccess——它是"不直接访问 window/document"的能力契约标记，
+ * 而非身份标识。物料若通过解构重建 scope（如
+ *   const { meta, context, bus } = scope; const copy = { meta, context, bus }
+ * ），__noGlobalAccess 会丢失但 meta 仍在，旧逻辑会误判 copy 非 widgetScope。
+ * 改为只认 meta.__isWidgetScope 即可消除该误判。
+ *
  * @param {*} obj
  * @returns {boolean}
  */
 export function isWidgetScope(obj) {
-  return obj && obj.meta && obj.meta.__isWidgetScope === true && obj.__noGlobalAccess === true;
+  return !!(obj && obj.meta && obj.meta.__isWidgetScope === true);
 }
 
 export default createWidgetScope;
