@@ -93,12 +93,20 @@ function extractRules(css) {
         inSelector = false;
         selectorStack.push(selectors);
       } else {
+        const parentSelector = selectorStack[selectorStack.length - 1] || '';
+        // @media / @supports 内部内容作为原始 CSS 保留到 declarations，
+        // 由下方 flattened 阶段递归 extractRules 重新解析，
+        // 不走嵌套规则拼接（否则内部选择器会被错误拼接成 "@media ... .xxx"）
+        if (parentSelector.startsWith('@media') || parentSelector.startsWith('@supports')) {
+          buffer += ch;
+          depth++;
+          continue;
+        }
         // 原生 CSS nesting / SCSS 嵌套：depth>0 时遇到 { 说明是嵌套规则
         // buffer 中是嵌套选择器（可能含 &），需与父选择器拼接
         const nestedSelector = buffer.trim();
         buffer = '';
         if (nestedSelector) {
-          const parentSelector = selectorStack[selectorStack.length - 1] || '';
           // SCSS & 语法：& 替换为父选择器；否则用后代选择器拼接
           const resolved = nestedSelector.includes('&')
             ? nestedSelector.replace(/&/g, parentSelector)
@@ -115,6 +123,14 @@ function extractRules(css) {
     }
 
     if (ch === '}') {
+      const parentSelector = selectorStack[selectorStack.length - 1] || '';
+      const isInsideAtRule = parentSelector.startsWith('@media') || parentSelector.startsWith('@supports');
+      // @media 内部的闭合括号保留到 buffer（非 @media 规则自身的闭合括号）
+      if (isInsideAtRule && depth > 1) {
+        buffer += ch;
+        depth--;
+        continue;
+      }
       depth--;
       if (depth === 0) {
         const declarations = buffer.trim();
