@@ -2,15 +2,20 @@
 /**
  * CSS 命名空间检查器
  *
- * 检查 .vue 组件中的 CSS 选择器是否都包含指定的命名空间前缀，
+ * 检查样式文件中的 CSS 选择器是否都包含指定的命名空间前缀，
  * 防止不同物料之间的全局样式冲突。
  *
+ * 支持的文件类型：
+ * - .vue / .html：提取 <style> 块（含 scoped 属性识别）
+ * - .css / .scss / .less / .styl：整文件作为一个样式块
+ *
  * 用法：
- *   node wc/css-namespace-checker/index.js <vue-file-or-dir> [widget-name]
+ *   node wc/css-namespace-checker/index.js <file-or-dir> [widget-name]
  *
  * 示例：
  *   node wc/css-namespace-checker/index.js demo/vue2-widget-lib/src/components/SalesPanel.vue bi-sales-panel
  *   node wc/css-namespace-checker/index.js demo/vue2-widget-lib/src/components
+ *   node wc/css-namespace-checker/index.js h5-widget/src/weather-card.css bi-weather-card
  */
 
 const fs = require('fs');
@@ -208,8 +213,22 @@ function isAllowedSelector(selector, namespaceClass) {
 
 function checkFile(filePath, namespace) {
   const source = fs.readFileSync(filePath, 'utf-8');
-  const styleBlocks = extractStyleBlocks(source);
   const issues = [];
+
+  // 确定样式块来源：
+  // - .vue / .html：提取 <style> 块（可能多个，含 scoped 属性）
+  // - .css / .scss / .less / .styl：整文件作为一个样式块
+  let styleBlocks;
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.vue' || ext === '.html' || ext === '.htm') {
+    styleBlocks = extractStyleBlocks(source);
+  } else if (ext === '.css' || ext === '.scss' || ext === '.less' || ext === '.styl') {
+    const lang = ext === '.styl' ? 'stylus' : ext.slice(1);
+    styleBlocks = [{ scoped: false, lang, content: source, start: 0, end: source.length }];
+  } else {
+    // 其它文件类型（如 .js）不检查
+    return issues;
+  }
 
   styleBlocks.forEach((block, idx) => {
     if (block.lang !== 'css' && block.lang !== 'scss' && block.lang !== 'less' && block.lang !== 'stylus') {
@@ -236,11 +255,14 @@ function checkFile(filePath, namespace) {
   return issues;
 }
 
-function findVueFiles(dir) {
+// 支持的样式文件扩展名（.vue 含 <style> 块，.css/.scss 等整文件作为样式块）
+const STYLE_EXTENSIONS = ['.vue', '.html', '.htm', '.css', '.scss', '.less', '.styl'];
+
+function findStyleFiles(dir) {
   const files = [];
   function walk(current) {
     const stat = fs.statSync(current);
-    if (stat.isFile() && current.endsWith('.vue')) {
+    if (stat.isFile() && STYLE_EXTENSIONS.includes(path.extname(current).toLowerCase())) {
       files.push(current);
       return;
     }
@@ -254,9 +276,62 @@ function findVueFiles(dir) {
   return files;
 }
 
+// 向后兼容别名（旧代码可能引用 findVueFiles）
+const findVueFiles = findStyleFiles;
+
+/**
+ * 扫描文件或目录，聚合所有命名空间问题（供构建插件调用）
+ * @param {string} target 文件或目录绝对路径
+ * @param {string} namespace 命名空间类名（如 bi-sales-panel）
+ * @returns {{issues: Array, files: number}}
+ */
+function checkTarget(target, namespace) {
+  const targetPath = path.resolve(target);
+  if (!fs.existsSync(targetPath)) {
+    return { issues: [], files: 0 };
+  }
+  const files = fs.statSync(targetPath).isDirectory() ? findStyleFiles(targetPath) : [targetPath];
+  const issues = [];
+  files.forEach(file => {
+    // 目录扫描时按文件名推断命名空间；单文件用传入的 namespace
+    const ns = namespace || inferNamespace(file);
+    issues.push(...checkFile(file, ns));
+  });
+  return { issues, files: files.length };
+}
+
+/**
+ * 格式化扫描结果为可读字符串（供构建插件输出）
+ * @param {Array} issues
+ * @returns {string}
+ */
+function formatIssues(issues) {
+  if (!issues || issues.length === 0) return '';
+  const byFile = new Map();
+  issues.forEach(i => {
+    if (!byFile.has(i.file)) byFile.set(i.file, []);
+    byFile.get(i.file).push(i);
+  });
+  const lines = [];
+  byFile.forEach((fileIssues, file) => {
+    lines.push(`  ❌ ${path.relative(process.cwd(), file)}`);
+    fileIssues.forEach(i => {
+      lines.push(`     选择器未加命名空间: "${i.selector}"`);
+      lines.push(`     所在规则: ${i.rule}`);
+      if (i.scoped) {
+        lines.push(`     提示: 该样式块已开启 scoped，但仍建议以 .${inferNamespace(file)} 开头`);
+      }
+    });
+  });
+  lines.push(`  总计: ${issues.length} 个命名空间问题`);
+  return lines.join('\n');
+}
+
 function inferNamespace(filePath) {
-  const basename = path.basename(filePath, '.vue');
-  // 常见命名：SalesPanel.vue -> bi-sales-panel
+  // 去除已知样式文件扩展名（.vue/.css/.scss/.less/.styl/.html）
+  const ext = path.extname(filePath);
+  const basename = ext ? path.basename(filePath, ext) : path.basename(filePath);
+  // 常见命名：SalesPanel.vue / sales-panel.css -> bi-sales-panel
   const kebab = basename
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
@@ -279,7 +354,7 @@ function main() {
 
   const files = fs.statSync(targetPath).isDirectory() ? findVueFiles(targetPath) : [targetPath];
   if (files.length === 0) {
-    console.log('未找到 .vue 文件');
+    console.log('未找到样式文件（.vue/.css/.scss/.less/.styl）');
     process.exit(0);
   }
 
@@ -310,4 +385,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { checkFile, inferNamespace, extractStyleBlocks, extractRules };
+module.exports = { checkFile, checkTarget, formatIssues, inferNamespace, extractStyleBlocks, extractRules, findStyleFiles, findVueFiles };

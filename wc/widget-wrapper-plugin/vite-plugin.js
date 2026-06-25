@@ -24,11 +24,13 @@ const require = createRequire(import.meta.url);
 const { writeSchema } = require('../schema-generator');
 const { scanTarget, formatFindings } = require('../js-risk-scanner');
 const { checkScopedDir, formatScopedResults } = require('../scoped-style-checker');
+const { checkTarget: checkCssNamespace, formatIssues: formatCssIssues } = require('../css-namespace-checker');
 
 function generateVue3Wrapper(widgetName, vueGlobal) {
   return `
 import { createApp, h, ref } from 'vue';
 import Component from '__WIDGET_COMPONENT__';
+import { createWidgetScope } from 'wc-widget-scope';
 
 // ─── 重要：禁止使用 Shadow DOM ───
 // 不要改用 Vue3 官方的 defineCustomElement()——它默认调用 attachShadow()，
@@ -44,6 +46,11 @@ class WidgetElement extends HTMLElement {
     super();
     this.app = null;
     this._configRef = null;
+    // 每个物料实例创建独立的 widgetScope 软隔离对象，
+    // 物料组件通过 props.scope 接收，而非直接访问 window。
+    // scope 含 context/bus/log/t/request/loader（嵌套加载带循环检测）
+    this._scope = createWidgetScope({ name: '${widgetName}' });
+    this._widgetScope = this._scope;
   }
 
   static get observedAttributes() {
@@ -66,9 +73,10 @@ class WidgetElement extends HTMLElement {
     if (this.app) return; // 已挂载，config 变化由 _updateConfig 处理
     // 使用 ref 承载 config，render 中访问 .value 建立响应式依赖
     // config 变化时只需更新 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
+    // 注入 scope 作为业务组件 props：物料声明 props: { scope: Object, config: Object }
     this._configRef = ref(parseConfig(this.getAttribute('config')));
     this.app = createApp({
-      render: () => h(Component, { config: this._configRef.value })
+      render: () => h(Component, { config: this._configRef.value, scope: this._scope })
     });
     this.app.mount(this);
   }
@@ -85,6 +93,8 @@ class WidgetElement extends HTMLElement {
       this.app.unmount();
       this.app = null;
       this._configRef = null;
+      this._scope = null;
+      this._widgetScope = null;
     }
   }
 
@@ -101,7 +111,7 @@ customElements.define('${widgetName}', WidgetElement);
 }
 
 export default function widgetVitePlugin(options = {}) {
-  const { name, component, vueGlobal = 'Vue', cssFileName = name, autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths } = options;
+  const { name, component, vueGlobal = 'Vue', cssFileName = name, autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
   if (!name || !component) {
     throw new Error('[widget-vite-plugin] 请配置 name 和 component');
   }
@@ -128,13 +138,15 @@ export default function widgetVitePlugin(options = {}) {
           cssFileName
         },
         rollupOptions: {
-          external: ['vue', 'element-plus', 'wc-i18n'],
+          external: ['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope'],
           output: {
             globals: {
               vue: vueGlobal,
               'element-plus': 'ElementPlus',
               // 国际化运行时：基座提供 window.__wcI18n__，物料共享同一实例与 locale 状态
-              'wc-i18n': '__wcI18n__'
+              'wc-i18n': '__wcI18n__',
+              // 软隔离 scope 运行时：基座提供 window.__wcWidgetScope__ = { createWidgetScope }
+              'wc-widget-scope': '__wcWidgetScope__'
             }
           }
         }
@@ -191,6 +203,37 @@ export default function widgetVitePlugin(options = {}) {
             console.warn(`\n[widget-vite-plugin] 物料 ${name} 已自动为 <style> 补上 scoped:\n${report}`);
           } else {
             console.warn(`\n[widget-vite-plugin] 物料 ${name} 存在未加 scoped 的 <style>（仅告警）:\n${report}`);
+          }
+        }
+      }
+
+      // ─── CSS 命名空间检查（构建期）───
+      // 检查 .vue 中选择器是否含 .{name} 命名空间前缀（物料级隔离），
+      // 与 postcss-namespace 自动加前缀互补：postcss 负责"自动修复"，
+      // 此检查负责"发现遗漏"（如 autoNamespace=false 或全局样式泄漏）。
+      // policy: 'error' 报错 / 'warn' 告警(默认) / 'off' 关闭
+      if (enforceCssNamespace && enforceCssNamespace !== 'off') {
+        let nsIssues = [];
+        try {
+          const scanPaths = (cssNamespaceScanPaths && cssNamespaceScanPaths.length)
+            ? cssNamespaceScanPaths
+            : [path.dirname(componentPath)];
+          scanPaths.forEach(p => {
+            const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+            const { issues } = checkCssNamespace(abs, name);
+            nsIssues = nsIssues.concat(issues);
+          });
+        } catch (nsErr) {
+          console.warn('[widget-vite-plugin] 命名空间检查失败（不影响构建）:', nsErr.message);
+        }
+        if (nsIssues.length > 0) {
+          const report = formatCssIssues(nsIssues);
+          if (enforceCssNamespace === 'error') {
+            throw new Error(
+              `[widget-vite-plugin] 物料 ${name} 存在 ${nsIssues.length} 个未加命名空间的选择器，构建被中止（设置 enforceCssNamespace:'warn' 降级，或确认 autoNamespace 已开启）:\n${report}`
+            );
+          } else {
+            console.warn(`\n[widget-vite-plugin] 物料 ${name} 存在未加命名空间的选择器（仅告警）:\n${report}`);
           }
         }
       }

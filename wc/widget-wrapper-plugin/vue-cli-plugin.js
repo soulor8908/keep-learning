@@ -19,11 +19,13 @@ const { writeSchema } = require('../schema-generator');
 const { createNamespacePlugin } = require('./postcss-namespace');
 const { scanTarget, formatFindings } = require('../js-risk-scanner');
 const { checkScopedDir, formatScopedResults } = require('../scoped-style-checker');
+const { checkTarget: checkCssNamespace, formatIssues: formatCssIssues } = require('../css-namespace-checker');
 
 function generateVue2Wrapper(widgetName, vueGlobal) {
   return `
 import Vue from 'vue';
 import Component from '__WIDGET_COMPONENT__';
+import { createWidgetScope } from 'wc-widget-scope';
 
 // 告诉 Vue2 编译器 el-* 是自定义元素，不要当 Vue 组件解析
 // 使用合并而非覆盖，避免污染基座或其他物料的 ignoredElements 配置
@@ -40,6 +42,11 @@ class WidgetElement extends HTMLElement {
   constructor() {
     super();
     this.vm = null;
+    // 每个物料实例创建独立的 widgetScope 软隔离对象，
+    // 物料组件通过 props.scope 接收，而非直接访问 window。
+    // scope 含 context/bus/log/t/request/loader（嵌套加载带循环检测）
+    this._scope = createWidgetScope({ name: '${widgetName}' });
+    this._widgetScope = this._scope;
   }
 
   static get observedAttributes() {
@@ -49,12 +56,13 @@ class WidgetElement extends HTMLElement {
   connectedCallback() {
     const config = this.getAttribute('config');
     // 不使用 Shadow DOM，直接挂载到 light DOM，让 aui 全局样式能穿透
-    // 使用 reactive data 承载 config，attributeChangedCallback 中更新
+    // 使用 reactive data 承载 config 与 scope，attributeChangedCallback 中更新
     // this.vm.widgetConfig 即可触发响应式重渲染，无需依赖 $children 内部 API
+    // 注入 scope 作为业务组件 props：物料声明 props: { scope: Object, config: Object }
     this.vm = new Vue({
-      data: { widgetConfig: parseConfig(config) },
+      data: { widgetConfig: parseConfig(config), widgetScope: this._scope },
       render(h) {
-        return h(Component, { props: { config: this.widgetConfig } });
+        return h(Component, { props: { config: this.widgetConfig, scope: this.widgetScope } });
       }
     });
     this.vm.$mount();
@@ -65,6 +73,8 @@ class WidgetElement extends HTMLElement {
     if (this.vm) {
       this.vm.$destroy();
       this.vm = null;
+      this._scope = null;
+      this._widgetScope = null;
     }
   }
 
@@ -85,7 +95,7 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     throw new Error('[widget-vue-cli-plugin] 请配置 name 和 component');
   }
 
-  const { name, component, vueGlobal = 'Vue', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths } = options;
+  const { name, component, vueGlobal = 'Vue', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
 
   return function chainWebpack(config) {
     const wrapperCode = generateVue2Wrapper(name, vueGlobal);
@@ -117,7 +127,10 @@ module.exports = function widgetVueCliPlugin(options = {}) {
       vue: vueGlobal,
       'element-ui': 'ELEMENT',
       // 国际化运行时：基座提供 window.__wcI18n__，物料共享同一实例与 locale 状态
-      'wc-i18n': '__wcI18n__'
+      'wc-i18n': '__wcI18n__',
+      // 软隔离 scope 运行时：基座提供 window.__wcWidgetScope__ = { createWidgetScope }
+      // 物料 wrapper 通过 createWidgetScope 创建独立 scope，作为 prop 注入业务组件
+      'wc-widget-scope': '__wcWidgetScope__'
     });
 
     // 注入组件路径别名
@@ -206,6 +219,40 @@ module.exports = function widgetVueCliPlugin(options = {}) {
               }
             } catch (scopedErr) {
               console.warn('[widget-vue-cli-plugin] scoped 检测失败（不影响构建）:', scopedErr.message);
+            }
+          }
+
+          // ─── CSS 命名空间检查（构建期）───
+          // 检查 .vue 中选择器是否含 .{name} 命名空间前缀（物料级隔离），
+          // 与 postcss-namespace 自动加前缀互补：postcss 负责"自动修复"，
+          // 此检查负责"发现遗漏"（如 autoNamespace=false 或全局样式泄漏）。
+          // policy: 'error' 报错 / 'warn' 告警(默认) / 'off' 关闭
+          if (enforceCssNamespace && enforceCssNamespace !== 'off') {
+            try {
+              const scanPaths = (cssNamespaceScanPaths && cssNamespaceScanPaths.length)
+                ? cssNamespaceScanPaths
+                : [path.dirname(componentPath)];
+              let allIssues = [];
+              scanPaths.forEach(p => {
+                const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+                const { issues } = checkCssNamespace(abs, name);
+                allIssues = allIssues.concat(issues);
+              });
+              if (allIssues.length > 0) {
+                const report = formatCssIssues(allIssues);
+                if (enforceCssNamespace === 'error') {
+                  console.error(`\n[widget-vue-cli-plugin] 物料 ${name} 存在未加命名空间的选择器:\n${report}`);
+                  if (stats && stats.compilation) {
+                    stats.compilation.errors.push(new Error(
+                      `[widget-vue-cli-plugin] 物料 ${name} 存在 ${allIssues.length} 个未加命名空间的选择器，构建被中止（设置 enforceCssNamespace:'warn' 降级，或确认 autoNamespace 已开启）:\n${report}`
+                    ));
+                  }
+                } else {
+                  console.warn(`\n[widget-vue-cli-plugin] 物料 ${name} 存在未加命名空间的选择器（仅告警）:\n${report}`);
+                }
+              }
+            } catch (nsErr) {
+              console.warn('[widget-vue-cli-plugin] 命名空间检查失败（不影响构建）:', nsErr.message);
             }
           }
 

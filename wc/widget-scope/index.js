@@ -61,6 +61,45 @@ function getI18nModule() {
   return i18nModulePromise;
 }
 
+let loaderModulePromise = null;
+function getLoaderModule() {
+  if (!loaderModulePromise) {
+    loaderModulePromise = import('../widget-loader/index.js');
+  }
+  return loaderModulePromise;
+}
+
+// ─── 嵌套加载的循环依赖检测 ───
+// pendingAncestors: 物料名 -> 祖先物料名集合
+// 父物料通过 scope.loader.loadWidget(child) 加载子物料时，会把
+// [父自身名 + 父的祖先链] 写入 pendingAncestors[child.name]；
+// 子物料的 wrapper 调用 createWidgetScope({name: child.name}) 时，
+// 自动取出并继承该祖先链，从而支持多级嵌套的循环检测（A→B→A）。
+const pendingAncestors = new Map();
+
+/**
+ * 读取并清除待继承的祖先链（供 createWidgetScope 内部调用）
+ * @param {string} widgetName
+ * @returns {Set<string>|null}
+ */
+function consumePendingAncestors(widgetName) {
+  if (pendingAncestors.has(widgetName)) {
+    const set = pendingAncestors.get(widgetName);
+    pendingAncestors.delete(widgetName);
+    return set;
+  }
+  return null;
+}
+
+/**
+ * 为即将被加载的子物料设置祖先链（供 scope.loader 内部调用）
+ * @param {string} childName 子物料名
+ * @param {Set<string>} ancestors 祖先物料名集合
+ */
+function setPendingAncestors(childName, ancestors) {
+  pendingAncestors.set(childName, ancestors);
+}
+
 /**
  * 创建一个物料的 widgetScope 软隔离对象
  * @param {object} opts
@@ -76,6 +115,16 @@ export function createWidgetScope(opts = {}) {
   if (!name) {
     throw new Error('[widget-scope] opts.name is required');
   }
+
+  // ─── 祖先链继承（嵌套加载循环检测）───
+  // 若父物料通过 scope.loader 加载本物料，会在 pendingAncestors 中预置祖先链。
+  // 此处取出并继承；同时支持 opts.ancestors 显式传入（多 Host 场景）。
+  const inheritedAncestors = consumePendingAncestors(name);
+  const ancestorSet = new Set(
+    opts.ancestors
+      ? opts.ancestors
+      : (inheritedAncestors ? Array.from(inheritedAncestors) : [])
+  );
 
   // ─── 命名空间隔离的事件总线 ───
   // 每个物料用自身 name 作为命名空间，避免不同物料的事件名碰撞
@@ -204,6 +253,68 @@ export function createWidgetScope(opts = {}) {
     return () => { _requestInterceptors = _requestInterceptors.filter(f => f !== fn); };
   };
 
+  // ─── 嵌套物料加载器（带循环依赖检测）───
+  // 物料可通过 scope.loader.loadWidget(child) / mountWidget(container, child)
+  // 加载子物料，无需直接访问基座 loader。
+  //
+  // 循环检测策略：
+  // - 直接自引用（child.name === 自身 name）→ 立即抛错
+  // - child.name 在祖先链中（如 A→B→A）→ 立即抛错
+  // - 否则把 [自身名 + 祖先链] 写入 pendingAncestors[child.name]，
+  //   子物料 createWidgetScope 时自动继承，支持多级嵌套检测
+  function checkCycle(childName) {
+    if (childName === name) {
+      const chain = [...ancestorSet, name, childName].join(' -> ');
+      throw new Error(`[widget-scope] 循环加载检测: 物料 ${name} 试图加载自身。链路: ${chain}`);
+    }
+    if (ancestorSet.has(childName)) {
+      const chain = [...ancestorSet, name, childName].join(' -> ');
+      throw new Error(`[widget-scope] 循环加载检测: 物料 ${name} 试图加载祖先物料 ${childName}。链路: ${chain}`);
+    }
+  }
+  function propagateAncestors(childName) {
+    const childAncestors = new Set([...ancestorSet, name]);
+    setPendingAncestors(childName, childAncestors);
+  }
+
+  const loader = {
+    /**
+     * 加载子物料资源（JS/CSS），不挂载
+     * @param {object} widget 子物料配置 { name, js, css, vueVersion? }
+     */
+    async loadWidget(widget) {
+      if (!widget || !widget.name) throw new Error('[widget-scope] loader.loadWidget: widget.name required');
+      checkCycle(widget.name);
+      propagateAncestors(widget.name);
+      const mod = await getLoaderModule();
+      const inst = mod.defaultLoader || mod;
+      return inst.loadWidget(widget);
+    },
+    /**
+     * 加载并挂载子物料到指定容器
+     * @param {HTMLElement} container
+     * @param {object} widget
+     * @returns {Promise<HTMLElement>} 挂载的物料元素
+     */
+    async mountWidget(container, widget) {
+      if (!widget || !widget.name) throw new Error('[widget-scope] loader.mountWidget: widget.name required');
+      checkCycle(widget.name);
+      propagateAncestors(widget.name);
+      const mod = await getLoaderModule();
+      const inst = mod.defaultLoader || mod;
+      return inst.mountWidget(container, widget);
+    },
+    /**
+     * 卸载子物料元素
+     * @param {HTMLElement} element
+     */
+    async unmountWidget(element) {
+      const mod = await getLoaderModule();
+      const inst = mod.defaultLoader || mod;
+      return inst.unmountWidget(element);
+    }
+  };
+
   // 组装并冻结 scope，防止物料随意扩展
   const scope = Object.freeze({
     meta,
@@ -212,6 +323,7 @@ export function createWidgetScope(opts = {}) {
     log,
     t,
     request,
+    loader,
     // 显式声明：scope 不提供 window/document 直接访问（软隔离约束）
     // 物料若强引用 window 会被 js-risk-scanner 在构建期告警
     __noGlobalAccess: true

@@ -9,6 +9,7 @@
  */
 
 import { t } from '../i18n/index.js';
+import { injectContext } from '../widget-context/index.js';
 
 // ─── 公共依赖版本契约 ───
 // 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖。
@@ -748,6 +749,14 @@ class WidgetLoader {
       );
     }
     element.setAttribute('config', configStr);
+    // ─── 自动注入全局上下文（基座无需手动调 injectContext）───
+    // 物料组件可通过 element._wcContext 或 scope.context.get() 读取上下文。
+    // injectContext 失败（如 widget-context 模块异常）不阻断挂载，仅告警。
+    try {
+      injectContext(element);
+    } catch (ctxErr) {
+      log('injectContext skipped:', ctxErr && ctxErr.message);
+    }
     try {
       container.appendChild(element); // 触发 connectedCallback
     } catch (error) {
