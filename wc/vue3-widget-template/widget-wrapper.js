@@ -14,6 +14,7 @@
  * 与"不开启 Shadow DOM"的架构决策保持一致。
  */
 import { createApp, h, ref } from 'vue';
+import { createWidgetScope } from '../widget-scope/index.js';
 
 function parseConfig(value) {
   try {
@@ -30,6 +31,11 @@ function createWidgetWrapper(Component, widgetName) {
       super();
       this.app = null;
       this._configRef = null;
+      // 每个物料实例创建独立的 widgetScope 软隔离对象，
+      // 物料组件通过 props.scope 接收，而非直接访问 window。
+      this._scope = createWidgetScope({ name: widgetName });
+      // 同时挂到元素实例，供非 Vue 物料/调试读取
+      this._widgetScope = this._scope;
     }
 
     static get observedAttributes() {
@@ -54,7 +60,8 @@ function createWidgetWrapper(Component, widgetName) {
       // config 变化时只需更新 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
       this._configRef = ref(parseConfig(this.getAttribute('config')));
       this.app = createApp({
-        render: () => h(Component, { config: this._configRef.value })
+        // 注入 scope 与 config 两个 prop，物料声明 props: { scope: Object, config: Object }
+        render: () => h(Component, { config: this._configRef.value, scope: this._scope })
       });
       this.app.mount(this);
     }
@@ -71,6 +78,8 @@ function createWidgetWrapper(Component, widgetName) {
         this.app.unmount();
         this.app = null;
         this._configRef = null;
+        this._scope = null;
+        this._widgetScope = null;
       }
     }
 

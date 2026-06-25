@@ -24,13 +24,50 @@
  */
 
 /**
+ * 内建最小 scope（H5 模板独立运行时的兜底）
+ * 仅提供 meta + log + no-op 的 context/bus/t/request，结构与 wc/widget-scope 一致。
+ * 物料项目若需完整能力（上下文/事件总线/i18n/请求拦截），应通过 opts.scope
+ * 注入由 wc/widget-scope 的 createWidgetScope() 创建的实例。
+ */
+function createMinimalScope(widgetName) {
+  const meta = Object.freeze({
+    name: widgetName,
+    version: '',
+    host: '',
+    __isWidgetScope: true,
+    __minimal: true
+  });
+  const noopAsync = () => Promise.resolve();
+  return Object.freeze({
+    meta,
+    log: {
+      info: (...a) => console.log(`[${widgetName}]`, ...a),
+      warn: (...a) => console.warn(`[${widgetName}]`, ...a),
+      error: (...a) => console.error(`[${widgetName}]`, ...a),
+      debug: () => {}
+    },
+    context: { get: () => Promise.resolve({}), onChange: () => Promise.resolve(() => {}) },
+    bus: { emit: noopAsync, on: () => Promise.resolve(() => {}), once: () => Promise.resolve(() => {}) },
+    t: (k) => Promise.resolve(k),
+    request: (url, options) => {
+      if (typeof globalThis.fetch !== 'function') {
+        return Promise.reject(new Error('[h5-widget-scope] fetch unavailable'));
+      }
+      return Promise.resolve(globalThis.fetch(url, options));
+    },
+    __noGlobalAccess: true
+  });
+}
+
+/**
  * 创建原生物料的 Custom Element 类
  * @param {object} opts
  * @param {string} opts.name 物料名（Custom Element 标签名，如 bi-weather-card）
- * @param {function} opts.render 渲染函数，接收 config 对象，返回 HTML 字符串
- * @param {function} [opts.onMount] 挂载后回调，接收 (element, config)，可绑定事件
- * @param {function} [opts.onUnmount] 卸载前回调，接收 element，可清理监听
- * @param {function} [opts.onConfigChange] config 变化回调，接收 (element, newConfig, oldConfig)
+ * @param {function} opts.render 渲染函数，接收 (config, scope) ，返回 HTML 字符串
+ * @param {function} [opts.onMount] 挂载后回调，接收 (element, config, scope)，可绑定事件
+ * @param {function} [opts.onUnmount] 卸载前回调，接收 (element, scope)，可清理监听
+ * @param {function} [opts.onConfigChange] config 变化回调，接收 (element, newConfig, oldConfig, scope)
+ * @param {object} [opts.scope] 自定义 scope 实例（多 Host 场景），不传则按 name 自动创建
  * @returns {typeof HTMLElement} Custom Element 类
  */
 function createH5Widget(opts) {
@@ -45,6 +82,12 @@ function createH5Widget(opts) {
       super();
       this._config = null;
       this._cleanup = null;
+      // 每个物料实例创建独立的 widgetScope 软隔离对象，
+      // 通过回调参数注入给物料，而非让物料直接访问 window
+      // 优先用 opts.scope（多 Host 场景或注入完整 widget-scope 实例）；
+      // 否则用内建的最小 scope 兜底（仅 meta/log），保证 H5 模板可独立运行
+      this._scope = opts.scope || createMinimalScope(name);
+      this._widgetScope = this._scope;
     }
 
     static get observedAttributes() {
@@ -68,22 +111,24 @@ function createH5Widget(opts) {
       this._config = this._parseConfig(this.getAttribute('config'));
       this._render();
 
-      // 挂载后回调：绑定事件、初始化交互等
+      // 挂载后回调：绑定事件、初始化交互等；注入 scope 作为第三参数
       if (typeof onMount === 'function') {
-        this._cleanup = onMount(this, this._config) || null;
+        this._cleanup = onMount(this, this._config, this._scope) || null;
       }
     }
 
     disconnectedCallback() {
-      // 卸载前回调：清理事件监听、定时器等
+      // 卸载前回调：清理事件监听、定时器等；注入 scope
       if (typeof onUnmount === 'function') {
-        onUnmount(this);
+        onUnmount(this, this._scope);
       }
       if (typeof this._cleanup === 'function') {
         this._cleanup();
         this._cleanup = null;
       }
       this._config = null;
+      this._scope = null;
+      this._widgetScope = null;
     }
 
     attributeChangedCallback(attrName, oldValue, newValue) {
@@ -95,9 +140,9 @@ function createH5Widget(opts) {
       this._config = this._parseConfig(newValue);
       this._render();
 
-      // config 变化回调
+      // config 变化回调；注入 scope
       if (typeof onConfigChange === 'function') {
-        onConfigChange(this, this._config, oldConfig);
+        onConfigChange(this, this._config, oldConfig, this._scope);
       }
     }
 
@@ -105,10 +150,11 @@ function createH5Widget(opts) {
      * 调用 render 函数渲染内容
      * render 返回 HTML 字符串时用 innerHTML 设置；
      * 返回 undefined/null 时不覆盖（允许 onMount 中手动操作 DOM）
+     * 注入 scope 作为第二参数，让物料渲染时可读取上下文/翻译
      */
     _render() {
       if (typeof render !== 'function') return;
-      const html = render(this._config);
+      const html = render(this._config, this._scope);
       if (typeof html === 'string') {
         this.innerHTML = html;
       }
@@ -119,6 +165,13 @@ function createH5Widget(opts) {
      */
     getConfig() {
       return this._config ? { ...this._config } : {};
+    }
+
+    /**
+     * 外部获取 widgetScope（只读）
+     */
+    getScope() {
+      return this._scope;
     }
   }
 

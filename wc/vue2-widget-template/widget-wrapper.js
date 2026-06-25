@@ -7,6 +7,7 @@
  *   改为手写 HTMLElement 挂载到 light DOM，让 aui 全局样式与主题变量能穿透。
  */
 import Vue from 'vue';
+import { createWidgetScope } from '../widget-scope/index.js';
 
 function parseConfig(value) {
   try {
@@ -29,6 +30,10 @@ function createWidgetWrapper(Component, widgetName) {
     constructor() {
       super();
       this.vm = null;
+      // 每个物料实例创建独立的 widgetScope 软隔离对象，
+      // 物料组件通过 props.scope 接收，而非直接访问 window
+      this._scope = createWidgetScope({ name: widgetName });
+      this._widgetScope = this._scope;
     }
 
     static get observedAttributes() {
@@ -39,10 +44,11 @@ function createWidgetWrapper(Component, widgetName) {
       const config = this.getAttribute('config');
       // 使用 reactive data 承载已解析的 config，attributeChangedCallback 中更新
       // this.vm.widgetConfig 即可触发响应式重渲染，无需依赖 $children 内部 API
+      // 同时把 scope 作为 data 暴露给 render，注入到业务组件 props
       this.vm = new Vue({
-        data: { widgetConfig: parseConfig(config) },
+        data: { widgetConfig: parseConfig(config), widgetScope: this._scope },
         render(h) {
-          return h(Component, { props: { config: this.widgetConfig } });
+          return h(Component, { props: { config: this.widgetConfig, scope: this.widgetScope } });
         }
       });
       this.vm.$mount();
@@ -53,6 +59,8 @@ function createWidgetWrapper(Component, widgetName) {
       if (this.vm) {
         this.vm.$destroy();
         this.vm = null;
+        this._scope = null;
+        this._widgetScope = null;
       }
     }
 
