@@ -83,7 +83,7 @@
 ### P1-12：`vue3-widget-template` 包装层缺少 shadowRoot 守卫
 
 - **文件**：`wc/vue3-widget-template/widget-wrapper.js`
-- **问题**：如果未来误引入 `defineCustomElement()` 或 `attachShadow()`，物料样式会被 Shadow DOM 隔离，aui 全局样式无法穿透，且没有运行时告警。
+- **问题**：如果未来误引入 `defineCustomElement()` 或 `attachShadow()`，物料样式会被 Shadow DOM 隔离，ElementUI/ElementPlus 全局样式无法穿透，且没有运行时告警。
 - **修复**：`connectedCallback` 中检测 `this.shadowRoot`，存在则 `console.error` 告警。
 
 ### P1-13：`widget-bus` 缺少 `off` 方法（无法取消订阅）
@@ -122,7 +122,7 @@
 ### P2-29：降级占位样式可被基座覆盖
 - `renderFallback` 移除内联样式，改用 `injectFallbackStyles` 注入样式表 + CSS 类，支持基座覆盖主题。
 
-### P2-30：mock-aui 叶子组件保留 slot 投影
+### P2-30：mock-aui 叶子组件保留 slot 投影（注：mock-aui 已删除，此条不再适用）
 - `statistic`/`progress`/`list-item` 改用 `getInner` 内部容器渲染，避免 `innerHTML` 清空 slot 投影内容。
 
 ### P2-31：ai-assistant 真实 AI 调用

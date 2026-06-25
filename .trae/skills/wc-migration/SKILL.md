@@ -14,10 +14,10 @@ description: >
 
 - **不修改业务逻辑**：只在组件外层包一层 Custom Element。
 - **config 自动解析**：包装层会把 Custom Element 接收到的 String config 自动解析为 Object，业务组件直接按 `props: { config: Object }` 写即可。
-- **公共依赖 external**：Vue、aui 由基座统一提供，物料包只打包业务代码。
+- **公共依赖 external**：Vue、ElementUI/ElementPlus 由基座统一提供，物料包只打包业务代码。
 - **schema 自动生成**：通过 `wc/schema-generator/index.js` 扫描组件 props 生成 `bi-xxx.schema.json`。
-- **无 Shadow DOM**：保持 aui 全局样式可用，业务组件只需加 `bi-xxx` 命名空间。
-  - **禁止使用 Vue3 的 `defineCustomElement()`**：它默认调用 `attachShadow()`，会隔离物料样式，导致 aui 全局样式 / 主题变量 / 字体图标无法穿透。
+- **无 Shadow DOM**：保持 ElementUI/ElementPlus 全局样式可用，业务组件只需加 `bi-xxx` 命名空间。
+  - **禁止使用 Vue3 的 `defineCustomElement()`**：它默认调用 `attachShadow()`，会隔离物料样式，导致 ElementUI/ElementPlus 全局样式 / 主题变量 / 字体图标无法穿透。
   - Vue2/Vue3 包装层都手写 `HTMLElement` + `createApp().mount(this)`（Vue3）/ `new Vue().$mount()`（Vue2），挂载到 light DOM。
   - 包装层已加运行时守卫：`connectedCallback` 中检测到 `this.shadowRoot` 立即 `console.error` 告警。
 
@@ -49,7 +49,7 @@ CLI 会自动完成：
 1. **组件路径**：用户要迁移的 `.vue` 文件路径。
 2. **物料名称**：统一以 `bi-` 开头，例如 `bi-sales-panel`。
 3. **技术栈**：Vue2 还是 Vue3，使用 Vue CLI 还是 Vite。
-4. **是否有 aui 以外的全局依赖**：如有，需要评估是否 external。
+4. **是否有 ElementUI/ElementPlus 以外的全局依赖**：如有，需要评估是否 external。
 5. **组件内部是否使用全局状态**：如 Vuex/Pinia/事件总线，需要改为组件自治或从 config 读取。
 
 ## 四、迁移执行步骤
@@ -195,7 +195,7 @@ await mountWidget(containerElement, {
 | 组件使用 Vuex/Pinia | 改为从 `config` 读取数据，或组件内部自治 |
 | 弹窗挂载到 document.body | 检查是否影响基座样式，必要时调整 z-index/定位 |
 | 样式冲突 | 确保根类名为 `bi-xxx`，所有选择器加该前缀 |
-| 依赖版本不一致 | 约束 aui 等大版本一致 |
+| 依赖版本不一致 | 约束 ElementUI/ElementPlus 等大版本一致 |
 
 ## 八、输出规范
 

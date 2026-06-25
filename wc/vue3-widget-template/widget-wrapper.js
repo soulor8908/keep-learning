@@ -9,7 +9,7 @@
  *
  * ─── 重要：禁止使用 Shadow DOM ───
  * 不要改用 Vue3 官方的 defineCustomElement()——它默认调用 attachShadow()，
- * 会把物料样式完全隔离，导致基座注入的 aui 全局样式 / 主题变量 / 字体图标无法穿透。
+ * 会把物料样式完全隔离，导致基座注入的 ElementPlus 全局样式 / 主题变量 / 字体图标无法穿透。
  * 本包装层手写 HTMLElement + createApp().mount(this)，挂载到 light DOM，
  * 与"不开启 Shadow DOM"的架构决策保持一致。
  */
@@ -47,7 +47,7 @@ function createWidgetWrapper(Component, widgetName) {
       if (this.shadowRoot) {
         console.error(
           `[widget-wrapper] 物料 ${widgetName} 检测到 shadowRoot，` +
-          'aui 全局样式将无法穿透。请勿使用 defineCustomElement 或 attachShadow。'
+          'ElementPlus 全局样式将无法穿透。请勿使用 defineCustomElement 或 attachShadow。'
         );
       }
       this._mount();

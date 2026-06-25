@@ -1,11 +1,9 @@
-// English language pack (shared by aui / widget-loader / widget business copy)
+// English language pack (shared by widget-loader / widget business copy)
 export default {
   loader: {
     version_mismatch: 'Version check failed, widget "{name}" rejected:',
     dep_missing: 'Widget "{name}" depends on {dep} ({range}), but host does not provide {globalVar} runtime',
     dep_version: 'Widget "{name}" requires {dep} {range}, but host provides {actual}',
-    dep_aui_missing: 'Widget "{name}" depends on aui ({range}), but host does not provide aui runtime',
-    dep_aui_version: 'Widget "{name}" requires aui {range}, but host provides {actual}',
     mount_failed: 'Widget "{name}" mount failed, degraded:',
     load_failed: 'Widget "{name}" load failed, degraded:',
     runtime_crash: 'Widget "{name}" crashed at runtime, isolated:',

@@ -8,8 +8,8 @@
 
 在一个大型组织里，BI 看板由多个业务板块组成，每个板块归属不同部门、不同代码仓，技术栈可能涵盖：
 
-- Vue2 + 内部 aui 组件库
-- Vue3 + 内部 aui 组件库
+- Vue2 + ElementUI
+- Vue3 + ElementPlus
 - 原生 JavaScript / React / 其他框架
 
 传统做法是：
@@ -159,12 +159,12 @@ export default {
 
 ```js
 // Vue2 物料
-config.externals({ vue: 'Vue2', aui: 'aui' });
+config.externals({ vue: 'Vue2', 'element-ui': 'ELEMENT' });
 
 // Vue3 物料
 rollupOptions: {
-  external: ['vue', 'aui'],
-  output: { globals: { vue: 'Vue3', aui: 'aui' } }
+  external: ['vue', 'element-ui'],
+  output: { globals: { vue: 'Vue3', 'element-ui': 'ELEMENT' } }
 }
 ```
 
@@ -322,7 +322,7 @@ export async function mountWidget(container, widget) {
 
 #### 方案：CSS 命名空间 + scoped style
 
-本方案**不开启 Shadow DOM**，因为 Shadow DOM 会把 aui 等全局样式也隔离掉，导致物料内部 UI 框架样式失效。
+本方案**不开启 Shadow DOM**，因为 Shadow DOM 会把 ElementUI/ElementPlus 等全局样式也隔离掉，导致物料内部 UI 框架样式失效。
 
 替代方案：
 
@@ -362,7 +362,7 @@ module.exports = function widgetVueCliPlugin(options) {
       .libraryTarget('umd');
 
     // 4. 外部化 Vue
-    config.externals({ vue: vueGlobal, aui: 'aui' });
+    config.externals({ vue: vueGlobal, 'element-ui': 'ELEMENT' });
 
     // 5. 把 __WIDGET_COMPONENT__ 指向真实组件
     config.resolve.alias.set('__WIDGET_COMPONENT__', componentPath);
@@ -390,8 +390,8 @@ export default function widgetVitePlugin(options) {
           formats: ['umd']
         },
         rollupOptions: {
-          external: ['vue', 'aui'],
-          output: { globals: { vue: vueGlobal, aui: 'aui' } }
+          external: ['vue', 'element-ui'],
+          output: { globals: { vue: vueGlobal, 'element-ui': 'ELEMENT' } }
         }
       },
       resolve: {

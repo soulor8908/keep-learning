@@ -1,0 +1,17 @@
+{
+  "name": "h5-widget-lib",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cross-env WIDGET_NAME=bi-clock-card vite build",
+    "build:all": "rm -rf dist && npm run build:clock && npm run build:notice",
+    "build:clock": "cross-env WIDGET_NAME=bi-clock-card vite build",
+    "build:notice": "cross-env WIDGET_NAME=bi-notice-board vite build",
+    "serve:dist": "npx serve dist -l 8083 --cors"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "vite": "^5.2.0"
+  }
+}

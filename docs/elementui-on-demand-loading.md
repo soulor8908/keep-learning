@@ -7,7 +7,7 @@
 
 ## 0. 执行摘要（Executive Summary）
 
-本项目是 BI 看板微前端：基座（`vue2-host` / `vue3-host`）通过 `wc/widget-loader` 在运行时加载 Vue 2 / Vue 3 物料（widget）。当前正在把内部组件库 `aui` 替换为 ElementUI（Vue 2 用 `element-ui`，Vue 3 用 `element-plus`）。
+本项目是 BI 看板微前端：基座（`vue2-host` / `vue3-host`）通过 `wc/widget-loader` 在运行时加载 Vue 2 / Vue 3 物料（widget）。物料统一使用 ElementUI（Vue 2 用 `element-ui`，Vue 3 用 `element-plus`）。
 
 如果基座在首屏一次性加载完整 ElementUI，会带来明显的性能损失：
 
@@ -228,7 +228,7 @@ flowchart LR
 }
 ```
 
-> 物料若不依赖 ElementUI（纯 aui 或无 UI 库），则**不写** `uiDependencies` 字段，基座跳过预加载。
+> 物料若不依赖 ElementUI（不依赖 ElementUI 或无 UI 库），则**不写** `uiDependencies` 字段，基座跳过预加载。
 
 ### 4.2 基座预加载流程
 
@@ -382,7 +382,7 @@ function loadUiResource(url, type) {
 | 缺失组件数超阈值 | 缺失组件占比 > 30%（可配置） | 触发全量包降级：加载 `full.js` + `full.css` |
 | `uiDependencies.full === true` | 物料显式声明全量 | 直接加载全量包，跳过 per-component |
 | 全量包也失败 | `full.js` 加载失败 | 渲染错误占位（复用 `widget-loader.renderFallback`），提示「UI 依赖加载失败」并提供重试 |
-| `uiDependencies` 缺失 | 物料未声明 UI 依赖 | 跳过预加载，按原流程挂载（兼容纯 aui / 无 UI 库物料） |
+| `uiDependencies` 缺失 | 物料未声明 UI 依赖 | 跳过预加载，按原流程挂载（兼容无 ElementUI / 无 UI 库物料） |
 | `lib` 与 `vueVersion` 不匹配 | 如 `vueVersion: '3'` 但 `lib: 'element-ui'` | `checkDependencies` 报 `DEP_VERSION_MISMATCH`，拒绝加载并渲染占位（无重试按钮） |
 | 缺失依赖告警 | 物料模板用了 `<el-xxx>` 但 `uiDependencies.components` 未声明 | 控制台 `console.warn` + 埋点，开发环境高亮缺失组件 |
 
@@ -595,11 +595,10 @@ function inferUiLib(vueVersion) {
 ```js
 // wc/widget-loader/index.js（设计示例）
 
-// 扩展 SUPPORTED_DEPS（在现有 vue2/vue3/aui 基础上新增）
+// 扩展 SUPPORTED_DEPS（在现有 vue2/vue3 基础上新增）
 const SUPPORTED_DEPS = {
   vue2:        { version: '2.6.14',  compatibleRange: '^2.6.0',  globalVar: 'Vue2' },
   vue3:        { version: '3.4.21',  compatibleRange: '^3.0.0',  globalVar: 'Vue3' },
-  aui:         { version: '1.8.2',   compatibleRange: '^1.8.0',  globalVar: 'aui'  },
   elementUi:   { version: '2.15.14', compatibleRange: '^2.15.0', globalVar: '__UI_ELEMENT_UI__'    },
   elementPlus: { version: '2.7.0',   compatibleRange: '^2.7.0',  globalVar: '__UI_ELEMENT_PLUS__'  }
 };

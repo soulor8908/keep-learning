@@ -2,8 +2,8 @@
   <div class="bi-sales-panel">
     <h3>{{ config.title || '销售看板' }}</h3>
     <div class="stats">
-      <aui-statistic title="销售额" :value="summary.amount" />
-      <aui-statistic title="订单数" :value="summary.orderCount" />
+      <el-statistic title="销售额" :value="summary.amount" />
+      <el-statistic title="订单数" :value="summary.orderCount" />
     </div>
   </div>
 </template>

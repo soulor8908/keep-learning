@@ -31,7 +31,7 @@
 
 | 概念 | 说明 | 作用 |
 | ------ | ------ | ------ |
-| **Host（基座）** | 看板本身，负责维护物料注册表、提供公共依赖（Vue2 / Vue3 / aui）、渲染看板布局。 | 物料的"运行环境"。 |
+| **Host（基座）** | 看板本身，负责维护物料注册表、提供公共依赖（Vue2 / Vue3 / ElementUI/ElementPlus）、渲染看板布局。 | 物料的"运行环境"。 |
 | **Widget（物料）** | 被包装成 Custom Element 的业务组件，例如 `<bi-sales-panel>`、`<bi-finance-panel>`。 | 看板中的"板块内容"。 |
 | **widget-loader** | 基座里的物料加载器，按需加载物料 JS/CSS、校验版本、捕获错误并降级。 | 负责"怎么把物料加载进来"。 |
 | **widget-wrapper-plugin** | 自动包装插件，把 Vue2/Vue3 组件打包成 UMD Custom Element，并生成 `schema.json`。 | 负责"怎么把组件变成物料"。 |
@@ -60,7 +60,7 @@
 
 - **widget-wrapper-plugin** 把业务组件变成可在浏览器中直接使用的 Custom Element。
 - **widget-loader** 在基座里读取注册表，按需加载这些物料，并在容器里创建对应的 HTML 标签。
-- **Host** 提供 Vue2/Vue3/aui 等公共运行时，确保不同版本的物料都能正确渲染。
+- **Host** 提供 Vue2/Vue3/ElementUI/ElementPlus 等公共运行时，确保不同版本的物料都能正确渲染。
 
 ---
 
@@ -75,7 +75,6 @@
 │   ├── schema-generator/            # 扫描组件 props 自动生成 schema.json
 │   ├── vue2-widget-template/        # Vue2 物料打包模板与示例
 │   ├── vue3-widget-template/        # Vue3 物料打包模板与示例
-│   ├── mock-aui/                    # 模拟统一 UI 组件库（Web Components）
 │   ├── i18n/                        # 跨技术栈轻量国际化运行时
 │   ├── ai-assistant/                # AI 辅助迁移 / schema 补充 / 文档生成 CLI
 │   ├── css-namespace-checker/       # CSS 命名空间检查工具
@@ -102,7 +101,6 @@
 | `widget-bus` | 基于 `CustomEvent` 的全局消息总线，支持 Vue2/Vue3/原生 JS 互相通信。 |
 | `schema-generator` | 读取 `.vue` 文件的 `props`，自动生成看板配置表单协议。 |
 | `vue2-widget-template` / `vue3-widget-template` | 最小化物料打包模板，不方便引入插件时可直接复制使用。 |
-| `mock-aui` | 演示用的跨框架 UI 组件库，以 Web Components 实现，被基座统一加载。 |
 | `i18n` | 跨技术栈共享的轻量国际化运行时，基座和物料共用。 |
 | `ai-assistant` | 提供迁移、schema 补充、README 生成的 AI Prompt 模板和 CLI 入口。 |
 

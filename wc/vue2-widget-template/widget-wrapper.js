@@ -4,7 +4,7 @@
  * 通过环境变量 WIDGET_NAME 和 WIDGET_COMPONENT 指定组件名和入口组件路径
  *
  * 重要：不使用 @vue/web-component-wrapper（默认创建 Shadow DOM），
- *   改为手写 HTMLElement 挂载到 light DOM，让 aui 全局样式与主题变量能穿透。
+ *   改为手写 HTMLElement 挂载到 light DOM，让 ElementUI 全局样式与主题变量能穿透。
  */
 import Vue from 'vue';
 import { createWidgetScope } from '../widget-scope/index.js';
@@ -20,7 +20,7 @@ function parseConfig(value) {
 
 function createWidgetWrapper(Component, widgetName) {
   // 手写 HTMLElement，挂载到 light DOM（不使用 Shadow DOM）
-  // 原因：aui 全局样式与主题变量需要穿透到物料内部，Shadow DOM 会隔离样式
+  // 原因：ElementUI 全局样式与主题变量需要穿透到物料内部，Shadow DOM 会隔离样式
   //
   // config 处理：connectedCallback/attributeChangedCallback 中调用 parseConfig
   // 解析为 Object 存入 reactive data widgetConfig，Vue 检测到引用变化后

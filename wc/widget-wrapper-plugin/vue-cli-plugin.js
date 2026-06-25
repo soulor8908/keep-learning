@@ -55,7 +55,7 @@ class WidgetElement extends HTMLElement {
 
   connectedCallback() {
     const config = this.getAttribute('config');
-    // 不使用 Shadow DOM，直接挂载到 light DOM，让 aui 全局样式能穿透
+    // 不使用 Shadow DOM，直接挂载到 light DOM，让 ElementUI 全局样式能穿透
     // 使用 reactive data 承载 config 与 scope，attributeChangedCallback 中更新
     // this.vm.widgetConfig 即可触发响应式重渲染，无需依赖 $children 内部 API
     // 注入 scope 作为业务组件 props：物料声明 props: { scope: Object, config: Object }

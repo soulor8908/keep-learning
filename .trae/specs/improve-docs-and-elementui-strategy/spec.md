@@ -1,5 +1,7 @@
 # 完善项目文档与 ElementUI 替换策略 Spec
 
+> **注：此 spec 已完成。aui→ElementUI 迁移已完成，相关代码已清理。**
+
 ## Why
 
 1. 当前 README 对项目架构、widget 加载机制、迁移流程的介绍不够系统，新成员难以快速理解。

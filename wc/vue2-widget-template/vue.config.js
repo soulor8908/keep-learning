@@ -25,7 +25,7 @@ module.exports = {
     externals: {
       // 基座统一提供，避免重复打包
       vue: 'Vue',
-      aui: 'aui'
+      'element-ui': 'ELEMENT'
     },
     resolve: {
       alias: {

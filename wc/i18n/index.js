@@ -3,7 +3,7 @@
  *
  * 为什么不用 vue-i18n 贯穿所有层？
  *   vue-i18n@8 与 @9 的 UMD 全局名都是 VueI18n，跨技术栈物料共存时无法同时 external。
- *   因此基座 Vue UI 层用 vue-i18n（各版本），而 aui（Web Components）、widget-loader（纯 JS）、
+ *   因此基座 Vue UI 层用 vue-i18n（各版本），而 widget-loader（纯 JS）、
  *   物料业务文案统一用本运行时，避免 UMD 冲突，并作为全链路 locale 同步枢纽。
  *
  * 设计：

@@ -23,7 +23,7 @@
 - **基座（Host）**：负责提供运行时环境、加载物料、渲染看板。
   - `demo/vue2-host`：纯 Vue 2 基座，仅挂载 `window.Vue2`。
   - `demo/vue3-host`：Vue 3 基座，同时挂载 `window.Vue3` 与 `window.Vue2`。
-- **运行时基础设施**：`wc/widget-loader`、`wc/widget-bus`、`wc/i18n`、`wc/mock-aui`。
+- **运行时基础设施**：`wc/widget-loader`、`wc/widget-bus`、`wc/i18n`。
 - **物料（Widget）**：独立的 `.js` + `.css` 产物，通过 Custom Element 注册到页面。
 
 ```text
@@ -46,7 +46,7 @@
 │   ┌─────────────────────┐  ┌─────────────────────────────┐  │
 │   │ bi-sales-panel.js   │  │ bi-finance-panel.js         │  │
 │   │ Vue 2 物料          │  │ Vue 3 物料                  │  │
-│   │ external: vue/aui   │  │ external: vue/aui           │  │
+│   │ external: vue/element-ui   │  │ external: vue/element-ui           │  │
 │   └─────────────────────┘  └─────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -98,7 +98,6 @@ window.Vue3 = Vue;          // 暴露 Vue3
 | --- | --- | --- |
 | `window.Vue2` | Vue 2 运行时 | `demo/vue2-host/src/main.js` / `demo/vue3-host/index.html` |
 | `window.Vue3` | Vue 3 运行时 | `demo/vue3-host/src/main.js` |
-| `window.aui` | 统一 UI 组件库 | `wc/mock-aui/index.js`（基座引入） |
 | `window.__wcI18n__` | 跨技术栈国际化运行时 | `wc/i18n/index.js` |
 | `window.widgetBus` | 跨物料消息总线 | `wc/widget-bus/index.js` |
 
@@ -198,8 +197,7 @@ export function unmountWidget(element) { /* ... */ }
 ```js
 const SUPPORTED_DEPS = {
   vue2: { version: '2.6.14', compatibleRange: '^2.6.0', globalVar: 'Vue2' },
-  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' },
-  aui:  { version: '1.8.2',  compatibleRange: '^1.8.0', globalVar: 'aui'  }
+  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' }
 };
 ```
 
@@ -217,8 +215,7 @@ export function satisfies(version, range) { /* ... */ }
 根据物料声明的 `widget.vueVersion` 选择 `vue2` 或 `vue3` 条目，检查：
 
 1. 全局变量是否存在；
-2. 运行时版本是否落在 `compatibleRange` 内；
-3. `window.aui` 是否存在且版本兼容。
+2. 运行时版本是否落在 `compatibleRange` 内。
 
 任一不通过都会抛出 `code = 'DEP_VERSION_MISMATCH'` 的错误，错误信息通过 `wc/i18n` 翻译。
 
@@ -347,11 +344,11 @@ Vue 2 与 Vue 3 物料在打包时都把公共依赖设为 `external`，避免�
 ```js
 // wc/widget-wrapper-plugin/vite-plugin.js:116-125
 rollupOptions: {
-  external: ['vue', 'aui', 'wc-i18n'],
+  external: ['vue', 'element-ui', 'wc-i18n'],
   output: {
     globals: {
       vue: vueGlobal,          // 默认 'Vue'
-      aui: 'aui',
+      'element-ui': 'ELEMENT',
       'wc-i18n': '__wcI18n__'
     }
   }
@@ -362,7 +359,7 @@ rollupOptions: {
 // wc/widget-wrapper-plugin/vue-cli-plugin.js:102-108
 config.externals({
   vue: vueGlobal,
-  aui: 'aui',
+  'element-ui': 'ELEMENT',
   'wc-i18n': '__wcI18n__'
 });
 ```
@@ -372,7 +369,7 @@ config.externals({
 | 依赖 | 基座注入方式 | 物料引用方式 |
 | --- | --- | --- |
 | Vue | `window.Vue2 = Vue` / `window.Vue3 = Vue` | `import Vue from 'vue'`（构建时 external） |
-| aui | 基座 `import '../../../wc/mock-aui/index.js'` | `import aui from 'aui'`（构建时 external） |
+| ElementUI | 基座 `import './element-ui.js'` | 构建时 external |
 | wc-i18n | `wc/i18n/index.js` 自动挂载 `window.__wcI18n__` | `import { t } from 'wc-i18n'`（构建时 external） |
 | widget-bus | `wc/widget-bus/index.js` 自动挂载 `window.widgetBus` | 直接 `import { emit, on } from '../../../wc/widget-bus'` |
 
@@ -411,8 +408,6 @@ function generateVue2Wrapper(widgetName, vueGlobal) {
 import Vue from 'vue';
 import Component from '__WIDGET_COMPONENT__';
 
-Vue.config.ignoredElements = [/^aui-/];
-
 class WidgetElement extends HTMLElement {
   // ...
   connectedCallback() {
@@ -435,7 +430,7 @@ customElements.define('${widgetName}', WidgetElement);
 
 ### 8.3 Vue 3 包装器
 
-`vite-plugin.js` 同样生成临时入口，手写 `HTMLElement` + `createApp()`，**不使用 `defineCustomElement()`**，因为后者默认创建 Shadow DOM，会隔离 aui 全局样式。
+`vite-plugin.js` 同样生成临时入口，手写 `HTMLElement` + `createApp()`，**不使用 `defineCustomElement()`**，因为后者默认创建 Shadow DOM，会隔离 ElementUI/ElementPlus 全局样式。
 
 ```js
 // wc/widget-wrapper-plugin/vite-plugin.js:25-90
@@ -465,7 +460,7 @@ customElements.define('${widgetName}', WidgetElement);
 
 项目明确禁止使用 Shadow DOM，原因：
 
-- aui 全局样式、主题变量、字体图标需要穿透到物料内部；
+- ElementUI/ElementPlus 全局样式、主题变量、字体图标需要穿透到物料内部；
 - Shadow DOM 会导致基座统一主题失效；
 - 手写 HTMLElement 挂载到 light DOM 可以保持样式一致性。
 
@@ -543,11 +538,11 @@ emit('refresh-data', { source: 'vue2-host', timestamp: Date.now() });
 
 ## 10. 补充：国际化运行时
 
-`wc/i18n/index.js` 是一个与 Vue 版本无关的轻量国际化运行时，用于统一 aui、widget-loader 错误提示与物料业务文案。
+`wc/i18n/index.js` 是一个与 Vue 版本无关的轻量国际化运行时，用于统一 widget-loader 错误提示与物料业务文案。
 
 ### 10.1 为什么不直接用 vue-i18n
 
-vue-i18n@8 与 @9 的 UMD 全局名都是 `VueI18n`，跨技术栈物料共存时无法同时 external。因此基座 Vue UI 层仍用 vue-i18n，而 aui、loader、物料统一用 `wc/i18n`。
+vue-i18n@8 与 @9 的 UMD 全局名都是 `VueI18n`，跨技术栈物料共存时无法同时 external。因此基座 Vue UI 层仍用 vue-i18n，而 loader、物料统一用 `wc/i18n`。
 
 ### 10.2 关键 API
 
@@ -565,7 +560,7 @@ function addMessages(locale, msgs) { /* ... */ }
 ```js
 export function changeLocale(locale) {
   i18n.locale = locale;
-  setLocale(locale); // 同步 aui / widget-loader / 物料
+  setLocale(locale); // 同步 widget-loader / 物料
 }
 ```
 
@@ -579,7 +574,7 @@ export function changeLocale(locale) {
 2. **版本契约**：加载前校验依赖版本，拒绝不兼容物料，避免晦涩运行时错误；
 3. **错误边界**：WeakMap 追踪 + 全局错误归因 + 降级占位，实现单点失败不影响整体；
 4. **生命周期钩子**：基座可订阅 loading / loaded / error / unmount 事件；
-5. **light DOM 包装器**：手写 Custom Element，不用 Shadow DOM，保证 aui 样式穿透；
+5. **light DOM 包装器**：手写 Custom Element，不用 Shadow DOM，保证 ElementUI/ElementPlus 样式穿透；
 6. **跨物料通信**：基于 CustomEvent 的 widget-bus，支持 Vue 2 / Vue 3 / 原生 JS；
 7. **独立国际化运行时**：`wc/i18n` 作为跨技术栈文案同步枢纽。
 
@@ -592,6 +587,5 @@ export function changeLocale(locale) {
 - `wc/vue3-widget-template/widget-wrapper.js`：Vue 3 运行时包装器模板；
 - `wc/i18n/index.js`：跨技术栈国际化；
 - `wc/widget-bus/index.js`：跨物料消息总线；
-- `wc/mock-aui/index.js`：Web Components 实现的统一 UI 组件库；
 - `demo/vue2-host/src/main.js`、`demo/vue3-host/src/main.js`：基座入口与全局变量注入；
 - `demo/vue2-host/src/widgetRegistry.js`、`demo/vue3-host/src/widgetRegistry.js`：基座物料注册表。

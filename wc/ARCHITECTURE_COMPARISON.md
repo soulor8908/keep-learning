@@ -57,7 +57,7 @@ Custom Elements、Shadow DOM、CustomEvent 都是浏览器原生标准。即使�
 
 **问题**：没有开启 Shadow DOM，所有物料样式都在全局作用域。如果两个物料都写了 `.title`，会互相覆盖。
 
-**为什么不开 Shadow DOM**：因为内部 UI 框架（如 aui）的全局样式、主题变量、字体图标等会被隔离掉，导致物料内部样式异常。
+**为什么不开 Shadow DOM**：因为内部 UI 框架（如 ElementUI/ElementPlus）的全局样式、主题变量、字体图标等会被隔离掉，导致物料内部样式异常。
 
 ### 3.2 JS 隔离弱
 
@@ -92,7 +92,7 @@ Custom Element 的 attribute 必须是字符串，复杂对象需要 `JSON.strin
 
 ### 3.6 公共依赖去重能力有限
 
-目前只是把 `vue` / `aui` 设为 external，由基座提供。但如果两个物料依赖了不同版本的 aui，或者依赖了相同的第三方库但版本不同，基座无法自动去重，容易冲突。
+目前只是把 `vue` / `ElementUI` 设为 external，由基座提供。但如果两个物料依赖了不同版本的 ElementUI，或者依赖了相同的第三方库但版本不同，基座无法自动去重，容易冲突。
 
 ### 3.7 调试和排障更分散
 

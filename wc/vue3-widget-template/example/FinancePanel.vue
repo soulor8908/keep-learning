@@ -2,7 +2,7 @@
   <div class="bi-finance-panel">
     <h3>{{ config.title || '财务看板' }}</h3>
     <div v-if="config.showChart" class="chart">
-      <aui-chart :type="config.chartType || 'line'" />
+      <el-progress :percentage="config.progress || 60" :status="config.progressStatus || 'success'" />
     </div>
   </div>
 </template>

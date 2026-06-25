@@ -14,7 +14,7 @@
 
   class BrokenPanel extends HTMLElement {
     connectedCallback() {
-      this._auiInit = true;
+      this._init = true;
 
       if (crashCount === 0) {
         // 首次挂载：模拟运行时崩溃

@@ -13,11 +13,10 @@ import { injectContext } from '../widget-context/index.js';
 
 // ─── 公共依赖版本契约 ───
 // 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖。
-// 导出供基座（如 aui-compat）读取实际承诺版本，避免硬编码导致版本不一致
+// 导出供基座读取实际承诺版本，避免硬编码导致版本不一致
 export const SUPPORTED_DEPS = {
   vue2: { version: '2.6.14', compatibleRange: '^2.6.0', globalVar: 'Vue2' },
-  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' },
-  aui:  { version: '1.8.2',  compatibleRange: '^1.8.0', globalVar: 'aui'  }
+  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' }
 };
 
 // ─── 轻量 semver 实现（避免引入外部依赖）───
@@ -141,15 +140,6 @@ export function checkDependencies(widget) {
         t('loader.dep_version', { name, dep: `Vue${vueVersion}`, range: vueDep.compatibleRange, actual: vueRuntime.version })
       );
     }
-  }
-
-  // 2. aui 统一组件库版本校验
-  const auiDep = SUPPORTED_DEPS.aui;
-  const auiRuntime = typeof window !== 'undefined' ? window[auiDep.globalVar] : undefined;
-  if (!auiRuntime) {
-    errors.push(t('loader.dep_aui_missing', { name, range: auiDep.compatibleRange }));
-  } else if (auiRuntime.version && !satisfies(auiRuntime.version, auiDep.compatibleRange)) {
-    errors.push(t('loader.dep_aui_version', { name, range: auiDep.compatibleRange, actual: auiRuntime.version }));
   }
 
   if (errors.length) {

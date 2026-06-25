@@ -7,7 +7,7 @@
 - **不强制统一技术栈**：各部门继续用 Vue2 或 Vue3 开发。
 - **最小化改造成本**：业务组件零改造，只改打包配置。
 - **按需加载**：看板用到哪个物料才加载对应 JS/CSS。
-- **公共依赖复用**：Vue、aui 等公共库由基座统一提供，物料包只打包业务代码。
+- **公共依赖复用**：Vue、ElementUI/ElementPlus 等公共库由基座统一提供，物料包只打包业务代码。
 
 ---
 
@@ -15,8 +15,6 @@
 
 ```
 wc/
-├── mock-aui/                      # 统一 UI 组件库（Web Components，跨 Vue2/Vue3）
-│   └── index.js
 ├── vue2-widget-template/          # Vue2 物料零改造模板
 │   ├── widget-wrapper.js          # Custom Element 包装入口
 │   ├── vue.config.js              # UMD 打包配置示例
@@ -32,7 +30,7 @@ wc/
 │   └── index.js
 ├── widget-bus/                    # 跨技术栈消息总线
 │   └── index.js
-├── i18n/                          # 跨技术栈轻量国际化运行时（aui/loader/物料共用）
+├── i18n/                          # 跨技术栈轻量国际化运行时（loader/物料共用）
 │   ├── index.js
 │   └── locales/                   # 中英语言包
 ├── schema-generator/              # schema.json 自动生成器
@@ -159,30 +157,28 @@ node wc/schema-generator/index.js bi-sales-panel ./src/components/SalesPanel.vue
 
 ### 2.0 加载统一 UI 组件库（统一 UI 层）
 
-基座负责加载统一 UI 组件库（如 `aui`），挂载到全局。物料构建时把 `aui` 设为 external，只打包业务逻辑，运行时直接使用基座提供的 UI 组件。
+基座负责加载统一 UI 组件库（ElementUI/ElementPlus）并挂到全局：Vue2 基座加载 `element-ui` 挂到 `window.ELEMENT`，Vue3 基座加载 `element-plus` 注册到对应 Vue3 app。物料构建时把 `element-ui` / `element-plus` 设为 external，只打包业务逻辑，运行时直接使用基座提供的 `el-xxx` 组件。
 
 ```js
-// main.js
-import './wc/mock-aui/index.js';  // 注册 aui-card / aui-statistic 等到全局，挂载 window.aui
+// main.js（Vue2 基座）
+import ELEMENT from 'element-ui';
+import 'element-ui/lib/theme-chalk/index.css';
+window.ELEMENT = ELEMENT;
 ```
 
-物料组件里直接使用 aui 标签，无需 import：
+物料组件里直接使用 `el-xxx` 组件，无需 import：
 
 ```vue
 <template>
-  <aui-card title="销售看板">
-    <aui-row>
-      <aui-statistic label="销售额" prefix="¥" :value="amount" />
-    </aui-row>
-  </aui-card>
+  <el-card title="销售看板">
+    <el-row>
+      <el-statistic label="销售额" prefix="¥" :value="amount" />
+    </el-row>
+  </el-card>
 </template>
 ```
 
-**为什么用 Web Components 实现 aui？**
-
-Vue2 组件和 Vue3 组件互不兼容，无法共享。用 Web Components 实现的 aui 组件可以被任何框架使用，真正做到"基座加载一次，所有物料复用"。
-
-> **禁止 Shadow DOM（重要）**：Vue2/Vue3 物料包装层都挂载到 light DOM，**不要**改用 Vue3 官方的 `defineCustomElement()`（它默认调用 `attachShadow()`），否则 aui 全局样式、主题变量、字体图标会被隔离，物料内部样式异常。包装层已加运行时守卫：检测到 `shadowRoot` 会在控制台报错。详见 [5.2 样式隔离](#52-样式隔离)。
+> **禁止 Shadow DOM（重要）**：Vue2/Vue3 物料包装层都挂载到 light DOM，**不要**改用 Vue3 官方的 `defineCustomElement()`（它默认调用 `attachShadow()`），否则 ElementUI/ElementPlus 全局样式、主题变量、字体图标会被隔离，物料内部样式异常。包装层已加运行时守卫：检测到 `shadowRoot` 会在控制台报错。详见 [5.2 样式隔离](#52-样式隔离)。
 
 ### 2.1 公共依赖版本契约（版本治理）
 
@@ -194,8 +190,7 @@ Vue2 组件和 Vue3 组件互不兼容，无法共享。用 Web Components 实�
 // wc/widget-loader/index.js
 const SUPPORTED_DEPS = {
   vue2: { version: '2.6.14', compatibleRange: '^2.6.0', globalVar: 'Vue2' },
-  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' },
-  aui:  { version: '1.8.2',  compatibleRange: '^1.8.0', globalVar: 'aui'  }
+  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' }
 };
 ```
 
@@ -339,14 +334,14 @@ app.use(Vue3BusPlugin);
 
 ### 2.6 国际化（全链路 i18n）
 
-**问题**：看板需要支持多语言，但基座（Vue2/Vue3）、物料（Vue2/Vue3）、aui（Web Components）、widget-loader（纯 JS）技术栈不一，文案分散在各处。
+**问题**：看板需要支持多语言，但基座（Vue2/Vue3）、物料（Vue2/Vue3）、widget-loader（纯 JS）技术栈不一，文案分散在各处。
 
 **方案**：分层 i18n，locale 全局同步。
 
 | 层 | 方案 | 说明 |
 |---|---|---|
 | 基座 Vue UI | vue-i18n（@8/@9 各版本） | 基座自身标题/按钮/日志用 `$t`/`t()` |
-| aui / widget-loader / 物料业务文案 | `wc/i18n` 轻量全局运行时 | 跨技术栈共用，避免 vue-i18n UMD 全局名冲突 |
+| widget-loader / 物料业务文案 | `wc/i18n` 轻量全局运行时 | 跨技术栈共用，避免 vue-i18n UMD 全局名冲突 |
 
 > **为什么物料不用 vue-i18n？** vue-i18n@8 与 @9 的 UMD 全局名都是 `VueI18n`，跨技术栈物料共存时无法同时 external（后者覆盖前者）。因此物料业务文案统一用 `wc/i18n` 的全局 `t()`，基座提供 `window.__wcI18n__`，物料构建时 external `wc-i18n`。
 
@@ -360,7 +355,7 @@ setLocale('en');                  // 切换语言，派发 'locale-change' 事�
 onLocaleChange(locale => { ... }); // 订阅切换，物料据此重渲染
 ```
 
-**语言切换同步链路**：基座点击语言按钮 → `changeLocale()` 同时更新 vue-i18n.locale 与 `wc/i18n.setLocale()` → `setLocale` 通知所有 `onLocaleChange` 订阅者（aui/loader/物料）+ 通过 widget-bus 广播 `locale-change` → 物料监听后自增 `localeTick` 触发重渲染。
+**语言切换同步链路**：基座点击语言按钮 → `changeLocale()` 同时更新 vue-i18n.locale 与 `wc/i18n.setLocale()` → `setLocale` 通知所有 `onLocaleChange` 订阅者（loader/物料）+ 通过 widget-bus 广播 `locale-change` → 物料监听后自增 `localeTick` 触发重渲染。
 
 **物料接入**（构建时 external `wc-i18n` → `window.__wcI18n__`）：
 
@@ -427,7 +422,7 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 | 工作项 | 工作量 | 说明 |
 |---|---|---|
 | 安装/引入包装插件 | 0.5 天 | npm install + 改一行配置 |
-| 调整打包脚本 | 0.5 天 | 输出 UMD，external vue/aui |
+| 调整打包脚本 | 0.5 天 | 输出 UMD，external vue/element-ui |
 | 业务组件适配 config | **0 天** | 插件自动解析 Object，组件无需改代码 |
 | 生成 schema.json | **0 天** | 插件自动生成 |
 | 发布到 CDN | 1 天 | 接入现有 CI/CD |
@@ -464,7 +459,7 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 
 ### 5.1 公共依赖版本约束
 
-✅ 已实现（见 [2.1 公共依赖版本契约](#21-公共依赖版本契约版本治理)）：`widget-loader` 内置 `SUPPORTED_DEPS` 版本契约，加载物料前按 `vueVersion` 校验 `window.Vue2` / `window.Vue3` 与 `window.aui` 的版本是否落在兼容范围内，不兼容直接拒绝加载并给出明确错误。
+✅ 已实现（见 [2.1 公共依赖版本契约](#21-公共依赖版本契约版本治理)）：`widget-loader` 内置 `SUPPORTED_DEPS` 版本契约，加载物料前按 `vueVersion` 校验 `window.Vue2` / `window.Vue3` 的版本是否落在兼容范围内，不兼容直接拒绝加载并给出明确错误。
 
 🔄 待增强：
 
@@ -475,13 +470,13 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 
 当前方案**不开启 Shadow DOM**，依赖各部门自觉加命名空间前缀（如 `.bi-sales-panel`）。
 
-**为什么不用 Shadow DOM / `defineCustomElement`**：Vue3 官方的 `defineCustomElement()` 默认调用 `attachShadow()`，会把物料样式完全隔离，导致基座注入的 aui 全局样式、主题变量、字体图标无法穿透。因此 Vue2/Vue3 包装层都手写 `HTMLElement` + 挂载到 light DOM，并在 `connectedCallback` 里加了运行时守卫：检测到 `shadowRoot` 立即报错，防止未来误改回归。
+**为什么不用 Shadow DOM / `defineCustomElement`**：Vue3 官方的 `defineCustomElement()` 默认调用 `attachShadow()`，会把物料样式完全隔离，导致基座注入的 ElementUI/ElementPlus 全局样式、主题变量、字体图标无法穿透。因此 Vue2/Vue3 包装层都手写 `HTMLElement` + 挂载到 light DOM，并在 `connectedCallback` 里加了运行时守卫：检测到 `shadowRoot` 立即报错，防止未来误改回归。
 
 后续可：
 
 - 制定 CSS 命名规范，强制要求物料根类名为 `bi-xxx`。
 - 在构建插件里加入 CSS 检查，自动提示未加命名空间的选择器。
-- 或引入 CSS Modules / scoped style，但 Shadow DOM 仍不推荐（与 aui 全局样式冲突）。
+- 或引入 CSS Modules / scoped style，但 Shadow DOM 仍不推荐（与 ElementUI/ElementPlus 全局样式冲突）。
 
 ### 5.3 配置协议 schema（已实现基础版）
 

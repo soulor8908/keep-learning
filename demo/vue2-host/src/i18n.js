@@ -1,5 +1,5 @@
 // vue2-host 基座 i18n（vue-i18n@8）
-// 基座自身 Vue UI 文案用 vue-i18n；语言切换时同步 wc/i18n 全局 locale（aui/loader/物料共用）
+// 基座自身 Vue UI 文案用 vue-i18n；语言切换时同步 wc/i18n 全局 locale（loader/物料共用）
 import Vue from 'vue';
 import VueI18n from 'vue-i18n';
 import { setLocale } from '../../../wc/i18n/index.js';
@@ -51,7 +51,7 @@ const i18n = new VueI18n({
  */
 export function changeLocale(locale) {
   i18n.locale = locale;
-  setLocale(locale); // 同步 aui / widget-loader / 物料
+  setLocale(locale); // 同步 widget-loader / 物料
 }
 
 export default i18n;
