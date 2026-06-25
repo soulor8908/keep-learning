@@ -198,14 +198,18 @@ function isAllowedSelector(selector, namespaceClass) {
     return true;
   }
 
-  // 包含命名空间类名
-  if (namespaceClass && trimmed.includes(`.${namespaceClass}`)) {
-    return true;
-  }
-
-  // 类名以命名空间开头，如 .bi-sales-panel-title
-  if (namespaceClass && trimmed.split(/[\s>+~\[:]/)[0].startsWith(`.${namespaceClass}`)) {
-    return true;
+  // 每个逗号分隔的选择器片段必须以命名空间类开头（修复 P1-14）。
+  // 旧逻辑用 includes 判断，会把 `.title .bi-sales-panel` 这类首 token 非命名空间
+  // 的选择器误判为合法（只要字符串里出现命名空间子串就放行）。
+  // 现改为取选择器首个 token（按后代/子/兄弟组合器 + 属性选择器边界切分），
+  // 要求它以 `.${namespaceClass}` 开头：
+  //   合法：.bi-sales-panel / .bi-sales-panel .title / .bi-sales-panel-title (BEM) / .bi-sales-panel:hover
+  //   违规：.title .bi-sales-panel / .other > .bi-sales-panel / .title
+  if (namespaceClass) {
+    const firstToken = trimmed.split(/[\s>+~\[:]/)[0] || '';
+    if (firstToken.startsWith(`.${namespaceClass}`)) {
+      return true;
+    }
   }
 
   return false;

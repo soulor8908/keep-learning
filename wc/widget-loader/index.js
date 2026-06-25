@@ -298,9 +298,13 @@ class WidgetLoader {
   }
 
   /**
-   * 加载 JS 脚本
+   * 加载 JS 脚本（带自动重试 + 指数退避，修复 P2-20）
    *
-   * 竞态修复：将"真实加载结果"与"超时"分离。
+   * 重试策略：仅对真正的加载失败（SCRIPT_ERROR）重试，超时（LOAD_TIMEOUT）不重试
+   * （超时可能底层仍在加载，重试会重复创建 <script> 并可能加剧拥塞）。
+   * 退避：backoff * 2^attempt（如 1000ms → 2000ms → 4000ms）。
+   *
+   * 竞态修复（单次加载内）：将"真实加载结果"与"超时"分离。
    * - loadPromise 由 onload/onerror 决定，缓存它：即使超时后脚本最终加载成功，
    *   后续调用复用已 resolve 的 loadPromise，不会重复创建 <script> 标签。
    * - 调用方拿到的是 Promise.race(loadPromise, timeout)：超时只 reject 给调用方，
@@ -309,9 +313,24 @@ class WidgetLoader {
    *
    * @param {string} url
    * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒，超时后 reject（不清理节点/缓存）
+   * @param {{retries?: number, backoff?: number}} [opts] retries=3 重试次数，backoff=1000 退避基数(ms)
    * @returns {Promise<void>}
    */
-  loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
+  loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT, opts = {}) {
+    const maxRetries = opts.retries != null ? opts.retries : 3;
+    const backoffBase = opts.backoff != null ? opts.backoff : 1000;
+    const attempt = (n) => this._loadScriptOnce(url, timeout).catch(err => {
+      if (err && err.code === WidgetError.SCRIPT_ERROR && n < maxRetries) {
+        const delay = backoffBase * Math.pow(2, n);
+        log(`script load failed (attempt ${n + 1}/${maxRetries + 1}), retry in ${delay}ms:`, url, err.message);
+        return new Promise(r => setTimeout(r, delay)).then(() => attempt(n + 1));
+      }
+      throw err;
+    });
+    return attempt(0);
+  }
+
+  _loadScriptOnce(url, timeout = DEFAULT_LOAD_TIMEOUT) {
     if (this.loadedResources.has(url)) {
       log('script cached:', url);
       return this.loadedResources.get(url);
@@ -360,19 +379,35 @@ class WidgetLoader {
   }
 
   /**
-   * 加载 CSS 样式
+   * 加载 CSS 样式（带自动重试 + 指数退避，修复 P2-20）
    *
-   * 竞态修复：同 loadScript，将真实加载结果与超时分离，避免超时误删已加载样式
-   * 导致下次重复加载。详见 loadScript 注释。
+   * 重试策略同 loadScript：仅对 CSS_ERROR 重试，LOAD_TIMEOUT 不重试。
+   *
+   * 竞态修复：将真实加载结果与超时分离，避免超时误删已加载样式导致下次重复加载。
    *
    * @param {string} url
    * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒
+   * @param {{retries?: number, backoff?: number}} [opts] retries=3 重试次数，backoff=1000 退避基数(ms)
    * @returns {Promise<void>}
    */
-  loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
+  loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT, opts = {}) {
     if (!url) {
       return Promise.resolve();
     }
+    const maxRetries = opts.retries != null ? opts.retries : 3;
+    const backoffBase = opts.backoff != null ? opts.backoff : 1000;
+    const attempt = (n) => this._loadStyleOnce(url, timeout).catch(err => {
+      if (err && err.code === WidgetError.CSS_ERROR && n < maxRetries) {
+        const delay = backoffBase * Math.pow(2, n);
+        log(`style load failed (attempt ${n + 1}/${maxRetries + 1}), retry in ${delay}ms:`, url, err.message);
+        return new Promise(r => setTimeout(r, delay)).then(() => attempt(n + 1));
+      }
+      throw err;
+    });
+    return attempt(0);
+  }
+
+  _loadStyleOnce(url, timeout = DEFAULT_LOAD_TIMEOUT) {
     if (this.loadedResources.has(url)) {
       log('style cached:', url);
       return this.loadedResources.get(url);
