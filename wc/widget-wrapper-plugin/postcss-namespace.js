@@ -131,4 +131,4 @@ function createNamespacePlugin(widgetName) {
 // postcss 8 要求标记 postcss 属性为 true（用于识别为 postcss 插件）
 createNamespacePlugin.postcss = true;
 
-module.exports = { createNamespacePlugin, prefixSelector, isGlobalSelector, hasNamespace };
+module.exports = { createNamespacePlugin, prefixSelector, isGlobalSelector, hasNamespace, GLOBAL_SELECTOR_PATTERNS };

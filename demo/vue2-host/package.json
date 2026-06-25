@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "vue-cli-service build",
-    "serve": "vue-cli-service serve"
+    "serve": "vue-cli-service serve",
+    "setup:vendors": "mkdir -p public/vendor && cp ../vue3-widget-lib/node_modules/vue/dist/vue.global.prod.js public/vendor/vue@3.js"
   },
   "dependencies": {
     "element-ui": "^2.15.14",

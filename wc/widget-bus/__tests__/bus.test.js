@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createBus, emit, on, once } from '../index.js';
+import { createBus, emit, on, once, off, Vue2BusPlugin, Vue3BusPlugin } from '../index.js';
 
 describe('widget-bus', () => {
   describe('emit / on 基本收发', () => {
@@ -143,6 +143,88 @@ describe('widget-bus', () => {
       const event = dispatchSpy.mock.calls[0][0];
       expect(event.type).toBe('bi-widget-bus:ns1:check');
       dispatchSpy.mockRestore();
+    });
+  });
+
+  describe('off 方法', () => {
+    it('off 取消指定 handler：on(e,h1) on(e,h2) off(e,h1) emit(e) 仅 h2 触发', () => {
+      const calls = [];
+      const h1 = () => calls.push('h1');
+      const h2 = () => calls.push('h2');
+      on('off-pick', h1);
+      on('off-pick', h2);
+      off('off-pick', h1);
+      emit('off-pick');
+      expect(calls).toEqual(['h2']);
+    });
+
+    it('off 未注册 handler 不抛错、不影响其他 handler', () => {
+      const calls = [];
+      const registered = () => calls.push('registered');
+      const neverRegistered = () => calls.push('never');
+      on('off-missing', registered);
+      expect(() => off('off-missing', neverRegistered)).not.toThrow();
+      emit('off-missing');
+      expect(calls).toEqual(['registered']);
+    });
+
+    it('off 未注册事件类型不抛错', () => {
+      expect(() => off('off-no-such-event', () => {})).not.toThrow();
+    });
+
+    it('off 后再 on 仍正常工作', () => {
+      const calls = [];
+      const h = () => calls.push('h');
+      on('off-regon', h);
+      off('off-regon', h);
+      // 重新注册同名事件
+      on('off-regon', h);
+      emit('off-regon');
+      expect(calls).toEqual(['h']);
+    });
+
+    it('off 也能移除 once 注册的监听（按原 handler）', () => {
+      const calls = [];
+      const h = (p) => calls.push(p);
+      once('off-once', h);
+      off('off-once', h);
+      emit('off-once', 'a');
+      emit('off-once', 'b');
+      // 被 off 移除后不再触发
+      expect(calls).toEqual([]);
+    });
+
+    it('createBus 实例也有 off 方法', () => {
+      const bus = createBus('off-inst');
+      const calls = [];
+      const h = () => calls.push('x');
+      bus.on('e', h);
+      bus.off('e', h);
+      bus.emit('e');
+      expect(calls).toEqual([]);
+    });
+
+    it('window.widgetBus 暴露 off 方法', () => {
+      expect(typeof window.widgetBus.off).toBe('function');
+    });
+
+    it('default export 暴露 off 方法', async () => {
+      const mod = await import('../index.js');
+      expect(typeof mod.default.off).toBe('function');
+      expect(mod.off).toBe(mod.default.off);
+    });
+
+    it('Vue2BusPlugin / Vue3BusPlugin 暴露的 $widgetBus 含 off', () => {
+      const Vue2 = function () {};
+      Vue2.prototype = {};
+      Vue2BusPlugin.install(Vue2);
+      expect(typeof Vue2.prototype.$widgetBus.off).toBe('function');
+      Vue2BusPlugin.uninstall(Vue2);
+
+      const app = { config: { globalProperties: {} } };
+      Vue3BusPlugin.install(app);
+      expect(typeof app.config.globalProperties.$widgetBus.off).toBe('function');
+      Vue3BusPlugin.uninstall(app);
     });
   });
 });

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "serve": "vite"
+    "serve": "vite",
+    "setup:vendors": "mkdir -p public/vendor && cp ../vue2-widget-lib/node_modules/vue/dist/vue.js public/vendor/vue@2.js"
   },
   "dependencies": {
     "element-plus": "^2.7.0",

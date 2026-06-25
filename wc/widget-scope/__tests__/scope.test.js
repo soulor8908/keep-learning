@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createWidgetScope, isWidgetScope } from '../index.js';
+import { createBus } from '../../widget-bus/index.js';
+
+// 刷新微任务队列：用 setTimeout(0) 宏任务确保所有 pending 微任务（含 chained .then）执行完毕
+const flush = () => new Promise(r => setTimeout(r, 0));
 
 describe('widget-scope 基础', () => {
   describe('createWidgetScope 必填校验', () => {
@@ -154,6 +158,92 @@ describe('widget-scope 基础', () => {
       delete globalThis.fetch;
       const scope = createWidgetScope({ name: 'w' });
       await expect(scope.request('https://example.com')).rejects.toThrow(/fetch is not available/);
+    });
+  });
+
+  describe('bus.on/once 同步返回 unsubscribe', () => {
+    it('on 同步返回函数（非 Promise）', () => {
+      const scope = createWidgetScope({ name: 'sync-ret', busInstance: createBus('sync-ret') });
+      const off = scope.bus.on('e', () => {});
+      expect(typeof off).toBe('function');
+      expect(off).not.toBeInstanceOf(Promise);
+    });
+
+    it('once 同步返回函数（非 Promise）', () => {
+      const scope = createWidgetScope({ name: 'sync-ret-once', busInstance: createBus('sync-ret-once') });
+      const off = scope.bus.once('e', () => {});
+      expect(typeof off).toBe('function');
+      expect(off).not.toBeInstanceOf(Promise);
+    });
+
+    it('无 await 即调用 off 不抛错（bus 就绪前取消）', () => {
+      const scope = createWidgetScope({ name: 'sync-nothrow', busInstance: createBus('sync-nothrow') });
+      const off = scope.bus.on('e', () => {});
+      expect(() => off()).not.toThrow();
+    });
+
+    it('bus 就绪前调用 off，后续 emit 不触发 cb', async () => {
+      const bus = createBus('sync-off-before');
+      const scope = createWidgetScope({ name: 'sync-off-before', busInstance: bus });
+      const cb = vi.fn();
+      const off = scope.bus.on('evt', cb);
+      // 在注册微任务执行前同步取消
+      off();
+      await flush();
+      await scope.bus.emit('evt');
+      await flush();
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('注册后再调用 off，后续 emit 不触发 cb', async () => {
+      const bus = createBus('sync-off-after');
+      const scope = createWidgetScope({ name: 'sync-off-after', busInstance: bus });
+      const cb = vi.fn();
+      const off = scope.bus.on('evt', cb);
+      // 等待注册微任务完成
+      await flush();
+      off();
+      await scope.bus.emit('evt');
+      await flush();
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('正常注册并触发（验证非取消路径仍工作）', async () => {
+      const bus = createBus('sync-fire');
+      const scope = createWidgetScope({ name: 'sync-fire', busInstance: bus });
+      const received = [];
+      scope.bus.on('evt', p => received.push(p));
+      await flush();
+      await scope.bus.emit('evt', 'hello');
+      await flush();
+      expect(received).toEqual(['hello']);
+    });
+
+    it('once 仅触发一次', async () => {
+      const bus = createBus('sync-once-fire');
+      const scope = createWidgetScope({ name: 'sync-once-fire', busInstance: bus });
+      const received = [];
+      scope.bus.once('evt', p => received.push(p));
+      await flush();
+      await scope.bus.emit('evt', 'a');
+      await scope.bus.emit('evt', 'b');
+      await flush();
+      expect(received).toEqual(['a']);
+    });
+
+    it('bus.on 同步取消后不影响其他 handler', async () => {
+      const bus = createBus('sync-mix');
+      const scope = createWidgetScope({ name: 'sync-mix', busInstance: bus });
+      const calls = [];
+      const h1 = () => calls.push('h1');
+      const h2 = () => calls.push('h2');
+      const off1 = scope.bus.on('evt', h1);
+      scope.bus.on('evt', h2);
+      await flush();
+      off1();
+      await scope.bus.emit('evt');
+      await flush();
+      expect(calls).toEqual(['h2']);
     });
   });
 });

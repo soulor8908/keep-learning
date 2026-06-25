@@ -173,6 +173,12 @@ export function createWidgetScope(opts = {}) {
 
   // ─── 命名空间事件总线便捷方法 ───
   // 软隔离原则：bus 失败不应 crash 物料渲染，统一 try/catch 并记日志
+  //
+  // on/once 同步返回 unsubscribe 函数（与主流事件库约定一致）：
+  // - bus 就绪前调用 on：先返回 unsubscribe，bus 就绪后在微任务中补注册；
+  //   若 unsubscribe 已被调用（disposed=true），则跳过注册，避免回调泄漏。
+  // - bus 就绪后调用 on：realOff 在微任务中被赋值，unsubscribe 调用时清理。
+  // - emit 保持 async fire-and-forget。
   const bus = {
     async emit(type, payload, options) {
       try {
@@ -182,23 +188,36 @@ export function createWidgetScope(opts = {}) {
         log.error('bus.emit failed:', e.message);
       }
     },
-    async on(type, cb) {
-      try {
-        const b = await getBus();
-        if (b && b.on) return b.on(type, cb);
-      } catch (e) {
-        log.error('bus.on failed:', e.message);
-      }
-      return () => {};
+    on(type, cb) {
+      let realOff = null;
+      let disposed = false;
+      // getBus() 可能返回 Promise（首次懒加载）或已解析的实例，统一用 Promise.resolve 包裹
+      Promise.resolve(getBus()).then(b => {
+        if (disposed) return;
+        if (b && typeof b.on === 'function') realOff = b.on(type, cb);
+      }).catch(e => log.error('bus.on failed:', e.message));
+      return () => {
+        disposed = true;
+        if (realOff) {
+          try { realOff(); } catch (e) { /* ignore */ }
+          realOff = null;
+        }
+      };
     },
-    async once(type, cb) {
-      try {
-        const b = await getBus();
-        if (b && b.once) return b.once(type, cb);
-      } catch (e) {
-        log.error('bus.once failed:', e.message);
-      }
-      return () => {};
+    once(type, cb) {
+      let realOff = null;
+      let disposed = false;
+      Promise.resolve(getBus()).then(b => {
+        if (disposed) return;
+        if (b && typeof b.once === 'function') realOff = b.once(type, cb);
+      }).catch(e => log.error('bus.once failed:', e.message));
+      return () => {
+        disposed = true;
+        if (realOff) {
+          try { realOff(); } catch (e) { /* ignore */ }
+          realOff = null;
+        }
+      };
     }
   };
 

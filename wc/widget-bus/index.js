@@ -12,10 +12,20 @@ const GLOBAL_BUS_NAME = 'bi-widget-bus';
 /**
  * 创建带命名空间隔离的消息总线
  * @param {string} [namespace] 命名空间标识（如 hostId），省略则用全局总线
- * @returns {{emit: Function, on: Function, once: Function}} 隔离的总线实例
+ * @returns {{emit: Function, on: Function, once: Function, off: Function}} 隔离的总线实例
  */
 export function createBus(namespace) {
   const busName = namespace ? `${GLOBAL_BUS_NAME}:${namespace}` : GLOBAL_BUS_NAME;
+
+  // handlers: eventType -> Set<{ handler, wrapped }>
+  // 用于 off(type, handler) 时按原 handler 反查 wrapped 并移除。
+  // 记录的是用户传入的原 handler，因此对 on 与 once 注册的都能正确移除。
+  const handlers = new Map();
+
+  function getEventSet(eventType) {
+    if (!handlers.has(eventType)) handlers.set(eventType, new Set());
+    return handlers.get(eventType);
+  }
 
   function emit(type, payload, options = {}) {
     const event = new CustomEvent(`${busName}:${type}`, {
@@ -26,7 +36,7 @@ export function createBus(namespace) {
     window.dispatchEvent(event);
   }
 
-  function on(type, handler) {
+  function on(type, handler, originalHandler) {
     const eventType = `${busName}:${type}`;
     const wrappedHandler = event => {
       // 包裹 try/catch 避免单个 handler 抛异常阻断 window 上其他同类型监听器
@@ -37,20 +47,49 @@ export function createBus(namespace) {
       }
     };
     window.addEventListener(eventType, wrappedHandler);
+    // 记录“原 handler”用于 off 反查：once 内部传入包装函数作为 handler，
+    // 但通过 originalHandler 透传用户原始 handler，使 off(type, userHandler) 也能命中。
+    const entry = { handler: originalHandler || handler, wrapped: wrappedHandler };
+    getEventSet(eventType).add(entry);
+
     return () => {
       window.removeEventListener(eventType, wrappedHandler);
+      const set = handlers.get(eventType);
+      if (set) {
+        set.delete(entry);
+        if (set.size === 0) handlers.delete(eventType);
+      }
     };
   }
 
   function once(type, handler) {
+    // 通过第三个参数透传原 handler，使 off(type, handler) 也能移除 once 注册的监听。
     const off = on(type, (payload, event) => {
       off();
       handler(payload, event);
-    });
+    }, handler);
     return off;
   }
 
-  return { emit, on, once };
+  /**
+   * 按类型与原 handler 取消订阅
+   * @param {string} type 消息类型
+   * @param {Function} handler 原 on/once 注册时传入的 handler
+   */
+  function off(type, handler) {
+    const eventType = `${busName}:${type}`;
+    const set = handlers.get(eventType);
+    if (!set) return;
+    for (const entry of set) {
+      if (entry.handler === handler) {
+        try { window.removeEventListener(eventType, entry.wrapped); } catch (e) { /* ignore */ }
+        set.delete(entry);
+      }
+    }
+    if (set.size === 0) handlers.delete(eventType);
+  }
+
+  return { emit, on, once, off };
 }
 
 // 默认全局总线实例（向后兼容现有 emit/on/once 导出）
@@ -83,12 +122,19 @@ export const on = defaultBus.on;
 export const once = defaultBus.once;
 
 /**
+ * 按类型与原 handler 取消订阅
+ * @param {string} type 消息类型
+ * @param {Function} handler on/once 注册时传入的原 handler
+ */
+export const off = defaultBus.off;
+
+/**
  * Vue2 插件形式安装
  * 安装后可通过 this.$widgetBus.emit / this.$widgetBus.on 调用
  */
 export const Vue2BusPlugin = {
   install(Vue) {
-    Vue.prototype.$widgetBus = { emit, on, once };
+    Vue.prototype.$widgetBus = { emit, on, once, off };
   },
   uninstall(Vue) {
     delete Vue.prototype.$widgetBus;
@@ -101,7 +147,7 @@ export const Vue2BusPlugin = {
  */
 export const Vue3BusPlugin = {
   install(app) {
-    app.config.globalProperties.$widgetBus = { emit, on, once };
+    app.config.globalProperties.$widgetBus = { emit, on, once, off };
   },
   uninstall(app) {
     delete app.config.globalProperties.$widgetBus;
@@ -112,7 +158,7 @@ export const Vue3BusPlugin = {
  * 原生 JS 直接在 window 上暴露
  */
 if (typeof window !== 'undefined') {
-  window.widgetBus = { emit, on, once };
+  window.widgetBus = { emit, on, once, off };
 }
 
-export default { emit, on, once, createBus, Vue2BusPlugin, Vue3BusPlugin };
+export default { emit, on, once, off, createBus, Vue2BusPlugin, Vue3BusPlugin };

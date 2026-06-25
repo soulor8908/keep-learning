@@ -58,6 +58,26 @@
         <div ref="loadFailTest" class="widget-container"></div>
       </div>
     </div>
+
+    <!-- 交叉页面演示：三业务域物料同页（Vue2 + Vue3 + 原生 H5）-->
+    <section class="cross-page">
+      <h2 class="section-title">交叉页面演示</h2>
+      <p class="section-desc">同一页面承载订单（A 团队 · Vue2）、支付（B 团队 · Vue3）、推荐（C 团队 · 原生 H5）三个业务域，通过 widget-bus 跨技术栈通信。</p>
+      <div class="dashboard dashboard--three">
+        <div class="widget-slot">
+          <h3>订单区 <span class="tech-tag tech-tag--vue2">Vue2 · A 团队</span></h3>
+          <div ref="ordersPanel" class="widget-container"></div>
+        </div>
+        <div class="widget-slot">
+          <h3>支付区 <span class="tech-tag tech-tag--vue3">Vue3 · B 团队</span></h3>
+          <div ref="paymentPanel" class="widget-container"></div>
+        </div>
+        <div class="widget-slot">
+          <h3>推荐区 <span class="tech-tag tech-tag--h5">原生 H5 · C 团队</span></h3>
+          <div ref="recommendPanel" class="widget-container"></div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -92,9 +112,15 @@ export default {
     this.unsubs.push(on('filter-change', payload => this.addLog('bus', `[filter-change] ${JSON.stringify(payload)}`)));
     this.unsubs.push(on('data-updated', payload => this.addLog('bus', `[data-updated] metrics count: ${payload && payload.metrics ? payload.metrics.length : 0}`)));
     this.unsubs.push(on('test-event', payload => this.addLog('bus', `[test-event] ${JSON.stringify(payload)}`)));
+    // 交叉页面演示：跨技术栈业务事件
+    this.unsubs.push(on('order:click', payload => this.addLog('bus', `[order:click] ${payload.name} (${payload.id}) ¥${payload.amount}`)));
+    this.unsubs.push(on('payment:success', payload => this.addLog('bus', `[payment:success] ${payload.method} ¥${payload.amount.toFixed(2)}`)));
+    this.unsubs.push(on('recommend:expose', payload => this.addLog('bus', `[recommend:expose] ${payload.name} (${payload.id})`)));
 
     // 逐个挂载物料
     this.mountAll();
+    // 挂载交叉页面三物料
+    this.mountCrossPage();
   },
   beforeDestroy() {
     if (this.unsubs) {
@@ -117,6 +143,23 @@ export default {
           }
         } catch (err) {
           this.addLog('error', `[mount-fail] ${this.widgets[i].name}: ${(err.message || '').split('\n')[0]}`);
+        }
+      }
+    },
+    // 交叉页面演示：按 name 查找并挂载三业务域物料
+    async mountCrossPage() {
+      const map = {
+        'bi-orders-panel': 'ordersPanel',
+        'bi-payment-panel': 'paymentPanel',
+        'bi-recommend-panel': 'recommendPanel'
+      };
+      for (const name of Object.keys(map)) {
+        const widget = this.widgets.find(w => w.name === name);
+        if (!widget) continue;
+        try {
+          await mountWidget(this.$refs[map[name]], widget);
+        } catch (err) {
+          this.addLog('error', `[mount-fail] ${name}: ${(err.message || '').split('\n')[0]}`);
         }
       }
     },
@@ -314,8 +357,50 @@ export default {
   margin: 0 0 8px 0;
   font-size: 14px;
   color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .widget-container {
   min-height: 200px;
+}
+
+/* 交叉页面演示 */
+.dashboard--three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.cross-page {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 2px dashed #d1d5db;
+}
+.section-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  color: #111827;
+}
+.section-desc {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+.tech-tag {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tech-tag--vue2 {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+.tech-tag--vue3 {
+  background: #ecf5ff;
+  color: #409eff;
+}
+.tech-tag--h5 {
+  background: #f0f9eb;
+  color: #67c23a;
 }
 </style>

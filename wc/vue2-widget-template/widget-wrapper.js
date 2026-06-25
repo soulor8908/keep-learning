@@ -9,7 +9,7 @@
 import Vue from 'vue';
 import { createWidgetScope } from '../widget-scope/index.js';
 
-function parseConfig(value) {
+export function parseConfig(value) {
   try {
     return value ? JSON.parse(value) : {};
   } catch (e) {
@@ -18,7 +18,7 @@ function parseConfig(value) {
   }
 }
 
-function createWidgetWrapper(Component, widgetName) {
+export function createWidgetWrapper(Component, widgetName) {
   // 手写 HTMLElement，挂载到 light DOM（不使用 Shadow DOM）
   // 原因：ElementUI 全局样式与主题变量需要穿透到物料内部，Shadow DOM 会隔离样式
   //
@@ -82,8 +82,12 @@ if (!widgetName || !componentPath) {
   throw new Error('WIDGET_NAME 和 WIDGET_COMPONENT 环境变量必须设置');
 }
 
-// 动态引入业务组件
-const Component = require(componentPath).default;
-const WidgetElement = createWidgetWrapper(Component, widgetName);
-
-customElements.define(widgetName, WidgetElement);
+// 动态引入业务组件并注册 Custom Element。
+// 生产环境（webpack CJS）require 必然存在；ESM 环境下 require 可能未定义，
+// 此时跳过自动注册（仅导出 parseConfig/createWidgetWrapper 供测试），
+// 不影响生产构建行为。
+if (typeof require !== 'undefined') {
+  const Component = require(componentPath).default;
+  const WidgetElement = createWidgetWrapper(Component, widgetName);
+  customElements.define(widgetName, WidgetElement);
+}
