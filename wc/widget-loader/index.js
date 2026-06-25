@@ -513,20 +513,111 @@ class WidgetLoader {
   /**
    * 批量加载物料
    * @param {Array<Object>} widgets
+   * @param {object} [opts] 批量加载选项
+   * @param {number} [opts.concurrency=6] 最大并发数，避免高频加载场景下请求堆积
    * @returns {Promise<Array<{name: string, success: boolean, error?: Error}>>}
    */
-  async loadWidgets(widgets) {
-    const results = await Promise.all(
-      widgets.map(async widget => {
-        try {
-          await this.loadWidget(widget);
-          return { name: widget.name, success: true };
-        } catch (error) {
-          return { name: widget.name, success: false, error };
-        }
-      })
-    );
+  async loadWidgets(widgets, opts = {}) {
+    const { concurrency = 6 } = opts;
+    const results = [];
+
+    // 并发控制：分批执行，每批最多 concurrency 个
+    for (let i = 0; i < widgets.length; i += concurrency) {
+      const batch = widgets.slice(i, i + concurrency);
+      const batchResults = await Promise.all(
+        batch.map(async widget => {
+          try {
+            await this.loadWidget(widget);
+            return { name: widget.name, success: true };
+          } catch (error) {
+            return { name: widget.name, success: false, error };
+          }
+        })
+      );
+      results.push(...batchResults);
+    }
     return results;
+  }
+
+  /**
+   * 预加载单个物料（只加载资源，不挂载到 DOM）
+   *
+   * 适用场景：看板进入编辑态时提前加载所有可选物料，用户选择时即时挂载。
+   * 与 loadWidget 的区别：preloadWidget 不抛错（失败只记日志），不影响主流程。
+   *
+   * @param {Object} widget 物料配置 { name, js, css, vueVersion? }
+   * @returns {Promise<void>}
+   */
+  async preloadWidget(widget) {
+    try {
+      await this.loadWidget(widget);
+      log('widget preloaded:', widget.name);
+    } catch (error) {
+      // 预加载失败不抛错，只记日志，不影响主流程
+      console.warn(`[widget-loader] preload "${widget.name}" failed:`, error.message);
+    }
+  }
+
+  /**
+   * 批量预加载物料（利用浏览器空闲时段，不阻塞主线程）
+   *
+   * 策略：
+   * 1. 优先使用 requestIdleCallback 在浏览器空闲时段分批加载
+   * 2. 不支持 requestIdleCallback 时降级为 setTimeout(0)
+   * 3. 并发控制：每批最多 concurrency 个，避免请求堆积
+   *
+   * @param {Array<Object>} widgets 物料列表
+   * @param {object} [opts]
+   * @param {number} [opts.concurrency=3] 预加载并发数（低于 loadWidgets，避免抢占主流程带宽）
+   * @param {number} [opts.timeout=30000] 预加载总超时，超时后未加载的跳过
+   * @returns {Promise<Array<{name: string, success: boolean}>>}
+   */
+  preloadWidgets(widgets, opts = {}) {
+    const { concurrency = 3, timeout = 30000 } = opts;
+    const results = [];
+    const startTime = Date.now();
+    const ric = typeof requestIdleCallback === 'function'
+      ? requestIdleCallback
+      : (fn) => setTimeout(() => fn({ timeRemaining: () => 0, didTimeout: false }), 0);
+
+    return new Promise((resolve) => {
+      let index = 0;
+
+      const processBatch = () => {
+        // 超时检查
+        if (Date.now() - startTime > timeout) {
+          // 未加载的标记为跳过
+          while (index < widgets.length) {
+            results.push({ name: widgets[index].name, success: false });
+            index++;
+          }
+          resolve(results);
+          return;
+        }
+
+        if (index >= widgets.length) {
+          resolve(results);
+          return;
+        }
+
+        const batch = widgets.slice(index, index + concurrency);
+        index += batch.length;
+
+        Promise.all(
+          batch.map(widget =>
+            this.preloadWidget(widget).then(() => {
+              results.push({ name: widget.name, success: true });
+            })
+          )
+        ).then(() => {
+          // 下一批在空闲时段执行
+          ric(processBatch);
+        });
+      };
+
+      // 首批在空闲时段执行
+      ric(processBatch);
+    });
   }
 
   emitLifecycle(event, payload) {
@@ -802,7 +893,9 @@ const createWidgetLoader = () => new WidgetLoader();
 
 // ─── 向后兼容的模块级导出（委托到默认单例）───
 export const loadWidget = (widget) => defaultLoader.loadWidget(widget);
-export const loadWidgets = (widgets) => defaultLoader.loadWidgets(widgets);
+export const loadWidgets = (widgets, opts) => defaultLoader.loadWidgets(widgets, opts);
+export const preloadWidget = (widget) => defaultLoader.preloadWidget(widget);
+export const preloadWidgets = (widgets, opts) => defaultLoader.preloadWidgets(widgets, opts);
 export const mountWidget = (container, widget) => defaultLoader.mountWidget(container, widget);
 export const unmountWidget = (element) => defaultLoader.unmountWidget(element);
 export const unloadWidget = (name) => defaultLoader.unloadWidget(name);
