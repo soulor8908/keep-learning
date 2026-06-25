@@ -146,4 +146,10 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+// 导出供测试使用（不改变 CLI 直接运行时的行为）
+module.exports = { WIDGET_NAME_RE, callAI, buildPrompt, main };
+
+// 仅在作为入口直接运行时执行 main（被 require/import 时不自动运行，便于测试）
+if (typeof require !== 'undefined' && require.main === module) {
+  main().catch(console.error);
+}

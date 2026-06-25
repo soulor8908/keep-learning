@@ -7,8 +7,14 @@
     "@vue/compiler-sfc": "^3.5.39",
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
+    "happy-dom": "^14.0.0",
     "postcss": "^8.5.15",
     "prettier": "^3.8.4",
-    "vitest": "^4.1.9"
+    "vitest": "^1.6.0"
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ci": "vitest run --reporter=verbose"
   }
 }

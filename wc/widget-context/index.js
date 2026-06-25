@@ -42,13 +42,37 @@ function getStore() {
 }
 
 /**
+ * 深度相等判定（用于 setContext 的 deep 选项）
+ * 用 JSON.stringify 比较内容；循环引用等无法序列化时回退浅比较。
+ * 注意：同引用直接判等（true），因此对“同一对象原地突变后再次传入”无法检测
+ * （此时 oldValue 与 newValue 指向同一已突变对象）。deep 主要覆盖“不同引用、
+ * 内容是否一致”的判定——内容一致则不触发，内容不同则触发。
+ * @param {*} a
+ * @param {*} b
+ * @returns {boolean}
+ */
+function isDeepEqual(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null || typeof a !== 'object' || typeof b !== 'object') {
+    return a === b;
+  }
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch (e) {
+    // 循环引用等无法序列化，回退浅比较
+    return a === b;
+  }
+}
+
+/**
  * 设置全局上下文（合并模式）
  * @param {object} partial 要更新的上下文片段，如 { user: {...} }
  * @param {object} [opts]
  * @param {boolean} [opts.broadcast=true] 是否通过 widget-bus 广播变化事件
+ * @param {boolean} [opts.deep=false] 启用深度相等判定：内容相同则不触发（即使引用不同）
  */
 export function setContext(partial, opts = {}) {
-  const { broadcast = true } = opts;
+  const { broadcast = true, deep = false } = opts;
   const store = getStore();
   if (!store) return;
 
@@ -56,8 +80,9 @@ export function setContext(partial, opts = {}) {
   for (const key of Object.keys(partial)) {
     const oldValue = store.data[key];
     const newValue = partial[key];
-    // 浅比较：值不同才更新和通知
-    if (oldValue !== newValue) {
+    // 默认浅比较；deep=true 时用深度相等判定
+    const changed = deep ? !isDeepEqual(oldValue, newValue) : (oldValue !== newValue);
+    if (changed) {
       store.data[key] = newValue;
       changedKeys.push(key);
     }
@@ -153,10 +178,11 @@ export function createContext() {
 
   return {
     set(partial, opts = {}) {
-      const { broadcast = true } = opts;
+      const { broadcast = true, deep = false } = opts;
       const changedKeys = [];
       for (const key of Object.keys(partial)) {
-        if (data[key] !== partial[key]) {
+        const changed = deep ? !isDeepEqual(data[key], partial[key]) : (data[key] !== partial[key]);
+        if (changed) {
           data[key] = partial[key];
           changedKeys.push(key);
         }

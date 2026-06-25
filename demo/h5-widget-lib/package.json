@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "cross-env WIDGET_NAME=bi-clock-card vite build",
-    "build:all": "rm -rf dist && npm run build:clock && npm run build:notice",
+    "build:all": "rm -rf dist && npm run build:clock && npm run build:notice && npm run build:recommend",
     "build:clock": "cross-env WIDGET_NAME=bi-clock-card vite build",
     "build:notice": "cross-env WIDGET_NAME=bi-notice-board vite build",
+    "build:recommend": "cross-env WIDGET_NAME=bi-recommend-panel vite build",
     "serve:dist": "npx serve dist -l 8083 --cors"
   },
   "devDependencies": {

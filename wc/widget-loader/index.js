@@ -956,4 +956,222 @@ export const unloadWidget = (name) => defaultLoader.unloadWidget(name);
 export const renderWidget = (container, widget) => defaultLoader.renderWidget(container, widget);
 export const onWidgetLifecycle = (event, cb) => defaultLoader.onWidgetLifecycle(event, cb);
 
+// ─── UI 组件级按需加载（与 docs/elementui-on-demand-loading.md 4.x 一致）───
+// IIFE bundle 全局挂载约定（由 ui-bundle-builder 产出，本模块仅按约定读取）：
+//   element-ui    → window.__UI_ELEMENT_UI__[componentName]
+//   element-plus  → window.__UI_ELEMENT_PLUS__[componentName]
+const UI_GLOBAL_VARS = {
+  'element-ui': '__UI_ELEMENT_UI__',
+  'element-plus': '__UI_ELEMENT_PLUS__'
+};
+
+// lib 与 vueVersion 的合法映射
+const LIB_VUE_MAP = {
+  'element-ui': '2',
+  'element-plus': '3'
+};
+
+/**
+ * 默认 UI 组件资源 URL 解析器
+ * @param {string} cdnBase
+ * @param {string} lib 'element-ui' | 'element-plus'
+ * @param {string} version 如 '2.15.0'（不含 ^）
+ * @param {string} component 去前缀组件名，如 'button'
+ * @param {'js'|'css'} type
+ * @returns {string}
+ */
+export function defaultResolveUiResource(cdnBase, lib, version, component, type) {
+  const ext = type === 'css' ? 'css' : 'js';
+  const base = cdnBase.replace(/\/$/, '');
+  return `${base}/ui/${lib}@${version}/${component}.${ext}`;
+}
+
+/**
+ * 默认全量包资源 URL 解析器（降级用）
+ */
+export function defaultResolveFullResource(cdnBase, lib, version, type) {
+  const ext = type === 'css' ? 'css' : 'js';
+  const base = cdnBase.replace(/\/$/, '');
+  return `${base}/ui/${lib}@${version}/full.${ext}`;
+}
+
+/**
+ * 把已加载的 UI 组件注册到对应 Vue 运行时
+ * @param {string} lib
+ * @param {string} componentName 去前缀组件名，如 'button'
+ * @param {object} VueRuntime Vue2/Vue3 运行时（含 component 方法）
+ */
+function registerUiComponent(lib, componentName, VueRuntime) {
+  if (!VueRuntime || typeof VueRuntime.component !== 'function') return;
+  const globalVar = UI_GLOBAL_VARS[lib];
+  const registry = (typeof window !== 'undefined' && window[globalVar]) || {};
+  const comp = registry[componentName];
+  if (!comp) return;
+  // 注册时加回 el- 前缀，与物料模板 <el-xxx> 用法一致
+  VueRuntime.component(`el-${componentName}`, comp);
+}
+
+/**
+ * 预加载一批物料的 UI 组件依赖
+ *
+ * 流程（详见 docs/elementui-on-demand-loading.md 4.2）：
+ * 1. 收集每个 widget.schema.uiDependencies，按 lib 分组合并 components 去重
+ * 2. 校验 lib 与 widget.vueVersion 匹配，不匹配抛 UI_DEP_LIB_MISMATCH
+ * 3. full:true 直接加载全量包；否则 per-component 并行加载（复用 loadedResources 去重）
+ * 4. 单组件失败重试 1 次，仍失败记录但不阻断整体
+ * 5. 加载成功后注册到对应 Vue 运行时
+ *
+ * @param {Array} widgets 物料配置数组，每项可含 schema.uiDependencies 与 vueVersion
+ * @param {Object} options
+ * @param {string} options.cdnBase CDN 基址
+ * @param {Function} [options.resolveUiResource] 自定义资源解析器 (lib,version,component,type)=>url
+ * @param {Function} [options.resolveFullResource] 自定义全量包解析器
+ * @param {object} [options.Vue2Runtime] Vue2 运行时，默认 window.Vue2
+ * @param {object} [options.Vue3Runtime] Vue3 运行时，默认 window.Vue3
+ * @returns {Promise<{loaded:string[], failed:Array}>} loaded 为成功注册的组件全名列表，failed 含 {lib,component,reason}
+ */
+export async function preloadUiDependencies(widgets, options = {}) {
+  const {
+    cdnBase,
+    resolveUiResource = defaultResolveUiResource,
+    resolveFullResource = defaultResolveFullResource,
+    Vue2Runtime = (typeof window !== 'undefined' ? window.Vue2 : undefined),
+    Vue3Runtime = (typeof window !== 'undefined' ? window.Vue3 : undefined)
+  } = options;
+
+  if (!cdnBase) throw new Error('[widget-loader] preloadUiDependencies: options.cdnBase is required');
+
+  const runtimeByLib = {
+    'element-ui': Vue2Runtime,
+    'element-plus': Vue3Runtime
+  };
+
+  // ─── 1. 收集 + 校验 ───
+  // 按 lib 分组：{ lib: { version, full, components:Set, widgets:[] } }
+  const groups = {};
+  for (const widget of widgets || []) {
+    const ui = widget && widget.schema && widget.schema.uiDependencies;
+    if (!ui) continue; // 无 uiDependencies 的 widget 跳过
+    const lib = ui.lib;
+    if (!LIB_VUE_MAP[lib]) {
+      throw createUiError(`Unknown uiDependencies.lib: ${lib}`, 'UI_DEP_LIB_MISMATCH');
+    }
+    // 校验 lib 与 vueVersion 匹配（vueVersion 默认 '2'，与 checkDependencies 一致）
+    const vv = widget.vueVersion || '2';
+    if (LIB_VUE_MAP[lib] !== vv) {
+      throw createUiError(
+        `Widget ${widget.name} vueVersion=${vv} but uiDependencies.lib=${lib} (expected vueVersion=${LIB_VUE_MAP[lib]})`,
+        'UI_DEP_LIB_MISMATCH'
+      );
+    }
+    // vueVersion='none' 不应有 uiDependencies
+    if (vv === 'none') {
+      throw createUiError(
+        `Widget ${widget.name} vueVersion='none' but declares uiDependencies`,
+        'UI_DEP_LIB_MISMATCH'
+      );
+    }
+
+    if (!groups[lib]) {
+      groups[lib] = { version: stripRange(ui.version), full: !!ui.full, components: new Set(), styles: new Set() };
+    }
+    // full 一旦为 true，整组走全量包
+    if (ui.full) groups[lib].full = true;
+    if (ui.components) ui.components.forEach(c => groups[lib].components.add(c));
+    if (ui.styles) ui.styles.forEach(s => groups[lib].styles.add(s));
+  }
+
+  const loaded = [];
+  const failed = [];
+
+  // ─── 2. 加载 + 注册 ───
+  for (const lib of Object.keys(groups)) {
+    const g = groups[lib];
+    const runtime = runtimeByLib[lib];
+
+    if (g.full) {
+      // 全量包短路：只加载 full.js + full.css
+      const urls = [
+        resolveFullResource(cdnBase, lib, g.version, 'js'),
+        resolveFullResource(cdnBase, lib, g.version, 'css')
+      ];
+      try {
+        await Promise.all(urls.map(u => loadUiResource(u, defaultLoader)));
+        // 全量包加载后假定所有组件可用，不逐个注册（由全量包自身注册到 Vue）
+        loaded.push(`${lib}:full`);
+      } catch (e) {
+        failed.push({ lib, component: 'full', reason: e.message });
+      }
+      continue;
+    }
+
+    // per-component：base 样式 + 每个组件的 js/css
+    // 先加载 base.css（styles 集合）
+    const baseCssUrls = Array.from(g.styles)
+      .filter(s => s !== 'base' || true) // base 始终加载
+      .map(s => s === 'base'
+        ? resolveUiResource(cdnBase, lib, g.version, 'base', 'css')
+        : resolveUiResource(cdnBase, lib, g.version, s, 'css'));
+
+    const tasks = [];
+    for (const comp of g.components) {
+      const jsUrl = resolveUiResource(cdnBase, lib, g.version, comp, 'js');
+      const cssUrl = resolveUiResource(cdnBase, lib, g.version, comp, 'css');
+      // 单组件：js 失败重试 1 次，css 失败不阻断（样式缺失只影响美观）
+      tasks.push(
+        loadUiResourceWithRetry(jsUrl, defaultLoader, 1)
+          .then(() => {
+            registerUiComponent(lib, comp, runtime);
+            loaded.push(`${lib}:${comp}`);
+          })
+          .catch(e => {
+            failed.push({ lib, component: comp, reason: e.message });
+          })
+      );
+      // css 失败只记录不阻断主流程
+      tasks.push(loadUiResourceWithRetry(cssUrl, defaultLoader, 1).catch(() => {}));
+    }
+
+    // base css 并行加载，失败不阻断
+    baseCssUrls.forEach(u => tasks.push(loadUiResourceWithRetry(u, defaultLoader, 1).catch(() => {})));
+
+    await Promise.all(tasks);
+  }
+
+  return { loaded, failed };
+}
+
+// 去掉 semver range 前缀（^、~、>= 等）取纯版本号，用于拼 URL
+function stripRange(version) {
+  if (!version) return version;
+  return String(version).replace(/^[\^~>=<]*\s*/, '').trim();
+}
+
+// 复用 loader 的 loadedResources Map 做去重加载
+function loadUiResource(url, loader) {
+  // loadScript/loadStyle 内部已做 loadedResources 去重，直接委托
+  const ext = url.endsWith('.css') ? 'css' : 'js';
+  return ext === 'css' ? loader.loadStyle(url) : loader.loadScript(url);
+}
+
+// 带重试的资源加载：失败后重试 maxRetry 次（loadScript 失败时已 delete 缓存，可重新加载）
+async function loadUiResourceWithRetry(url, loader, maxRetry) {
+  try {
+    return await loadUiResource(url, loader);
+  } catch (firstErr) {
+    if (maxRetry <= 0) throw firstErr;
+    try {
+      return await loadUiResource(url, loader);
+    } catch (secondErr) {
+      throw secondErr;
+    }
+  }
+}
+
+function createUiError(message, code) {
+  const err = new Error(`[widget-loader] ${message}`);
+  err.code = code;
+  return err;
+}
+
 export { WidgetLoader, createWidgetLoader };

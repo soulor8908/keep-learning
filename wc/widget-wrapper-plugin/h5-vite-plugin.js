@@ -54,7 +54,7 @@ const { checkTarget: checkCssNamespace, formatIssues: formatCssIssues } = requir
  * @param {string} widgetName 物料名（Custom Element 标签名）
  * @returns {string} wrapper 源码
  */
-function generateH5Wrapper(widgetName) {
+export function generateH5Wrapper(widgetName) {
   return `
 import widgetEntry from '__WIDGET_ENTRY__';
 import { createWidgetScope } from 'wc-widget-scope';

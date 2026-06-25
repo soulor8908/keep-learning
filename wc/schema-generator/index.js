@@ -538,6 +538,51 @@ function normalizeAstProp(name, def) {
   return schema;
 }
 
+/**
+ * 扫描 .vue 源码中 <template> 内的 <el-*> 标签，收集去前缀、去重的组件名列表。
+ *
+ * 用于自动生成 schema.uiDependencies.components，让基座按声明精准加载 UI 组件。
+ *
+ * 已知局限（不在此扫描，需物料作者手动补 uiDependencies）：
+ * - 动态组件 <component :is="'el-button'">
+ * - 字符串渲染 h('el-button') / render(h => h('el-button'))
+ * - 通过 Vue.component 注册后用字符串模板引用
+ *
+ * @param {string} source .vue 文件源码
+ * @returns {string[]} 去前缀（去 el-）、去重的组件名数组，如 ['card','button','table-column']
+ */
+function extractUiDependencies(source) {
+  if (!source) return [];
+
+  // 仅扫描 <template> 块，避免误命中 <script> 中的字符串
+  const tplMatch = source.match(/<template[^>]*>([\s\S]*?)<\/template>/);
+  const tpl = tplMatch ? tplMatch[1] : source;
+
+  // 移除 HTML 注释，避免注释中的标签被计入
+  const cleaned = tpl.replace(/<!--[\s\S]*?-->/g, '');
+
+  // 匹配开标签 <el-xxx，不匹配闭合标签 </el-xxx>，不匹配自引用后的 >
+  // 组件名仅含小写字母与短横线
+  const re = /<el-([a-z][a-z0-9-]*)\b/g;
+  const set = new Set();
+  let m;
+  while ((m = re.exec(cleaned)) !== null) {
+    set.add(m[1]);
+  }
+  return Array.from(set);
+}
+
+// UI 库默认版本与 lib 推断（与 docs/elementui-on-demand-loading.md 4.1 节一致）
+const UI_LIB_DEFAULTS = {
+  'element-ui': { version: '^2.15.0' },
+  'element-plus': { version: '^2.7.0' }
+};
+
+function inferUiLib(vueVersion) {
+  // vueVersion '2' → element-ui，'3' 或其它 → element-plus
+  return vueVersion === '2' ? 'element-ui' : 'element-plus';
+}
+
 function generateSchema(widgetName, componentPath, options = {}) {
   const absolutePath = path.resolve(componentPath);
   const source = fs.readFileSync(absolutePath, 'utf-8');
@@ -565,6 +610,20 @@ function generateSchema(widgetName, componentPath, options = {}) {
     }
   };
 
+  // uiDependencies 自动扫描：仅当模板含 <el-*> 时写入，保持无 UI 依赖物料的 schema 与旧版一致
+  const uiComponents = extractUiDependencies(source);
+  if (uiComponents.length > 0) {
+    const lib = options.uiLib || inferUiLib(options.vueVersion);
+    const version = options.uiVersion || (UI_LIB_DEFAULTS[lib] ? UI_LIB_DEFAULTS[lib].version : '^2.7.0');
+    schema.uiDependencies = {
+      lib,
+      version,
+      components: uiComponents,
+      styles: options.uiStyles || ['base']
+    };
+    if (options.uiFull === true) schema.uiDependencies.full = true;
+  }
+
   return schema;
 }
 
@@ -577,6 +636,7 @@ function writeSchema(widgetName, componentPath, outputPath, options) {
 module.exports = {
   generateSchema,
   writeSchema,
+  extractUiDependencies,
   DEFAULT_LAYOUT
 };
 

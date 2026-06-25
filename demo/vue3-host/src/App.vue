@@ -58,6 +58,26 @@
         <div ref="loadFailTest" class="widget-container"></div>
       </div>
     </div>
+
+    <!-- 交叉页面演示：三业务域物料同页（Vue2 + Vue3 + 原生 H5）-->
+    <section class="cross-page">
+      <h2 class="section-title">交叉页面演示</h2>
+      <p class="section-desc">同一页面承载订单（A 团队 · Vue2）、支付（B 团队 · Vue3）、推荐（C 团队 · 原生 H5）三个业务域，通过 widget-bus 跨技术栈通信。</p>
+      <div class="dashboard dashboard--three">
+        <div class="widget-slot">
+          <h3>订单区 <span class="tech-tag tech-tag--vue2">Vue2 · A 团队</span></h3>
+          <div ref="ordersPanel" class="widget-container"></div>
+        </div>
+        <div class="widget-slot">
+          <h3>支付区 <span class="tech-tag tech-tag--vue3">Vue3 · B 团队</span></h3>
+          <div ref="paymentPanel" class="widget-container"></div>
+        </div>
+        <div class="widget-slot">
+          <h3>推荐区 <span class="tech-tag tech-tag--h5">原生 H5 · C 团队</span></h3>
+          <div ref="recommendPanel" class="widget-container"></div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -79,6 +99,10 @@ const chartPanel = ref(null);
 const eventTester = ref(null);
 const crashTester = ref(null);
 const loadFailTest = ref(null);
+// 交叉页面演示容器
+const ordersPanel = ref(null);
+const paymentPanel = ref(null);
+const recommendPanel = ref(null);
 
 // 日志与状态
 const logs = ref([]);
@@ -103,6 +127,24 @@ async function mountAll() {
       }
     } catch (err) {
       addLog('error', `[mount-fail] ${widgets[i].name}: ${(err.message || '').split('\n')[0]}`);
+    }
+  }
+}
+
+// 交叉页面演示：按 name 查找并挂载三业务域物料
+async function mountCrossPage() {
+  const map = {
+    'bi-orders-panel': ordersPanel,
+    'bi-payment-panel': paymentPanel,
+    'bi-recommend-panel': recommendPanel
+  };
+  for (const name of Object.keys(map)) {
+    const widget = widgets.find(w => w.name === name);
+    if (!widget) continue;
+    try {
+      await mountWidget(map[name].value, widget);
+    } catch (err) {
+      addLog('error', `[mount-fail] ${name}: ${(err.message || '').split('\n')[0]}`);
     }
   }
 }
@@ -148,9 +190,15 @@ onMounted(() => {
   unsubs.push(on('filter-change', payload => addLog('bus', `[filter-change] ${JSON.stringify(payload)}`)));
   unsubs.push(on('data-updated', payload => addLog('bus', `[data-updated] metrics count: ${payload && payload.metrics ? payload.metrics.length : 0}`)));
   unsubs.push(on('test-event', payload => addLog('bus', `[test-event] ${JSON.stringify(payload)}`)));
+  // 交叉页面演示：跨技术栈业务事件
+  unsubs.push(on('order:click', payload => addLog('bus', `[order:click] ${payload.name} (${payload.id}) ¥${payload.amount}`)));
+  unsubs.push(on('payment:success', payload => addLog('bus', `[payment:success] ${payload.method} ¥${payload.amount.toFixed(2)}`)));
+  unsubs.push(on('recommend:expose', payload => addLog('bus', `[recommend:expose] ${payload.name} (${payload.id})`)));
 
   // 逐个挂载物料
   mountAll();
+  // 挂载交叉页面三物料
+  mountCrossPage();
 });
 
 onUnmounted(() => {
@@ -313,6 +361,9 @@ onUnmounted(() => {
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
+.dashboard--three {
+  grid-template-columns: repeat(3, 1fr);
+}
 .widget-slot {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -323,8 +374,47 @@ onUnmounted(() => {
   margin: 0 0 8px 0;
   font-size: 14px;
   color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .widget-container {
   min-height: 200px;
+}
+
+/* 交叉页面演示 */
+.cross-page {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 2px dashed #d1d5db;
+}
+.section-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  color: #111827;
+}
+.section-desc {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+.tech-tag {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tech-tag--vue2 {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+.tech-tag--vue3 {
+  background: #ecf5ff;
+  color: #409eff;
+}
+.tech-tag--h5 {
+  background: #f0f9eb;
+  color: #67c23a;
 }
 </style>

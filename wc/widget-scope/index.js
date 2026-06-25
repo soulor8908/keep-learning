@@ -179,6 +179,8 @@ export function createWidgetScope(opts = {}) {
   // ─── 命名空间事件总线便捷方法（同步）───
   // 与 widget-bus 的同步 API 对齐：emit/on/once 不再是 async，派发不推迟到 microtask，
   // 返回值也与 widget-bus 一致（emit: void, on/once: 取消订阅函数）。
+  // on/once 同步返回 unsubscribe 函数（与主流事件库约定一致）：busInstance 在 scope
+  // 创建时已同步构建，故 on/once 直接同步注册并返回取消订阅函数，无需微任务延迟。
   // 软隔离原则：bus 失败不应 crash 物料渲染，统一 try/catch 并记日志。
   const bus = {
     emit(type, payload, options) {

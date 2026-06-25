@@ -74,7 +74,7 @@ const babelPlugin = require('./babel-plugin.js');
  * @param {number} [timeout=8000] 请求超时毫秒
  * @returns {Promise<object|null>} registry 映射，失败返回 null
  */
-async function fetchRemoteRegistry(url, cacheFile, timeout = 8000) {
+export async function fetchRemoteRegistry(url, cacheFile, timeout = 8000) {
   try {
     // Node 18+ 内置 fetch；低版本回退到 https 模块
     let jsonData;
@@ -159,7 +159,7 @@ async function fetchRemoteRegistry(url, cacheFile, timeout = 8000) {
  * @param {Array|object} data
  * @returns {object}
  */
-function normalizeRegistryArray(data) {
+export function normalizeRegistryArray(data) {
   if (!data) return {};
   if (Array.isArray(data)) {
     const map = {};
@@ -182,7 +182,7 @@ function normalizeRegistryArray(data) {
  * 提取 .vue 文件 <script> 块内容与位置
  * 返回 { content, start, end } 或 null
  */
-function extractVueScript(source) {
+export function extractVueScript(source) {
   const regex = /<script([^>]*)>([\s\S]*?)<\/script>/i;
   const m = source.match(regex);
   if (!m) return null;

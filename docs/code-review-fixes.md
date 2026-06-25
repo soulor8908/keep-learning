@@ -90,7 +90,11 @@
 
 - **文件**：`wc/widget-bus/index.js`
 - **问题**：跨技术栈消息总线只有 `on`/`emit`，没有 `off`，物料卸载时无法取消订阅，造成回调泄漏。
-- **修复**：新增 `off(event, cb)` 方法。
+- **修复**：在 `createBus` 内部维护 `type → Set<{handler, wrapped}>` 注册表，新增 `off(type, handler)` 方法，按类型与原 handler 引用反查并 `removeEventListener`。`off` 与 `on`/`once` 返回的 unsubscribe 函数并存：
+  - 签名：`off(type, handler)`，其中 `handler` 为 `on`/`once` 注册时传入的原函数引用。
+  - `off` 既能移除 `on` 注册的监听，也能按原 handler 移除 `once` 注册的监听（`once` 内部透传原 handler 用于反查）。
+  - `off` 未注册的 handler 或事件类型时不抛错、不影响其他监听器。
+  - 默认导出新增 `export const off`；`Vue2BusPlugin` / `Vue3BusPlugin` 暴露的 `$widgetBus`、`window.widgetBus`、default export 对象均同步暴露 `off`。
 
 ### P1-14：缺少 `unmountWidget` API（无法主动卸载物料）
 

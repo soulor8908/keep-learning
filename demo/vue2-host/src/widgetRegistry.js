@@ -76,6 +76,49 @@ export const widgets = [
     js: isLocal ? 'http://localhost:8082/bi-crash-tester.js' : '/widgets/bi-crash-tester.js',
     config: { title: '崩溃测试器' }
   },
+  // ===== 交叉页面演示：三业务域物料同页（Vue2 + Vue3 + 原生 H5）=====
+  // 直接用 /widgets/ 路径，确保仅启动 vue2-host 即可运行，无需三个 widget-lib dev server
+  {
+    name: 'bi-orders-panel',
+    vueVersion: '2',
+    js: '/widgets/bi-orders-panel.js',
+    config: {
+      title: '订单区',
+      orders: [
+        { id: 'ORD-1001', name: '无线蓝牙耳机', amount: 299.00, status: '已支付' },
+        { id: 'ORD-1002', name: '机械键盘', amount: 588.00, status: '待发货' },
+        { id: 'ORD-1003', name: '4K 显示器', amount: 2199.00, status: '已发货' },
+        { id: 'ORD-1004', name: '人体工学椅', amount: 1299.00, status: '已完成' }
+      ]
+    }
+  },
+  {
+    name: 'bi-payment-panel',
+    vueVersion: '3',
+    js: '/widgets/bi-payment-panel.js',
+    config: {
+      title: '支付区',
+      amount: 4385.00,
+      methods: [
+        { id: 'alipay', label: '支付宝' },
+        { id: 'wechat', label: '微信支付' },
+        { id: 'card', label: '银行卡' }
+      ]
+    }
+  },
+  {
+    name: 'bi-recommend-panel',
+    vueVersion: 'none',
+    js: '/widgets/bi-recommend-panel.js',
+    config: {
+      title: '推荐区',
+      items: [
+        { id: 'REC-01', name: 'USB-C 扩展坞', price: 159, tag: '热销' },
+        { id: 'REC-02', name: '降噪入耳耳机', price: 399, tag: '新品' },
+        { id: 'REC-03', name: '桌面理线器', price: 49, tag: '优惠' }
+      ]
+    }
+  },
   // 错误边界演示：指向不存在的 JS 文件，应触发加载失败降级占位
   {
     name: 'bi-load-fail-test',

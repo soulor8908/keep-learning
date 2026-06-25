@@ -26,7 +26,7 @@ const { scanTarget, formatFindings } = require('../js-risk-scanner');
 const { checkScopedDir, formatScopedResults } = require('../scoped-style-checker');
 const { checkTarget: checkCssNamespace, formatIssues: formatCssIssues } = require('../css-namespace-checker');
 
-function generateVue3Wrapper(widgetName, vueGlobal) {
+export function generateVue3Wrapper(widgetName, vueGlobal) {
   return `
 import { createApp, h, ref } from 'vue';
 import Component from '__WIDGET_COMPONENT__';

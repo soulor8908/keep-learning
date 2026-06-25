@@ -8,7 +8,8 @@ const widgetName = process.env.WIDGET_NAME;
 // H5 物料入口只需 default 导出 render 函数或配置对象
 const WIDGET_MAP = {
   'bi-clock-card': './src/clock-card.js',
-  'bi-notice-board': './src/notice-board.js'
+  'bi-notice-board': './src/notice-board.js',
+  'bi-recommend-panel': './src/recommend-panel.js'
 };
 
 export default defineConfig(({ command }) => {
