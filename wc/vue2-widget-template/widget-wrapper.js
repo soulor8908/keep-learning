@@ -18,20 +18,13 @@ function parseConfig(value) {
 }
 
 function createWidgetWrapper(Component, widgetName) {
-  // 桥接组件：把 Custom Element 接收到的 String config 转成 Object 再传给业务组件
-  // 注意：render 中每次调用 parseConfig 都返回新对象引用，确保业务组件的
-  // watch: { config } / watch: { config: { deep: true } } 都能触发（P2-22）
-  const BridgeComponent = {
-    props: ['config'],
-    render(h) {
-      return h(Component, {
-        props: { config: parseConfig(this.config) }
-      });
-    }
-  };
-
   // 手写 HTMLElement，挂载到 light DOM（不使用 Shadow DOM）
   // 原因：aui 全局样式与主题变量需要穿透到物料内部，Shadow DOM 会隔离样式
+  //
+  // config 处理：connectedCallback/attributeChangedCallback 中调用 parseConfig
+  // 解析为 Object 存入 reactive data widgetConfig，Vue 检测到引用变化后
+  // 自动重渲染并传给业务组件。每次 parseConfig 返回新对象引用，确保
+  // 业务组件的 watch: { config } / watch: { config: { deep: true } } 都能触发（P2-22）
   class WidgetElement extends HTMLElement {
     constructor() {
       super();
@@ -44,12 +37,12 @@ function createWidgetWrapper(Component, widgetName) {
 
     connectedCallback() {
       const config = this.getAttribute('config');
-      // 使用 reactive data 承载 config，attributeChangedCallback 中更新
+      // 使用 reactive data 承载已解析的 config，attributeChangedCallback 中更新
       // this.vm.widgetConfig 即可触发响应式重渲染，无需依赖 $children 内部 API
       this.vm = new Vue({
-        data: { widgetConfig: config },
+        data: { widgetConfig: parseConfig(config) },
         render(h) {
-          return h(BridgeComponent, { props: { config: this.widgetConfig } });
+          return h(Component, { props: { config: this.widgetConfig } });
         }
       });
       this.vm.$mount();
@@ -66,7 +59,7 @@ function createWidgetWrapper(Component, widgetName) {
     attributeChangedCallback(name, oldValue, newValue) {
       // 更新 reactive data，Vue 自动触发重渲染，不依赖 $children[0] 顺序
       if (name === 'config' && this.vm) {
-        this.vm.widgetConfig = newValue;
+        this.vm.widgetConfig = parseConfig(newValue);
       }
     }
   }
