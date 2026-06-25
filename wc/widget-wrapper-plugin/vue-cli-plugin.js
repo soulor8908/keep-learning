@@ -16,6 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { writeSchema } = require('../schema-generator');
+const { createNamespacePlugin } = require('./postcss-namespace');
 
 function generateVue2Wrapper(widgetName, vueGlobal) {
   return `
@@ -82,7 +83,7 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     throw new Error('[widget-vue-cli-plugin] 请配置 name 和 component');
   }
 
-  const { name, component, vueGlobal = 'Vue' } = options;
+  const { name, component, vueGlobal = 'Vue', autoNamespace = true } = options;
 
   return function chainWebpack(config) {
     const wrapperCode = generateVue2Wrapper(name, vueGlobal);
@@ -123,6 +124,32 @@ module.exports = function widgetVueCliPlugin(options = {}) {
 
     // 开启 source map，方便本地调试物料
     config.devtool('source-map');
+
+    // PostCSS 自动命名空间：构建期为所有 CSS 选择器自动添加 .{name} 前缀，
+    // 防止不同物料之间的全局样式冲突（样式冲突是生产必现问题）
+    // 处理 css/scss/less/stylus 四种预处理器规则链
+    if (autoNamespace) {
+      const namespacePlugin = createNamespacePlugin(name);
+      ['css', 'scss', 'sass', 'less', 'stylus'].forEach(ruleName => {
+        const rule = config.module.rules.get(ruleName);
+        if (!rule) return;
+        // vue-cli 对每种 lang 有 oneOf（normal/modules），逐个注入 postcss-loader
+        rule.oneOfs.values().forEach(oneOf => {
+          const postcssLoader = oneOf.uses.get('postcss-loader');
+          if (postcssLoader) {
+            postcssLoader.tap(options => {
+              const postcssOptions = options.postcssOptions || options;
+              const plugins = (postcssOptions.plugins || []).slice();
+              plugins.push(namespacePlugin);
+              return {
+                ...options,
+                postcssOptions: { ...postcssOptions, plugins }
+              };
+            });
+          }
+        });
+      });
+    }
 
     // 清理 html 插件，避免生成 index.html
     config.plugins.delete('html');

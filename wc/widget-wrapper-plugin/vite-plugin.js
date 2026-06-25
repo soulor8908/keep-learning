@@ -18,6 +18,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { createRequire } from 'module';
+import { createNamespacePlugin } from './postcss-namespace.js';
 
 const require = createRequire(import.meta.url);
 const { writeSchema } = require('../schema-generator');
@@ -98,7 +99,7 @@ customElements.define('${widgetName}', WidgetElement);
 }
 
 export default function widgetVitePlugin(options = {}) {
-  const { name, component, vueGlobal = 'Vue', cssFileName = name } = options;
+  const { name, component, vueGlobal = 'Vue', cssFileName = name, autoNamespace = true } = options;
   if (!name || !component) {
     throw new Error('[widget-vite-plugin] 请配置 name 和 component');
   }
@@ -107,6 +108,9 @@ export default function widgetVitePlugin(options = {}) {
   const wrapperCode = generateVue3Wrapper(name, vueGlobal);
   const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
   fs.writeFileSync(tmpFile, wrapperCode);
+
+  // PostCSS 自动命名空间插件实例（构建期为所有 CSS 选择器自动添加 .{name} 前缀）
+  const namespacePlugin = autoNamespace ? createNamespacePlugin(name) : null;
 
   return {
     name: 'widget-wrapper-plugin',
@@ -137,7 +141,16 @@ export default function widgetVitePlugin(options = {}) {
         alias: {
           __WIDGET_COMPONENT__: componentPath
         }
-      }
+      },
+      // PostCSS 自动命名空间：vite 内部用 postcss 处理 CSS，
+      // 通过 css.postcss.plugins 注入命名空间插件
+      ...(namespacePlugin ? {
+        css: {
+          postcss: {
+            plugins: [namespacePlugin]
+          }
+        }
+      } : {})
     }),
     // 构建完成后自动生成 schema.json
     closeBundle() {
