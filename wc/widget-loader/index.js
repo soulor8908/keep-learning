@@ -341,12 +341,15 @@ class WidgetLoader {
     this.loadedResources.set(url, loadPromise);
 
     // 调用方拿到 race 结果：超时只 reject 给调用方，不清理 script 节点与缓存
-    return Promise.race([
-      loadPromise,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(createError(`Timeout loading script: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout)
-      )
-    ]);
+    // 真实加载提前完成时清理 timer，避免高频加载场景下 timer 堆积（N4）
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(createError(`Timeout loading script: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout);
+    });
+    const racePromise = Promise.race([loadPromise, timeoutPromise]);
+    // 无论成功还是失败，都清理 timer（失败时 loadPromise.catch 已处理缓存）
+    loadPromise.then(() => clearTimeout(timer), () => clearTimeout(timer));
+    return racePromise;
   }
 
   /**
@@ -392,12 +395,14 @@ class WidgetLoader {
 
     this.loadedResources.set(url, loadPromise);
 
-    return Promise.race([
-      loadPromise,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(createError(`Timeout loading style: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout)
-      )
-    ]);
+    // 真实加载提前完成时清理 timer，避免高频加载场景下 timer 堆积（N4）
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(createError(`Timeout loading style: ${url}`, WidgetError.LOAD_TIMEOUT)), timeout);
+    });
+    const racePromise = Promise.race([loadPromise, timeoutPromise]);
+    loadPromise.then(() => clearTimeout(timer), () => clearTimeout(timer));
+    return racePromise;
   }
 
   /**
@@ -411,12 +416,15 @@ class WidgetLoader {
   waitForCustomElement(name, timeout = 5000) {
     // 优先使用原生 whenDefined API
     if (typeof customElements.whenDefined === 'function') {
-      return Promise.race([
-        customElements.whenDefined(name),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(createError(`Timeout waiting for custom element: ${name}`, WidgetError.ELEMENT_TIMEOUT)), timeout)
-        )
-      ]);
+      const whenDefinedPromise = customElements.whenDefined(name);
+      // 真实注册提前完成时清理 timer，避免 timer 堆积（N4）
+      let timer;
+      const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(createError(`Timeout waiting for custom element: ${name}`, WidgetError.ELEMENT_TIMEOUT)), timeout);
+      });
+      const racePromise = Promise.race([whenDefinedPromise, timeoutPromise]);
+      whenDefinedPromise.then(() => clearTimeout(timer));
+      return racePromise;
     }
 
     // 降级：轮询 customElements.get（旧浏览器兼容）
