@@ -230,6 +230,22 @@ export function createContext() {
 // element._wcContext 读取上下文
 
 /**
+ * 安全序列化：跳过循环引用，保证 JSON.stringify 不抛错。
+ * 仅在普通 JSON.stringify 失败（如上下文含 Vue 响应式对象/DOM 引用形成的环）时兜底，
+ * 使 data-context 仍能携带去环后的可序列化基础数据，而非整体缺失（修复 N4）。
+ */
+function safeStringify(obj) {
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (key, value) => {
+    if (value && typeof value === 'object') {
+      if (seen.has(value)) return undefined; // 跳过环
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
+/**
  * 将全局上下文注入到物料元素
  * @param {HTMLElement} element 物料 DOM 元素
  * @param {string[]} [keys] 要注入的上下文 key 列表，不传则注入全部
@@ -242,10 +258,18 @@ export function injectContext(element, keys) {
     keys.forEach(k => { if (k in ctx) filtered[k] = ctx[k]; });
   }
   // 注入到元素属性（供 attributeChangedCallback 读取）
+  // 优先用普通 stringify（快）；循环引用等导致失败时降级为 safeStringify，
+  // 既保证不抛错，又让 data-context 携带去环后的可用数据而非整体缺失
+  let serialized;
   try {
-    element.setAttribute('data-context', JSON.stringify(filtered));
+    serialized = JSON.stringify(filtered);
   } catch (e) {
-    // 循环引用等序列化失败，忽略
+    try { serialized = safeStringify(filtered); } catch (_) { serialized = '{}'; }
+  }
+  try {
+    element.setAttribute('data-context', serialized);
+  } catch (e) {
+    // setAttribute 极少失败（如 XML 文档），忽略
   }
   // 同时挂载到元素实例（供 JS 直接读取）
   element._wcContext = filtered;

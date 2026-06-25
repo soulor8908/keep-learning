@@ -36,21 +36,21 @@
  *   scope.t('title');
  */
 
+// widget-bus 同步引入：事件总线 emit/on/once 本身是同步 API（基于 window.dispatchEvent），
+// 为保证 scope.bus 同步语义（基座同步监听器在同一事件循环内收到事件），必须同步可用，
+// 故不再懒加载。widget-bus 体积极小且与 widget-scope 同属基座侧运行时（widget-scope 经
+// external 由基座 window.__wcWidgetScope__ 提供），同步引入不影响物料包首屏体积。
+import { createBus } from '../widget-bus/index.js';
+
 // ─── 懒加载依赖：仅在物料实际调用对应 API 时才 import，减小首屏体积 ───
+// 注意：bus 不在此列（见上方同步 import），因为其 API 是同步的；
+// context/i18n/loader 的 API 本身返回 Promise，保持懒加载合理。
 let contextModulePromise = null;
 function getContextModule() {
   if (!contextModulePromise) {
     contextModulePromise = import('../widget-context/index.js');
   }
   return contextModulePromise;
-}
-
-let busModulePromise = null;
-function getBusModule() {
-  if (!busModulePromise) {
-    busModulePromise = import('../widget-bus/index.js');
-  }
-  return busModulePromise;
 }
 
 let i18nModulePromise = null;
@@ -70,22 +70,36 @@ function getLoaderModule() {
 }
 
 // ─── 嵌套加载的循环依赖检测 ───
-// pendingAncestors: 物料名 -> 祖先物料名集合
 // 父物料通过 scope.loader.loadWidget(child) 加载子物料时，会把
-// [父自身名 + 父的祖先链] 写入 pendingAncestors[child.name]；
-// 子物料的 wrapper 调用 createWidgetScope({name: child.name}) 时，
-// 自动取出并继承该祖先链，从而支持多级嵌套的循环检测（A→B→A）。
-const pendingAncestors = new Map();
+// [父自身名 + 父的祖先链] 写入待继承区；子物料的 wrapper 调用
+// createWidgetScope({name: child.name, host}) 时自动取出并继承，支持多级嵌套循环检测（A→B→A）。
+//
+// 多 Host 隔离（修复 N5）：原为单一模块级 Map，微前端/iframe 嵌套场景下
+// A Host 的祖先链可能被 B Host 的同名物料消费，导致循环检测误判。现按 host 分桶：
+// pendingAncestorsByHost: host -> Map(widgetName -> Set<ancestor>)
+// 父写入用父的 host，子读取用子的 host；同 host 内行为与原实现一致（host='' 时即单桶）。
+// 注：当前 wrapper 模板未传 host（默认 ''），所有 scope 落入同一空桶，与历史行为完全一致；
+//     基座若需多 Host 隔离，应在 createWidgetScope opts 中显式传入不同的 host 标识。
+const pendingAncestorsByHost = new Map();
+
+function getAncestorBucket(host) {
+  const key = host || '';
+  let bucket = pendingAncestorsByHost.get(key);
+  if (!bucket) { bucket = new Map(); pendingAncestorsByHost.set(key, bucket); }
+  return bucket;
+}
 
 /**
  * 读取并清除待继承的祖先链（供 createWidgetScope 内部调用）
  * @param {string} widgetName
+ * @param {string} [host] 宿主标识，用于多 Host 分桶
  * @returns {Set<string>|null}
  */
-function consumePendingAncestors(widgetName) {
-  if (pendingAncestors.has(widgetName)) {
-    const set = pendingAncestors.get(widgetName);
-    pendingAncestors.delete(widgetName);
+function consumePendingAncestors(widgetName, host) {
+  const bucket = getAncestorBucket(host);
+  if (bucket.has(widgetName)) {
+    const set = bucket.get(widgetName);
+    bucket.delete(widgetName);
     return set;
   }
   return null;
@@ -95,9 +109,10 @@ function consumePendingAncestors(widgetName) {
  * 为即将被加载的子物料设置祖先链（供 scope.loader 内部调用）
  * @param {string} childName 子物料名
  * @param {Set<string>} ancestors 祖先物料名集合
+ * @param {string} [host] 宿主标识，用于多 Host 分桶
  */
-function setPendingAncestors(childName, ancestors) {
-  pendingAncestors.set(childName, ancestors);
+function setPendingAncestors(childName, ancestors, host) {
+  getAncestorBucket(host).set(childName, ancestors);
 }
 
 /**
@@ -117,33 +132,23 @@ export function createWidgetScope(opts = {}) {
   }
 
   // ─── 祖先链继承（嵌套加载循环检测）───
-  // 若父物料通过 scope.loader 加载本物料，会在 pendingAncestors 中预置祖先链。
+  // 若父物料通过 scope.loader 加载本物料，会在对应 host 的待继承桶中预置祖先链。
   // 此处取出并继承；同时支持 opts.ancestors 显式传入（多 Host 场景）。
-  const inheritedAncestors = consumePendingAncestors(name);
+  const inheritedAncestors = consumePendingAncestors(name, host);
   const ancestorSet = new Set(
     opts.ancestors
       ? opts.ancestors
       : (inheritedAncestors ? Array.from(inheritedAncestors) : [])
   );
 
-  // ─── 命名空间隔离的事件总线 ───
+  // ─── 命名空间隔离的事件总线（同步）───
   // 每个物料用自身 name 作为命名空间，避免不同物料的事件名碰撞
   // 例如 bi-sales-panel 的 'resize' 与 bi-finance-panel 的 'resize' 互不干扰
+  // bus 实例在 scope 创建时同步构建：opts.busInstance 优先，否则用 createBus(name)。
+  // 同步构建保证 scope.bus.emit/on/once 是同步调用——基座同步监听器在同一事件循环
+  // 内即可收到事件，避免初始化时同步请求数据丢失时机（修复 N1/N2）。
   const busNS = name;
-  let _bus = null;
-  function getBus() {
-    if (_bus) return _bus;
-    if (opts.busInstance) { _bus = opts.busInstance; return _bus; }
-    // 懒加载：首次调用时才 import widget-bus 并创建命名空间实例
-    _bus = getBusModule().then(m => {
-      const factory = m.createBus || m.default;
-      const bus = typeof factory === 'function' ? factory(busNS) : m.defaultBus;
-      // 缓存已解析的实例，覆盖 promise
-      _bus = bus;
-      return bus;
-    });
-    return _bus;
-  }
+  const busInstance = opts.busInstance || createBus(busNS);
 
   // ─── 只读上下文访问 ───
   // 物料只能 get/订阅，不能 set（set 走基座 setContext，避免反向耦合）
@@ -171,53 +176,35 @@ export function createWidgetScope(opts = {}) {
     }
   };
 
-  // ─── 命名空间事件总线便捷方法 ───
-  // 软隔离原则：bus 失败不应 crash 物料渲染，统一 try/catch 并记日志
-  //
-  // on/once 同步返回 unsubscribe 函数（与主流事件库约定一致）：
-  // - bus 就绪前调用 on：先返回 unsubscribe，bus 就绪后在微任务中补注册；
-  //   若 unsubscribe 已被调用（disposed=true），则跳过注册，避免回调泄漏。
-  // - bus 就绪后调用 on：realOff 在微任务中被赋值，unsubscribe 调用时清理。
-  // - emit 保持 async fire-and-forget。
+  // ─── 命名空间事件总线便捷方法（同步）───
+  // 与 widget-bus 的同步 API 对齐：emit/on/once 不再是 async，派发不推迟到 microtask，
+  // 返回值也与 widget-bus 一致（emit: void, on/once: 取消订阅函数）。
+  // on/once 同步返回 unsubscribe 函数（与主流事件库约定一致）：busInstance 在 scope
+  // 创建时已同步构建，故 on/once 直接同步注册并返回取消订阅函数，无需微任务延迟。
+  // 软隔离原则：bus 失败不应 crash 物料渲染，统一 try/catch 并记日志。
   const bus = {
-    async emit(type, payload, options) {
+    emit(type, payload, options) {
       try {
-        const b = await getBus();
-        if (b && b.emit) b.emit(type, payload, options);
+        if (busInstance && busInstance.emit) busInstance.emit(type, payload, options);
       } catch (e) {
         log.error('bus.emit failed:', e.message);
       }
     },
     on(type, cb) {
-      let realOff = null;
-      let disposed = false;
-      // getBus() 可能返回 Promise（首次懒加载）或已解析的实例，统一用 Promise.resolve 包裹
-      Promise.resolve(getBus()).then(b => {
-        if (disposed) return;
-        if (b && typeof b.on === 'function') realOff = b.on(type, cb);
-      }).catch(e => log.error('bus.on failed:', e.message));
-      return () => {
-        disposed = true;
-        if (realOff) {
-          try { realOff(); } catch (e) { /* ignore */ }
-          realOff = null;
-        }
-      };
+      try {
+        if (busInstance && busInstance.on) return busInstance.on(type, cb);
+      } catch (e) {
+        log.error('bus.on failed:', e.message);
+      }
+      return () => {};
     },
     once(type, cb) {
-      let realOff = null;
-      let disposed = false;
-      Promise.resolve(getBus()).then(b => {
-        if (disposed) return;
-        if (b && typeof b.once === 'function') realOff = b.once(type, cb);
-      }).catch(e => log.error('bus.once failed:', e.message));
-      return () => {
-        disposed = true;
-        if (realOff) {
-          try { realOff(); } catch (e) { /* ignore */ }
-          realOff = null;
-        }
-      };
+      try {
+        if (busInstance && busInstance.once) return busInstance.once(type, cb);
+      } catch (e) {
+        log.error('bus.once failed:', e.message);
+      }
+      return () => {};
     }
   };
 
@@ -269,7 +256,10 @@ export function createWidgetScope(opts = {}) {
   }
   request.addInterceptor = (fn) => {
     if (typeof fn === 'function') _requestInterceptors.push(fn);
-    return () => { _requestInterceptors = _requestInterceptors.filter(f => f !== fn); };
+    return () => {
+      const idx = _requestInterceptors.indexOf(fn);
+      if (idx >= 0) _requestInterceptors.splice(idx, 1);
+    };
   };
 
   // ─── 嵌套物料加载器（带循环依赖检测）───
@@ -279,7 +269,7 @@ export function createWidgetScope(opts = {}) {
   // 循环检测策略：
   // - 直接自引用（child.name === 自身 name）→ 立即抛错
   // - child.name 在祖先链中（如 A→B→A）→ 立即抛错
-  // - 否则把 [自身名 + 祖先链] 写入 pendingAncestors[child.name]，
+  // - 否则把 [自身名 + 祖先链] 写入对应 host 的待继承桶[child.name]，
   //   子物料 createWidgetScope 时自动继承，支持多级嵌套检测
   function checkCycle(childName) {
     if (childName === name) {
@@ -293,7 +283,7 @@ export function createWidgetScope(opts = {}) {
   }
   function propagateAncestors(childName) {
     const childAncestors = new Set([...ancestorSet, name]);
-    setPendingAncestors(childName, childAncestors);
+    setPendingAncestors(childName, childAncestors, host);
   }
 
   const loader = {
@@ -353,11 +343,21 @@ export function createWidgetScope(opts = {}) {
 
 /**
  * 判断一个对象是否为 widgetScope 实例
+ *
+ * 身份判据统一收敛到 meta.__isWidgetScope：meta 在创建时即 Object.freeze，
+ * 是 scope 的身份对象，会随任何合理的拷贝（解构、Object.assign、展开）自然传递。
+ *
+ * 不再同时校验顶层 __noGlobalAccess——它是"不直接访问 window/document"的能力契约标记，
+ * 而非身份标识。物料若通过解构重建 scope（如
+ *   const { meta, context, bus } = scope; const copy = { meta, context, bus }
+ * ），__noGlobalAccess 会丢失但 meta 仍在，旧逻辑会误判 copy 非 widgetScope。
+ * 改为只认 meta.__isWidgetScope 即可消除该误判。
+ *
  * @param {*} obj
  * @returns {boolean}
  */
 export function isWidgetScope(obj) {
-  return obj && obj.meta && obj.meta.__isWidgetScope === true && obj.__noGlobalAccess === true;
+  return !!(obj && obj.meta && obj.meta.__isWidgetScope === true);
 }
 
 export default createWidgetScope;

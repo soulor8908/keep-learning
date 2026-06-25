@@ -73,8 +73,16 @@ describe('widget-scope 基础', () => {
       expect(isWidgetScope(undefined)).toBeFalsy();
     });
 
-    it('缺 __noGlobalAccess 的对象返回 falsy', () => {
-      expect(isWidgetScope({ meta: { __isWidgetScope: true } })).toBeFalsy();
+    it('缺 __noGlobalAccess 但保留 meta 的解构拷贝返回 truthy（N10 修复：身份判据收敛到 meta.__isWidgetScope）', () => {
+      // N10 修复：isWidgetScope 不再校验顶层 __noGlobalAccess（能力契约标记，非身份标识）。
+      // 物料通过 { meta, context, bus } = scope 解构重建时 __noGlobalAccess 会丢失，
+      // 但 meta 仍在，应识别为 widgetScope，避免基座误判。
+      expect(isWidgetScope({ meta: { __isWidgetScope: true } })).toBe(true);
+    });
+
+    it('meta 缺 __isWidgetScope 标记的对象返回 falsy', () => {
+      expect(isWidgetScope({ meta: {} })).toBeFalsy();
+      expect(isWidgetScope({ __noGlobalAccess: true })).toBeFalsy();
     });
   });
 

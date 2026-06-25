@@ -189,6 +189,132 @@ function extractRules(css) {
   return flattened;
 }
 
+/**
+ * 用 postcss AST 解析 CSS 提取规则，修复 P2-26（不支持原生 nesting）。
+ *
+ * 与手写 extractRules 的差异：
+ * - 通过 AST 准确识别 Rule / AtRule / Declaration，避免状态机在复杂 nesting 下的拼接错误
+ * - 原生 CSS nesting（& 选择器）通过父级 Rule 选择器替换 & 得到完整选择器路径
+ * - @media / @supports 内部规则递归遍历，选择器以 "@media ..." 前缀包装（兼容现有白名单判断）
+ * - @keyframes / @font-face / @page 等内部跳过（非样式选择器）
+ *
+ * 解析失败（SCSS/Less 非标准语法、严重语法错误）或 postcss 不可用时返回 null，
+ * 由调用方回退到 extractRules 手写实现。
+ */
+function extractRulesViaPostcss(css) {
+  let postcss;
+  try {
+    postcss = require('postcss');
+  } catch (e) {
+    return null; // postcss 不可用，触发回退
+  }
+
+  let root;
+  try {
+    root = postcss.parse(css);
+  } catch (e) {
+    // postcss 解析失败（SCSS/Less 非标准语法、未闭合块等），返回 null 触发回退
+    return null;
+  }
+
+  const rules = [];
+
+  // 这些 at-rule 内部不是样式选择器（关键帧百分比 / 字体描述 / 计数器样式等），跳过
+  const SKIP_ATRULES = new Set([
+    'keyframes',
+    '-webkit-keyframes',
+    '-moz-keyframes',
+    'font-face',
+    'page',
+    'counter-style',
+    'font-feature-values',
+    'property',
+    'color-profile'
+  ]);
+
+  // 拼接 at-rule 文本：@media (max-width: 600px) / @supports (display: grid) 等
+  function atRuleText(node) {
+    return node.params ? `@${node.name} ${node.params}` : `@${node.name}`;
+  }
+
+  // 取父链中最近的 Rule 选择器（用于 & 替换或后代拼接）
+  function nearestRuleSelector(parentChain) {
+    for (let i = parentChain.length - 1; i >= 0; i--) {
+      if (parentChain[i].type === 'rule') return parentChain[i].selector;
+    }
+    return null;
+  }
+
+  // 判断父链中是否存在 Rule 节点（用于标识 nesting）
+  function hasRuleAncestor(parentChain) {
+    return parentChain.some(p => p.type === 'rule');
+  }
+
+  // 解析当前 Rule 的完整选择器：
+  // 1. 含 & 时替换 & 为父 Rule 选择器（SCSS / 原生 nesting 语法）
+  // 2. 不含 & 但直接父节点是 Rule 时，按后代选择器拼接（原生 nesting 隐式后代）
+  // 3. 否则原样返回（顶层规则 / @media 内的顶层规则）
+  function resolveSelector(parentChain, selector) {
+    const parentRule = nearestRuleSelector(parentChain);
+    if (selector.includes('&') && parentRule) {
+      return selector.replace(/&/g, parentRule);
+    }
+    const directParent = parentChain[parentChain.length - 1];
+    if (parentRule && directParent && directParent.type === 'rule') {
+      return `${parentRule} ${selector}`;
+    }
+    return selector;
+  }
+
+  // 用 at-rule 前缀包装选择器：单层 → "@media (...) { selector }"，
+  // 多层 at-rule 嵌套按层级包裹（兼容现有"@media 前缀命中白名单"的判断逻辑）
+  function wrapWithAtRules(parentChain, selector) {
+    const atRuleTexts = parentChain
+      .filter(p => p.type === 'atrule')
+      .map(p => p.text);
+    if (atRuleTexts.length === 0) return selector;
+    const open = atRuleTexts.join(' { ') + ' { ';
+    const close = ' }'.repeat(atRuleTexts.length);
+    return `${open}${selector}${close}`;
+  }
+
+  // 收集 Rule 节点直接子声明（不递归到嵌套规则），用于调试输出
+  function extractDeclarations(ruleNode) {
+    const decls = [];
+    ruleNode.each(child => {
+      if (child.type === 'decl') {
+        const important = child.important ? ' !important' : '';
+        decls.push(`${child.prop}: ${child.value}${important};`);
+      }
+    });
+    return decls.join(' ');
+  }
+
+  // 递归遍历 AST，按 Rule / AtRule 分别处理
+  function walk(node, parentChain) {
+    node.each(child => {
+      if (child.type === 'rule') {
+        const resolved = resolveSelector(parentChain, child.selector);
+        const fullSelector = wrapWithAtRules(parentChain, resolved);
+        const declarations = extractDeclarations(child);
+        const nested = hasRuleAncestor(parentChain) || parentChain.some(p => p.type === 'atrule');
+        rules.push({ selectors: fullSelector, declarations, nested });
+        // 递归处理嵌套规则，把当前已解析的选择器作为父选择器入栈
+        walk(child, [...parentChain, { type: 'rule', selector: resolved }]);
+      } else if (child.type === 'atrule') {
+        if (SKIP_ATRULES.has(child.name)) {
+          return; // 关键帧 / 字体声明内部不是样式选择器，跳过
+        }
+        walk(child, [...parentChain, { type: 'atrule', text: atRuleText(child) }]);
+      }
+      // declaration / comment 节点不参与选择器提取
+    });
+  }
+
+  walk(root, []);
+  return rules;
+}
+
 function isAllowedSelector(selector, namespaceClass) {
   const trimmed = selector.trim();
   if (!trimmed) return true;
@@ -198,14 +324,18 @@ function isAllowedSelector(selector, namespaceClass) {
     return true;
   }
 
-  // 包含命名空间类名
-  if (namespaceClass && trimmed.includes(`.${namespaceClass}`)) {
-    return true;
-  }
-
-  // 类名以命名空间开头，如 .bi-sales-panel-title
-  if (namespaceClass && trimmed.split(/[\s>+~\[:]/)[0].startsWith(`.${namespaceClass}`)) {
-    return true;
+  // 每个逗号分隔的选择器片段必须以命名空间类开头（修复 P1-14）。
+  // 旧逻辑用 includes 判断，会把 `.title .bi-sales-panel` 这类首 token 非命名空间
+  // 的选择器误判为合法（只要字符串里出现命名空间子串就放行）。
+  // 现改为取选择器首个 token（按后代/子/兄弟组合器 + 属性选择器边界切分），
+  // 要求它以 `.${namespaceClass}` 开头：
+  //   合法：.bi-sales-panel / .bi-sales-panel .title / .bi-sales-panel-title (BEM) / .bi-sales-panel:hover
+  //   违规：.title .bi-sales-panel / .other > .bi-sales-panel / .title
+  if (namespaceClass) {
+    const firstToken = trimmed.split(/[\s>+~\[:]/)[0] || '';
+    if (firstToken.startsWith(`.${namespaceClass}`)) {
+      return true;
+    }
   }
 
   return false;
@@ -235,7 +365,12 @@ function checkFile(filePath, namespace) {
       return;
     }
 
-    const rules = extractRules(block.content);
+    // 优先用 postcss AST 提取规则（准确支持原生 nesting & 选择器）；
+    // postcss 解析失败（SCSS/Less 非标准语法、未闭合块等）时回退到手写 extractRules
+    let rules = extractRulesViaPostcss(block.content);
+    if (rules === null) {
+      rules = extractRules(block.content);
+    }
     rules.forEach(rule => {
       const selectorList = rule.selectors.split(',');
       selectorList.forEach(selector => {

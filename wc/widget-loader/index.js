@@ -272,7 +272,11 @@ function renderFallback(container, message, widget, onRetry) {
 // 避免同页多 Host（iframe 嵌套、微前端）共享状态导致 A Host 的加载记录干扰 B Host。
 // 模块级默认导出仍可用（委托到下方 defaultLoader 单例），保持向后兼容。
 class WidgetLoader {
-  constructor() {
+  constructor(opts = {}) {
+    // 多 Host 标识：用于区分实例的生命周期事件 payload（修复 N8）。
+    // 微前端/iframe 嵌套场景下，基座可 createWidgetLoader({ hostId }) 创建独立实例，
+    // 订阅 onWidgetLifecycle 时通过 payload.hostId 区分事件来源。
+    this.hostId = opts.hostId || '';
     this.loadedResources = new Map();
     this.definedElements = new Set();
     // 物料名 -> { js, css }：记录每个物料加载的资源 URL，供 unloadWidget 清理
@@ -294,9 +298,13 @@ class WidgetLoader {
   }
 
   /**
-   * 加载 JS 脚本
+   * 加载 JS 脚本（带自动重试 + 指数退避，修复 P2-20）
    *
-   * 竞态修复：将"真实加载结果"与"超时"分离。
+   * 重试策略：仅对真正的加载失败（SCRIPT_ERROR）重试，超时（LOAD_TIMEOUT）不重试
+   * （超时可能底层仍在加载，重试会重复创建 <script> 并可能加剧拥塞）。
+   * 退避：backoff * 2^attempt（如 1000ms → 2000ms → 4000ms）。
+   *
+   * 竞态修复（单次加载内）：将"真实加载结果"与"超时"分离。
    * - loadPromise 由 onload/onerror 决定，缓存它：即使超时后脚本最终加载成功，
    *   后续调用复用已 resolve 的 loadPromise，不会重复创建 <script> 标签。
    * - 调用方拿到的是 Promise.race(loadPromise, timeout)：超时只 reject 给调用方，
@@ -305,9 +313,24 @@ class WidgetLoader {
    *
    * @param {string} url
    * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒，超时后 reject（不清理节点/缓存）
+   * @param {{retries?: number, backoff?: number}} [opts] retries=3 重试次数，backoff=1000 退避基数(ms)
    * @returns {Promise<void>}
    */
-  loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT) {
+  loadScript(url, timeout = DEFAULT_LOAD_TIMEOUT, opts = {}) {
+    const maxRetries = opts.retries != null ? opts.retries : 3;
+    const backoffBase = opts.backoff != null ? opts.backoff : 1000;
+    const attempt = (n) => this._loadScriptOnce(url, timeout).catch(err => {
+      if (err && err.code === WidgetError.SCRIPT_ERROR && n < maxRetries) {
+        const delay = backoffBase * Math.pow(2, n);
+        log(`script load failed (attempt ${n + 1}/${maxRetries + 1}), retry in ${delay}ms:`, url, err.message);
+        return new Promise(r => setTimeout(r, delay)).then(() => attempt(n + 1));
+      }
+      throw err;
+    });
+    return attempt(0);
+  }
+
+  _loadScriptOnce(url, timeout = DEFAULT_LOAD_TIMEOUT) {
     if (this.loadedResources.has(url)) {
       log('script cached:', url);
       return this.loadedResources.get(url);
@@ -356,19 +379,35 @@ class WidgetLoader {
   }
 
   /**
-   * 加载 CSS 样式
+   * 加载 CSS 样式（带自动重试 + 指数退避，修复 P2-20）
    *
-   * 竞态修复：同 loadScript，将真实加载结果与超时分离，避免超时误删已加载样式
-   * 导致下次重复加载。详见 loadScript 注释。
+   * 重试策略同 loadScript：仅对 CSS_ERROR 重试，LOAD_TIMEOUT 不重试。
+   *
+   * 竞态修复：将真实加载结果与超时分离，避免超时误删已加载样式导致下次重复加载。
    *
    * @param {string} url
    * @param {number} [timeout=DEFAULT_LOAD_TIMEOUT] 超时毫秒
+   * @param {{retries?: number, backoff?: number}} [opts] retries=3 重试次数，backoff=1000 退避基数(ms)
    * @returns {Promise<void>}
    */
-  loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT) {
+  loadStyle(url, timeout = DEFAULT_LOAD_TIMEOUT, opts = {}) {
     if (!url) {
       return Promise.resolve();
     }
+    const maxRetries = opts.retries != null ? opts.retries : 3;
+    const backoffBase = opts.backoff != null ? opts.backoff : 1000;
+    const attempt = (n) => this._loadStyleOnce(url, timeout).catch(err => {
+      if (err && err.code === WidgetError.CSS_ERROR && n < maxRetries) {
+        const delay = backoffBase * Math.pow(2, n);
+        log(`style load failed (attempt ${n + 1}/${maxRetries + 1}), retry in ${delay}ms:`, url, err.message);
+        return new Promise(r => setTimeout(r, delay)).then(() => attempt(n + 1));
+      }
+      throw err;
+    });
+    return attempt(0);
+  }
+
+  _loadStyleOnce(url, timeout = DEFAULT_LOAD_TIMEOUT) {
     if (this.loadedResources.has(url)) {
       log('style cached:', url);
       return this.loadedResources.get(url);
@@ -567,19 +606,19 @@ class WidgetLoader {
     const { concurrency = 3, timeout = 30000 } = opts;
     const results = [];
     const startTime = Date.now();
-    const ric = typeof requestIdleCallback === 'function'
-      ? requestIdleCallback
+    const hasRIC = typeof requestIdleCallback === 'function';
+    const ric = hasRIC
+      ? (fn) => requestIdleCallback(fn)
       : (fn) => setTimeout(() => fn({ timeRemaining: () => 0, didTimeout: false }), 0);
 
     return new Promise((resolve) => {
       let index = 0;
 
-      const processBatch = () => {
-        // 超时检查
+      const processBatch = (deadline) => {
+        // 超时检查：未加载的标记为跳过并记录原因，便于基座排查（修复 N7）
         if (Date.now() - startTime > timeout) {
-          // 未加载的标记为跳过
           while (index < widgets.length) {
-            results.push({ name: widgets[index].name, success: false });
+            results.push({ name: widgets[index].name, success: false, reason: 'preload_timeout' });
             index++;
           }
           resolve(results);
@@ -588,6 +627,16 @@ class WidgetLoader {
 
         if (index >= widgets.length) {
           resolve(results);
+          return;
+        }
+
+        // 利用 idle 时间片：剩余预算不足且未超时 → 让出主线程重新调度，
+        // 避免一次性处理过多批次构成长任务阻塞主线程（修复 N7）。
+        // 仅在使用原生 requestIdleCallback 时生效；setTimeout 降级路径
+        // timeRemaining 恒为 0，跳过此判断以每轮处理一批（与原行为一致，避免空转）。
+        if (hasRIC && deadline && typeof deadline.timeRemaining === 'function'
+            && deadline.timeRemaining() <= 0 && !deadline.didTimeout) {
+          ric(processBatch);
           return;
         }
 
@@ -612,8 +661,10 @@ class WidgetLoader {
   }
 
   emitLifecycle(event, payload) {
+    // 统一在 payload 上附加 hostId，基座订阅者可据此区分多 Host 实例的事件来源（修复 N8）
+    const enriched = { ...payload, hostId: this.hostId };
     (this.lifecycleHooks[event] || []).forEach(cb => {
-      try { cb(payload); } catch (e) { console.error('[widget-loader] lifecycle hook error:', e); }
+      try { cb(enriched); } catch (e) { console.error('[widget-loader] lifecycle hook error:', e); }
     });
   }
 
@@ -748,9 +799,13 @@ class WidgetLoader {
       log('injectContext skipped:', ctxErr && ctxErr.message);
     }
     try {
-      container.appendChild(element); // 触发 connectedCallback
+      container.appendChild(element); // 同步触发 connectedCallback
     } catch (error) {
-      // connectedCallback 同步抛错：移除半挂载元素，向上抛出由 mountWidget 降级
+      // 非 dead code：appendChild 会同步执行 custom element 的 connectedCallback，
+      // 其同步抛出的异常会传播到此处的 catch（非吞掉）。此时元素已插入容器，
+      // 必须移除半挂载元素后向上抛出——上游 mountWidget/mountWithFallback 的降级
+      // 路径（renderFallback）只清理 .widget-error-placeholder，不会移除崩溃的
+      // 物料元素本身，故此处清理不可省略。
       if (element.parentNode === container) {
         container.removeChild(element);
       }
@@ -888,7 +943,7 @@ class WidgetLoader {
 const defaultLoader = new WidgetLoader();
 
 // 工厂：为多 Host 场景（iframe 嵌套、微前端）创建独立状态的加载器实例
-const createWidgetLoader = () => new WidgetLoader();
+const createWidgetLoader = (opts = {}) => new WidgetLoader(opts);
 
 // ─── 向后兼容的模块级导出（委托到默认单例）───
 export const loadWidget = (widget) => defaultLoader.loadWidget(widget);
