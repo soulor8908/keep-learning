@@ -747,14 +747,22 @@ class WidgetLoader {
     const resources = this.widgetResources.get(name);
     if (resources) {
       // 移除 <script> / <link> 标签
+      // 遍历所有标签比较 src/href，而非用 querySelectorAll(URL)，
+      // 避免 URL 含 " 或 ] 等特殊字符时 CSS 选择器语法错误
       if (resources.js) {
-        const scripts = document.querySelectorAll(`script[src="${resources.js}"]`);
-        scripts.forEach(s => s.parentNode && s.parentNode.removeChild(s));
+        Array.from(document.querySelectorAll('script')).forEach(s => {
+          if (s.src === resources.js || s.getAttribute('src') === resources.js) {
+            if (s.parentNode) s.parentNode.removeChild(s);
+          }
+        });
         this.loadedResources.delete(resources.js);
       }
       if (resources.css) {
-        const links = document.querySelectorAll(`link[href="${resources.css}"]`);
-        links.forEach(l => l.parentNode && l.parentNode.removeChild(l));
+        Array.from(document.querySelectorAll('link[rel="stylesheet"]')).forEach(l => {
+          if (l.href === resources.css || l.getAttribute('href') === resources.css) {
+            if (l.parentNode) l.parentNode.removeChild(l);
+          }
+        });
         this.loadedResources.delete(resources.css);
       }
       this.widgetResources.delete(name);
