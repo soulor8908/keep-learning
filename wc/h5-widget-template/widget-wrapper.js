@@ -59,6 +59,28 @@ function createMinimalScope(widgetName) {
   });
 }
 
+// camelCase → kebab-case
+function camelToKebab(str) {
+  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+// kebab-case → camelCase
+function kebabToCamel(str) {
+  return str.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+/**
+ * 按属性值解析为最终值：优先 JSON.parse（与 config 协议一致，无歧义），失败回退原始字符串
+ */
+function parseAttrValue(raw) {
+  if (raw === null) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return raw;
+  }
+}
+
 /**
  * 创建原生物料的 Custom Element 类
  * @param {object} opts
@@ -68,6 +90,10 @@ function createMinimalScope(widgetName) {
  * @param {function} [opts.onUnmount] 卸载前回调，接收 (element, scope)，可清理监听
  * @param {function} [opts.onConfigChange] config 变化回调，接收 (element, newConfig, oldConfig, scope)
  * @param {object} [opts.scope] 自定义 scope 实例（多 Host 场景），不传则按 name 自动创建
+ * @param {string[]} [opts.props] 物料声明的独立 prop 名列表。提供后包装层会观察这些
+ *   prop 对应的 kebab attribute，并把它们合并进 render 收到的 config 对象
+ *   （独立 prop 同名键覆盖 config attribute 的值）。不传则仅观察 config（向后兼容）。
+ *   这样老的原生物料改造时无需把所有字段塞进 config，可直接用 <bi-xxx title="a" count="5">。
  * @returns {typeof HTMLElement} Custom Element 类
  */
 function createH5Widget(opts) {
@@ -76,6 +102,13 @@ function createH5Widget(opts) {
   if (!name || typeof render !== 'function') {
     throw new Error('[h5-widget-template] name 和 render 函数必须提供');
   }
+
+  // 独立 prop 的 kebab attribute 名 → camel prop 名 映射
+  const propAttrMap = new Map(
+    (opts.props || []).map(p => [camelToKebab(p), p])
+  );
+  // 观察的属性：config（向后兼容）+ 各独立 prop 的 kebab attribute
+  const observedAttrs = [...new Set(['config', ...propAttrMap.keys()])];
 
   class H5WidgetElement extends HTMLElement {
     constructor() {
@@ -91,7 +124,7 @@ function createH5Widget(opts) {
     }
 
     static get observedAttributes() {
-      return ['config'];
+      return observedAttrs;
     }
 
     /**
@@ -107,8 +140,25 @@ function createH5Widget(opts) {
       }
     }
 
+    /**
+     * 构建传入 render 的合并 config：
+     * 以 config attribute 解析的对象为基础，叠加各独立 prop 属性（同名键覆盖）。
+     * 这样老物料可继续用 config，新物料可直接用独立 prop，二者可混用。
+     */
+    _buildMergedConfig() {
+      const base = this._parseConfig(this.getAttribute('config'));
+      if (propAttrMap.size === 0) return base;
+      const merged = { ...base };
+      for (const [attrName, propName] of propAttrMap) {
+        if (this.hasAttribute(attrName)) {
+          merged[propName] = parseAttrValue(this.getAttribute(attrName));
+        }
+      }
+      return merged;
+    }
+
     connectedCallback() {
-      this._config = this._parseConfig(this.getAttribute('config'));
+      this._config = this._buildMergedConfig();
       this._render();
 
       // 挂载后回调：绑定事件、初始化交互等；注入 scope 作为第三参数
@@ -132,12 +182,11 @@ function createH5Widget(opts) {
     }
 
     attributeChangedCallback(attrName, oldValue, newValue) {
-      if (attrName !== 'config') return;
-      // 值未变化时跳过（首次挂载时 oldValue 为 null）
-      if (oldValue === newValue) return;
+      // config attribute 值未变化时跳过（首次挂载时 oldValue 为 null）
+      if (attrName === 'config' && oldValue === newValue) return;
 
       const oldConfig = this._config;
-      this._config = this._parseConfig(newValue);
+      this._config = this._buildMergedConfig();
       this._render();
 
       // config 变化回调；注入 scope
@@ -161,7 +210,7 @@ function createH5Widget(opts) {
     }
 
     /**
-     * 外部获取当前 config（只读快照）
+     * 外部获取当前 config（只读快照，含已合并的独立 prop）
      */
     getConfig() {
       return this._config ? { ...this._config } : {};

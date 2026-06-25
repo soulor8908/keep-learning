@@ -4,17 +4,19 @@
  *
  * 把现有 Vue2/Vue3 业务组件快速迁移为看板物料组件。
  * 当前能力：
- * - 检查并补充 config prop
  * - 给根元素添加命名空间类名
+ * - 按 --mode 决定是否补充 config prop：
+ *     props 模式（默认）：保留原有 props，不强行新增 config prop
+ *     config 模式：补充 config prop（用于需要聚合通讯配置的物料）
  * - 调用 css-namespace-checker / js-risk-scanner 做质量扫描
  * - 输出推荐的 vue.config.js / vite.config.js 配置
  *
  * 用法：
- *   node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version]
+ *   node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version] [--mode props|config]
  *
  * 示例：
  *   node wc/migration-skill/index.js bi-sales-panel demo/vue2-widget-lib/src/components/SalesPanel.vue 2
- *   node wc/migration-skill/index.js bi-finance-panel demo/vue3-widget-lib/src/components/FinancePanel.vue 3
+ *   node wc/migration-skill/index.js bi-finance-panel demo/vue3-widget-lib/src/components/FinancePanel.vue 3 --mode config
  */
 
 const fs = require('fs');
@@ -143,24 +145,38 @@ export default defineConfig({
 `;
 }
 
-function migrate(widgetName, filePath, vueVersion) {
+function migrate(widgetName, filePath, vueVersion, mode = 'props') {
   const source = fs.readFileSync(filePath, 'utf-8');
   const report = {
     widgetName,
     filePath,
     vueVersion,
+    mode,
     changes: [],
     warnings: []
   };
 
   let migrated = source;
 
-  // 1. 检查 config prop
-  if (!hasConfigProp(source)) {
-    migrated = addConfigProp(migrated);
-    report.changes.push('补充 config prop');
+  // 1. 通讯模式处理
+  //    props 模式（默认）：保留原有 props，不强行新增 config prop；
+  //                       仅当组件已有 config prop 时记录，不强制添加。
+  //    config 模式：若组件无 config prop 则补充（用于需要聚合通讯配置的物料）。
+  const alreadyHasConfig = hasConfigProp(source);
+  if (mode === 'config') {
+    if (!alreadyHasConfig) {
+      migrated = addConfigProp(migrated);
+      report.changes.push('补充 config prop（config 模式）');
+    } else {
+      report.changes.push('已存在 config prop，无需补充');
+    }
   } else {
-    report.changes.push('已存在 config prop，无需补充');
+    // props 模式
+    if (alreadyHasConfig) {
+      report.changes.push('已存在 config prop，与 props 模式兼容，保留');
+    } else {
+      report.changes.push('props 模式：保留原有 props，未新增 config prop');
+    }
   }
 
   // 2. 检查根元素命名空间
@@ -197,10 +213,31 @@ function migrate(widgetName, filePath, vueVersion) {
 }
 
 function main() {
-  let [widgetName, filePath, vueVersion] = process.argv.slice(2);
+  // 解析位置参数与 --mode 标志
+  // 用法：node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version:2|3] [--mode props|config]
+  const args = process.argv.slice(2);
+  let mode = 'props'; // 默认 props 模式：保留原有 props，不强制新增 config
+  const positional = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--mode') {
+      mode = args[i + 1];
+      i++;
+    } else if (args[i].startsWith('--mode=')) {
+      mode = args[i].slice('--mode='.length);
+    } else {
+      positional.push(args[i]);
+    }
+  }
+
+  if (mode !== 'props' && mode !== 'config') {
+    console.error(`无效的 --mode 值: ${mode}（仅支持 props 或 config）`);
+    process.exit(1);
+  }
+
+  let [widgetName, filePath, vueVersion] = positional;
 
   if (!filePath) {
-    console.log('用法：node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version:2|3]');
+    console.log('用法：node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version:2|3] [--mode props|config]');
     process.exit(1);
   }
 
@@ -213,7 +250,7 @@ function main() {
   widgetName = widgetName || inferWidgetName(absolutePath);
   vueVersion = vueVersion || '3';
 
-  const { migrated, report } = migrate(widgetName, absolutePath, vueVersion);
+  const { migrated, report } = migrate(widgetName, absolutePath, vueVersion, mode);
 
   // 输出迁移后的文件
   const outPath = absolutePath.replace(/\.vue$/, '.migrated.vue');
@@ -223,6 +260,7 @@ function main() {
   console.log('\n========== 物料迁移报告 ==========');
   console.log(`物料名称: ${report.widgetName}`);
   console.log(`Vue 版本: ${report.vueVersion}`);
+  console.log(`通讯模式: ${report.mode}`);
   console.log(`源文件: ${report.filePath}`);
   console.log(`迁移后文件: ${outPath}`);
   console.log('\n变更:');
@@ -238,7 +276,9 @@ function main() {
   console.log('\n========== 推荐打包配置 ==========');
   console.log(generateBuildConfig(widgetName, filePath, vueVersion));
 
-  process.exit(report.warnings.length > 0 ? 1 : 0);
+  // 迁移成功即退出 0；CSS/JS 风险仅为警告（提示人工复核），不视为失败，
+  // 否则会中断 `&&` 串联的脚本（如 npm run migrate && cp ...）。
+  process.exit(0);
 }
 
 if (require.main === module) {

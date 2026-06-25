@@ -11,6 +11,13 @@
 import { t } from '../i18n/index.js';
 import { injectContext } from '../widget-context/index.js';
 
+// ─── camelCase → kebab-case（与 wrapper 端 camelToKebab 一致）───
+// 用于把 widget.props 中的 camelCase prop 名转换为 kebab-case attribute 名，
+// 保持 host↔widget 的属性名映射一致。
+function camelToKebab(str) {
+  return String(str).replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
 // ─── 公共依赖版本契约 ───
 // 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖。
 // 导出供基座读取实际承诺版本，避免硬编码导致版本不一致
@@ -772,11 +779,13 @@ class WidgetLoader {
    * @param {HTMLElement} container
    * @param {Object} widget
    * @param {string} widget.name
-   * @param {Object} [widget.config]
+   * @param {Object} [widget.config] 整包通讯配置（兼容老物料）；与 props 二选一或共存
+   * @param {Object} [widget.props] 逐项属性映射，会按 kebab-case 拆为独立 attribute，
+   *   供改造后复用原 props 的物料直接接收（无需新增 config prop）
    * @returns {HTMLElement}
    */
   renderWidget(container, widget) {
-    const { name, config = {} } = widget;
+    const { name, config = {}, props } = widget;
     const element = document.createElement(name);
     // config 含循环引用时 JSON.stringify 抛 TypeError，需捕获并转为明确错误码，
     // 否则物料无法挂载且错误信息晦涩；mountWidget 会据此渲染降级占位
@@ -790,6 +799,43 @@ class WidgetLoader {
       );
     }
     element.setAttribute('config', configStr);
+    // ─── 逐项 props：按 kebab-case 写为独立 attribute（与 wrapper observedAttributes 对齐）───
+    // 仅在提供 props 对象时写入；缺省/非对象跳过，保持与旧调用方完全向后兼容。
+    // 序列化规则与 wrapper parseAttrValue 互逆：
+    //   - boolean true  → setAttribute(attr, '')           （presence 语义，wrapper 解析为 true）
+    //   - boolean false → setAttribute(attr, 'false')      （显式 false，wrapper 解析为 false；
+    //                                                       不能用 removeAttribute，否则 wrapper 端
+    //                                                       _collectProps 会跳过该 prop，导致 Vue
+    //                                                       回退到 prop 默认值，宿主显式传入的
+    //                                                       false 丢失——尤其当默认值为 true 时）
+    //   - null/undefined → removeAttribute(attr)           （表示"未设置"，由 Vue 应用 prop 默认值）
+    //   - string → 原样写入（wrapper 端 JSON.parse 失败时回退为原始字符串，故普通字符串无歧义）
+    //   - number/object/array → JSON.stringify
+    if (props && typeof props === 'object') {
+      for (const [propName, value] of Object.entries(props)) {
+        // config 与 scope 由 loader/wrapper 内部维护，不允许从 props 覆盖
+        if (propName === 'config' || propName === 'scope') continue;
+        const attrName = camelToKebab(propName);
+        if (value == null) {
+          // null / undefined：表示未设置，移除 attribute 让 Vue 应用默认值
+          element.removeAttribute(attrName);
+        } else if (value === true) {
+          element.setAttribute(attrName, '');
+        } else if (value === false) {
+          // 显式 false：写入字符串 "false"，wrapper parseAttrValue(Boolean) 解析为 false
+          element.setAttribute(attrName, 'false');
+        } else {
+          try {
+            element.setAttribute(attrName, typeof value === 'string' ? value : JSON.stringify(value));
+          } catch (e) {
+            throw createError(
+              `[widget-loader] ${t('loader.config_serialize_failed', { name })}: props.${propName}: ${e.message}`,
+              WidgetError.CONFIG_ERROR
+            );
+          }
+        }
+      }
+    }
     // ─── 自动注入全局上下文（基座无需手动调 injectContext）───
     // 物料组件可通过 element._wcContext 或 scope.context.get() 读取上下文。
     // injectContext 失败（如 widget-context 模块异常）不阻断挂载，仅告警。

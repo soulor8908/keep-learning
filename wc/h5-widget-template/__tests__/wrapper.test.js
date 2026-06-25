@@ -198,4 +198,119 @@ describe('wc/h5-widget-template', () => {
       expect(() => createH5Widget({ name: 'bi-x', render: 'not-fn' })).toThrow(/name.*render.*必须/);
     });
   });
+
+  // ─── props 兼容模式：独立 prop 属性合并进 config ───
+  describe('props 兼容模式（独立 prop 属性合并进 config）', () => {
+    function mountWithProps(tag, attrs = {}) {
+      const el = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (v === true) el.setAttribute(k, '');
+        else if (v === false || v == null) continue;
+        else el.setAttribute(k, typeof v === 'string' ? v : JSON.stringify(v));
+      }
+      document.body.appendChild(el);
+      return el;
+    }
+
+    it('声明 props 后 observedAttributes 含对应 kebab attribute', () => {
+      const { Widget } = defineWidget({
+        render: () => '',
+        props: ['title', 'maxCount', 'isVisible']
+      });
+      expect(Widget.observedAttributes).toEqual(
+        expect.arrayContaining(['config', 'title', 'max-count', 'is-visible'])
+      );
+    });
+
+    it('未声明 props 时 observedAttributes 仅含 config（向后兼容）', () => {
+      const { Widget } = defineWidget({ render: () => '' });
+      expect(Widget.observedAttributes).toEqual(['config']);
+    });
+
+    it('独立 prop 属性合并进 render 收到的 config', () => {
+      const render = vi.fn(() => '<div></div>');
+      const { tag } = defineWidget({
+        render,
+        props: ['title', 'maxCount', 'panelData']
+      });
+      const el = mountWithProps(tag, {
+        title: 'hello',
+        'max-count': 5,
+        'panel-data': { x: 1 }
+      });
+      expect(render).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'hello', maxCount: 5, panelData: { x: 1 } }),
+        expect.anything()
+      );
+      el.remove();
+    });
+
+    it('独立 prop 与 config 可混用：独立 prop 覆盖 config 同名键', () => {
+      const render = vi.fn(() => '<div></div>');
+      const { tag } = defineWidget({
+        render,
+        props: ['title']
+      });
+      const el = document.createElement(tag);
+      el.setAttribute('config', JSON.stringify({ title: 'from-config', host: 'demo' }));
+      el.setAttribute('title', 'from-attr');
+      document.body.appendChild(el);
+      // 独立 prop title 覆盖 config 中的 title；config 的 host 保留
+      expect(render).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'from-attr', host: 'demo' }),
+        expect.anything()
+      );
+      el.remove();
+    });
+
+    it('getConfig 返回合并后的快照', () => {
+      const { tag } = defineWidget({
+        render: () => '',
+        props: ['title', 'count']
+      });
+      const el = mountWithProps(tag, { title: 't', count: 3 });
+      const cfg = el.getConfig();
+      expect(cfg.title).toBe('t');
+      expect(cfg.count).toBe(3);
+      el.remove();
+    });
+
+    it('attributeChangedCallback 更新独立 prop 触发重渲染', () => {
+      const render = vi.fn(() => '<div></div>');
+      const { tag } = defineWidget({
+        render,
+        props: ['title']
+      });
+      const el = mountWithProps(tag, { title: 'a' });
+      render.mockClear();
+      el.setAttribute('title', 'b');
+      expect(render).toHaveBeenCalled();
+      expect(el.getConfig().title).toBe('b');
+      el.remove();
+    });
+
+    it('string 属性：JSON.parse 失败回退原始字符串', () => {
+      const render = vi.fn(() => '');
+      const { tag } = defineWidget({
+        render,
+        props: ['title']
+      });
+      const el = mountWithProps(tag, { title: 'plain-text' });
+      expect(render.mock.calls[0][0].title).toBe('plain-text');
+      el.remove();
+    });
+
+    it('未设置的 prop 不出现在合并 config 中', () => {
+      const render = vi.fn(() => '');
+      const { tag } = defineWidget({
+        render,
+        props: ['title', 'count']
+      });
+      const el = mountWithProps(tag, { title: 'only' });
+      const cfg = render.mock.calls[0][0];
+      expect(cfg.title).toBe('only');
+      expect(cfg).not.toHaveProperty('count');
+      el.remove();
+    });
+  });
 });

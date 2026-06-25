@@ -81,7 +81,7 @@
 | ------ | ------ | ------ |
 | **业务解耦** | 交叉页面的各业务区域独立开发、独立部署，不再纠结归属权。 | 物料以独立 Custom Element 形式存在，基座按注册表组合渲染，各团队独立仓库 / 独立 CI / 独立发布。 |
 | **技术包容** | 不强制统一技术栈（Vue2 / Vue3 / 原生），各部门继续用现有技术。 | `widget-wrapper-plugin` 提供 Vue CLI / Vite / H5 三套打包插件，运行时通过 `window.Vue2` / `window.Vue3` 多版本共存。 |
-| **最小改造** | 业务组件零改造，只改打包配置。 | 包装层自动解析 Custom Element 的 `config` 字符串属性为 Object，旧组件只要接收 `config` Object prop 即可直接接入。 |
+| **最小改造** | 业务组件零改造，只改打包配置。 | 包装层支持 `config` 与 `props` 双模兼容：保留组件原有 `props` 不变即可接入（props 模式，推荐），也可用 `config` Object prop 接收聚合配置（向后兼容）。 |
 | **UI 一致** | 基座统一提供 UI 组件库与主题，物料复用基座组件，保证视觉和交互一致。 | 基座按需加载 ElementUI / ElementPlus 并暴露为全局变量，物料构建时 `external`，运行时直接用 `<el-card>` 等标签。 |
 | **按需加载** | 页面用到哪个物料才加载，不影响首屏性能。 | `widget-loader` 动态注入 `<script>` / `<link>`，URL 级去重缓存，支持 `requestIdleCallback` 空闲预加载与并发控制。 |
 | **支持嵌套** | 物料可组合嵌套，基座组件也可被物料引用。 | `widget-scope` 暴露 `scope.loader` API，物料内部可加载子物料；内置祖先链循环依赖检测，支持多级嵌套。 |
@@ -146,7 +146,8 @@
 │   ├── vue2-host/                   # Vue2 看板基座示例
 │   ├── vue3-host/                   # Vue3 看板基座示例
 │   ├── vue2-widget-lib/             # Vue2 物料库示例（销售看板）
-│   └── vue3-widget-lib/             # Vue3 物料库示例（财务看板）
+│   ├── vue3-widget-lib/             # Vue3 物料库示例（财务看板）
+│   └── ai-migration-demo/           # AI 一次性迁移演示（老 Vue2/Vue3 项目→物料）
 ├── scripts/                         # 部署脚本
 ├── .trae/specs/                     # Spec 驱动开发规范目录
 ├── README.md                        # 本文件
@@ -173,6 +174,7 @@
 | `vue3-host` | Vue3 基座示例，同时提供 Vue2/Vue3 运行时，可加载双版本物料。 |
 | `vue2-widget-lib` | Vue2 物料仓库示例，输出 `bi-sales-panel.js`。 |
 | `vue3-widget-lib` | Vue3 物料仓库示例，输出 `bi-finance-panel.js`。 |
+| `ai-migration-demo` | AI 一次性迁移演示：老 Vue2/Vue3 业务项目（未接入 wc）经迁移工具一次性改造为物料，保留原有 props，无需新增 config。 |
 
 ---
 
@@ -364,7 +366,37 @@ npm run build
 
 ### 业务组件需要改什么？
 
-**通常不需要改代码。** 包装层会自动把 Custom Element 上的 `config` 字符串属性解析为 Object，再传给业务组件：
+**通常不需要改代码。** 包装层支持 `config` 与 `props` 双模兼容：
+
+#### props 模式（推荐，零改造复用原有 props）
+
+保留组件原有的 `props` 不变，无需新增 `config`。宿主通过独立 HTML 属性（kebab-case）传入每个 prop，包装层按声明类型自动解析：
+
+```vue
+<script>
+export default {
+  props: {
+    title: { type: String, default: '销售看板' },
+    maxCount: { type: Number, default: 0 }
+  }
+};
+</script>
+```
+
+宿主加载时通过 `props` 字段传入：
+
+```js
+await mountWidget(container, {
+  name: 'bi-xxx',
+  js: '/widgets/bi-xxx.js',
+  props: { title: 'Q3 概览', maxCount: 5 }
+});
+// 等价于：<bi-xxx title="Q3 概览" max-count="5">
+```
+
+#### config 模式（向后兼容，需要聚合配置时）
+
+包装层把 Custom Element 上的 `config` 字符串属性解析为 Object，传给业务组件的 `config` prop：
 
 ```vue
 <script>
@@ -376,7 +408,7 @@ export default {
 </script>
 ```
 
-只要旧组件本来就接收 `config` Object prop，直接改打包配置即可。
+只要旧组件本来就接收 `config` Object prop，直接改打包配置即可。两种模式可混用。详见 [`wc/README.md` § 1.3](wc/README.md)。
 
 ### schema.json 自动生成
 
@@ -406,10 +438,16 @@ export const widgets = [
 
 ### AI 辅助迁移
 
-对于旧组件迁移、schema 语义补充、README 生成，可使用 AI 辅助工具：
+对于旧组件迁移、schema 语义补充、README 生成，可使用迁移工具与 AI 辅助 CLI：
 
 ```bash
-# 迁移旧组件
+# 规则化一次性迁移（推荐首选，默认 props 模式，保留原有 props）
+node wc/migration-skill/index.js bi-sales-panel ./src/components/SalesPanel.vue 2
+node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3
+# 显式 config 模式（需要聚合配置时）
+node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3 --mode config
+
+# AI 辅助迁移（结合双模兼容提示词，优先建议保留原有 props）
 node wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.vue
 
 # 生成更丰富的 schema
@@ -418,6 +456,8 @@ node wc/ai-assistant/cli.js schema bi-sales-panel ./src/components/SalesPanel.vu
 # 生成组件文档
 node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vue
 ```
+
+完整的 AI 一次性迁移演示（老 Vue2/Vue3 项目 → 物料）见 [`demo/ai-migration-demo/README.md`](demo/ai-migration-demo/README.md)。
 
 ---
 
