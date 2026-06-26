@@ -1,5 +1,5 @@
 <template>
-  <el-card :header="title || '指标卡组'">
+  <el-card :header="title || t('metricCards.title')">
     <el-row :gutter="12">
       <el-col :span="12" v-for="c in cards" :key="c.id">
         <div class="metric-card">
@@ -19,6 +19,13 @@
 </template>
 
 <script setup>
+import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { t as rawT, onLocaleChange, addMessages } from 'wc-i18n';
+
+// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key
+addMessages('zh', { metricCards: { title: '指标卡组' } });
+addMessages('en', { metricCards: { title: 'Metric Cards' } });
+
 defineOptions({ name: 'BiMetricCards' });
 
 defineProps({
@@ -32,6 +39,25 @@ defineProps({
     type: Array,
     default: () => []
   }
+});
+
+// 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
+const localeTick = ref(0);
+let offLocale = null;
+
+// 包装 t：引用 localeTick 使模板渲染依赖 locale 变化，切换语言时重新求值
+const t = (key, params) => {
+  void localeTick.value;
+  return rawT(key, params);
+};
+
+onMounted(() => {
+  // 监听语言切换，触发重渲染
+  offLocale = onLocaleChange(() => { localeTick.value++; });
+});
+
+onBeforeUnmount(() => {
+  if (offLocale) offLocale();
 });
 </script>
 

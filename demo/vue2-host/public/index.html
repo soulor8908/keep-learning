@@ -20,8 +20,10 @@
     // install 到 Vue3，而 Vue3 没有 Vue.component 静态方法，导致报错。
     // 基座自身 Vue2 走 webpack 模块 import，不依赖 window.Vue；物料通过
     // window.Vue3 / window.Vue2 取各自运行时。故此处先保存 Vue3 引用再清除 window.Vue。
+    // 注意：var 声明产生的 window 属性是不可配置（non-configurable）的，
+    // delete 操作会静默失败，window.Vue 仍指向 Vue3。必须直接赋值 undefined 才能清除。
     window.Vue3 = window.Vue;
-    delete window.Vue;
+    window.Vue = undefined;
   </script>
 </head>
 <body>

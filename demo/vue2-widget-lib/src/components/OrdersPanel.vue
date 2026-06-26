@@ -1,21 +1,45 @@
 <template>
   <el-card class="bi-orders-panel">
     <div slot="header">
-      <span>{{ title || '订单区域' }}</span>
-      <span class="team-tag">A 业务团队 · Vue2</span>
+      <span>{{ title || t('orders.title') }}</span>
+      <span class="team-tag">{{ t('orders.team_tag') }}</span>
     </div>
     <el-table :data="orders" size="small" @row-click="onRowClick">
-      <el-table-column prop="id" label="订单号" width="120" />
-      <el-table-column prop="name" label="商品" />
-      <el-table-column prop="amount" label="金额" width="100">
+      <el-table-column prop="id" :label="t('orders.col_id')" width="120" />
+      <el-table-column prop="name" :label="t('orders.col_name')" />
+      <el-table-column prop="amount" :label="t('orders.col_amount')" width="100">
         <template slot-scope="{ row }">¥{{ row.amount }}</template>
       </el-table-column>
-      <el-table-column prop="status" label="状态" width="90" />
+      <el-table-column prop="status" :label="t('orders.col_status')" width="90" />
     </el-table>
   </el-card>
 </template>
 
 <script>
+import { t, onLocaleChange, addMessages } from 'wc-i18n';
+
+// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key
+addMessages('zh', {
+  orders: {
+    title: '订单区域',
+    team_tag: 'A 业务团队 · Vue2',
+    col_id: '订单号',
+    col_name: '商品',
+    col_amount: '金额',
+    col_status: '状态'
+  }
+});
+addMessages('en', {
+  orders: {
+    title: 'Orders',
+    team_tag: 'Team A · Vue2',
+    col_id: 'Order ID',
+    col_name: 'Product',
+    col_amount: 'Amount',
+    col_status: 'Status'
+  }
+});
+
 export default {
   name: 'OrdersPanel',
   props: {
@@ -27,6 +51,21 @@ export default {
     orders: {
       type: Array,
       default: () => []
+    }
+  },
+  data() {
+    return {
+      // 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
+      localeTick: 0,
+      _offLocale: null
+    };
+  },
+  computed: {
+    // 暴露 t 给模板使用
+    t() {
+      // 引用 localeTick 使其成为依赖，locale 变化时重新求值
+      void this.localeTick;
+      return t;
     }
   },
   methods: {
@@ -41,6 +80,11 @@ export default {
     if (window.widgetBus) {
       window.widgetBus.emit('widget:loaded', { widget: 'bi-orders-panel' });
     }
+    // 监听语言切换，触发重渲染
+    this._offLocale = onLocaleChange(() => { this.localeTick++; });
+  },
+  beforeDestroy() {
+    if (this._offLocale) this._offLocale();
   }
 };
 </script>

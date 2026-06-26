@@ -1,10 +1,10 @@
 <template>
-  <el-card :header="title || '支付区域'" class="bi-payment-panel">
+  <el-card :header="title || t('payment.title')" class="bi-payment-panel">
     <div class="team-tag-row">
-      <span class="team-tag">B 业务团队 · Vue3</span>
+      <span class="team-tag">{{ t('payment.team_tag') }}</span>
     </div>
     <div class="amount-row">
-      <span class="amount-label">待支付</span>
+      <span class="amount-label">{{ t('payment.pending') }}</span>
       <span class="amount-value">¥{{ amount.toFixed(2) }}</span>
     </div>
     <div class="methods">
@@ -18,12 +18,31 @@
         {{ m.label }}
       </el-button>
     </div>
-    <el-button type="primary" class="pay-btn" @click="pay">立即支付</el-button>
+    <el-button type="primary" class="pay-btn" @click="pay">{{ t('payment.pay_now') }}</el-button>
   </el-card>
 </template>
 
 <script>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { t, onLocaleChange, addMessages } from 'wc-i18n';
+
+// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key
+addMessages('zh', {
+  payment: {
+    title: '支付区域',
+    team_tag: 'B 业务团队 · Vue3',
+    pending: '待支付',
+    pay_now: '立即支付'
+  }
+});
+addMessages('en', {
+  payment: {
+    title: 'Payment',
+    team_tag: 'Team B · Vue3',
+    pending: 'Pending',
+    pay_now: 'Pay Now'
+  }
+});
 
 export default {
   name: 'PaymentPanel',
@@ -43,9 +62,19 @@ export default {
     }
   },
   setup(props) {
+    // 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
+    const localeTick = ref(0);
+    let offLocale = null;
+
     const selected = ref(null);
     const methods = computed(() => props.methods || []);
     const amount = computed(() => Number(props.amount || 0));
+
+    // 包装 t：引用 localeTick 使模板渲染依赖 locale 变化，切换语言时重新求值
+    const tt = (key, params) => {
+      void localeTick.value;
+      return t(key, params);
+    };
 
     function select(m) {
       selected.value = m.id;
@@ -59,7 +88,16 @@ export default {
       }
     }
 
-    return { selected, methods, amount, select, pay };
+    onMounted(() => {
+      // 监听语言切换，触发重渲染
+      offLocale = onLocaleChange(() => { localeTick.value++; });
+    });
+
+    onBeforeUnmount(() => {
+      if (offLocale) offLocale();
+    });
+
+    return { selected, methods, amount, select, pay, t: tt };
   }
 };
 </script>

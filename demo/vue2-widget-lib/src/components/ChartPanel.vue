@@ -1,6 +1,6 @@
 <template>
   <el-card>
-    <div slot="header">{{ title || '图表面板' }}</div>
+    <div slot="header">{{ title || t('chart.title') }}</div>
     <div class="chart-container">
       <div class="chart-bar" v-for="m in metrics" :key="m.id">
         <div class="chart-bar-track">
@@ -10,11 +10,17 @@
         <div class="chart-bar-value">{{ m.value }}</div>
       </div>
     </div>
-    <div v-if="metrics.length === 0" class="chart-empty">等待数据...</div>
+    <div v-if="metrics.length === 0" class="chart-empty">{{ t('chart.empty') }}</div>
   </el-card>
 </template>
 
 <script>
+import { t, onLocaleChange, addMessages } from 'wc-i18n';
+
+// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key
+addMessages('zh', { chart: { title: '图表面板', empty: '等待数据...' } });
+addMessages('en', { chart: { title: 'Chart Panel', empty: 'Waiting for data...' } });
+
 export default {
   name: 'ChartPanel',
   props: {
@@ -26,9 +32,20 @@ export default {
   },
   data() {
     return {
+      // 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
+      localeTick: 0,
       metrics: [],
-      _offBus: null
+      _offBus: null,
+      _offLocale: null
     };
+  },
+  computed: {
+    // 暴露 t 给模板使用
+    t() {
+      // 引用 localeTick 使其成为依赖，locale 变化时重新求值
+      void this.localeTick;
+      return t;
+    }
   },
   mounted() {
     if (window.widgetBus) {
@@ -41,9 +58,12 @@ export default {
       // 通知基座：物料已加载
       window.widgetBus.emit('widget:loaded', { widget: 'bi-chart-panel' });
     }
+    // 监听语言切换，触发重渲染
+    this._offLocale = onLocaleChange(() => { this.localeTick++; });
   },
   beforeDestroy() {
     if (this._offBus) this._offBus();
+    if (this._offLocale) this._offLocale();
   },
   methods: {
     barHeight(value) {

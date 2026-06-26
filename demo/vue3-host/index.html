@@ -11,8 +11,10 @@
     // vue@2.js 的 UMD 全局构建会污染 window.Vue（指向 Vue2）。
     // 清除 window.Vue，避免与基座通过 Vite ESM 引入的 Vue3 产生歧义；
     // 物料通过 window.Vue2 取 Vue2 运行时。
+    // 注意：var 声明产生的 window 属性是不可配置（non-configurable）的，
+    // delete 操作会静默失败，window.Vue 仍指向 Vue2。必须直接赋值 undefined 才能清除。
     window.Vue2 = window.Vue;
-    delete window.Vue;
+    window.Vue = undefined;
   </script>
 </head>
 <body>
