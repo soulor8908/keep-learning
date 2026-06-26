@@ -454,13 +454,14 @@ function consumePendingAncestors(name, host) {
 // 循环检测
 function checkCycle(name, ancestors) {
   // 1. 直接自引用
-  if (name === ancestors.self) {
-    throw new Error(`[widget-scope] 循环加载检测：${name} -> ${name}`);
+  if (childName === name) {
+    const chain = `${name} -> ${childName}`;
+    throw new Error(`[widget-scope] 循环加载检测: 物料 ${name} 试图加载自身。链路: ${chain}`);
   }
   // 2. 祖先链命中
-  if (ancestors.has(name)) {
-    const chain = [...ancestors, name].join(' -> ');
-    throw new Error(`[widget-scope] 循环加载检测：试图加载祖先物料，链路 ${chain}`);
+  if (ancestorSet.has(childName)) {
+    const chain = [...ancestorSet, name, childName].join(' -> ');
+    throw new Error(`[widget-scope] 循环加载检测: 物料 ${name} 试图加载祖先物料 ${childName}。链路: ${chain}`);
   }
 }
 ```
@@ -704,25 +705,29 @@ function extractUiDependencies(source) {
 ```js
 function getLocaleFallbackChain(locale) {
   const chain = [locale];
-  const baseLang = locale.split('-')[0];
-  if (baseLang !== locale) chain.push(baseLang);
+  const base = String(locale).split('-')[0];
+  if (base !== locale) chain.push(base);        // 'zh-CN' → push 'zh'
 
-  // 最终回退：先 en 再 zh（保证至少能找到文案）
-  if (locale !== 'en') chain.push('en');
-  if (baseLang !== 'zh') chain.push('zh');
+  // 最终回退到 en（若尚未包含）
+  if (!chain.includes('en')) chain.push('en');
+  // 最终回退到 zh（若 en 也没有，作为最后保障）
+  if (!chain.includes('zh')) chain.push('zh');
 
   return chain;
-  // 'zh-CN' → ['zh-CN', 'zh', 'en', 'zh']
-  // 'en-GB' → ['en-GB', 'en', 'zh']
+  // 'zh-CN' → ['zh-CN', 'zh', 'en']    （base='zh' 已在链中，跳过 push 'zh'）
+  // 'en-GB' → ['en-GB', 'en']           （base='en' 已在链中，跳过 push 'en' 与 'zh'）
+  // 'fr'    → ['fr', 'en', 'zh']
 }
 ```
 
 ### 8.2 点分键查找
 
 ```js
-function lookupInLocale(messages, locale, key) {
-  const parts = key.split('.');
-  let cur = messages[locale];
+function lookupInLocale(locale, key) {
+  const dict = messages[locale];
+  if (!dict) return undefined;
+  const parts = String(key).split('.');
+  let cur = dict;
   for (const part of parts) {
     if (cur == null || typeof cur !== 'object') return undefined;
     cur = cur[part];
@@ -734,7 +739,7 @@ function lookupInLocale(messages, locale, key) {
 function t(key, params) {
   const chain = getLocaleFallbackChain(currentLocale);
   for (const locale of chain) {
-    const val = lookupInLocale(messages, locale, key);
+    const val = lookupInLocale(locale, key);
     if (val != null) {
       // 插值替换 /\{(\w+)\}/g
       return interpolate(val, params);
@@ -906,8 +911,8 @@ function injectContext(element, keys) {
 function safeStringify(obj) {
   const seen = new WeakSet();
   return JSON.stringify(obj, (key, value) => {
-    if (typeof value === 'object' && value !== null) {
-      if (seen.has(value)) return '[Circular]';  // 循环引用
+    if (value && typeof value === 'object') {
+      if (seen.has(value)) return undefined; // 跳过环（JSON.stringify 会丢弃值为 undefined 的字段）
       seen.add(value);
     }
     return value;
@@ -919,7 +924,9 @@ function safeStringify(obj) {
 
 ## 11. Vue3 包装层 locale 重渲染关键决策
 
-**文件**：`wc/widget-wrapper-plugin/vite-plugin.js` / `wc/vue3-widget-template/widget-wrapper.js`
+**文件**：`wc/widget-wrapper-plugin/vite-plugin.js`（Vue3） / `wc/widget-wrapper-plugin/vue-cli-plugin.js`（Vue2）
+
+> **注意**：以下 locale 重渲染逻辑仅存在于**插件生成的 wrapper**（`vite-plugin.js` / `vue-cli-plugin.js` 生成的临时入口文件）。手动模板 `wc/vue3-widget-template/widget-wrapper.js` 与 `wc/vue2-widget-template/widget-wrapper.js` 不含此逻辑。
 
 ### 11.1 问题
 
@@ -990,28 +997,23 @@ connectedCallback() {
 
 Vue2 默认会警告未知自定义元素（`bi-xxx`），需通过 `Vue.config.ignoredElements` 忽略。若多个物料都设置 `ignoredElements`，后者会覆盖前者。
 
-### 12.2 合并去重方案
+### 12.2 合并 `/^el-/` 正则方案
+
+实际代码合并的是 `/^el-/` 正则（用于忽略 ElementUI 的 `el-*` 元素），而非 widget name 字符串：
 
 ```js
-function generateVue2Wrapper(widgetName, vueGlobal) {
-  return `
-    import Vue from 'vue';
-    import Component from '__WIDGET_COMPONENT__';
+// vue-cli-plugin.js 生成的 wrapper
+import Vue from 'vue';
+import Component from '__WIDGET_COMPONENT__';
 
-    // ─── 合并 ignoredElements，避免覆盖其他物料配置 ───
-    const existing = Vue.config.ignoredElements || [];
-    const merged = [...new Set([...existing, '${widgetName}'])];
-    // 去重检查 /^el-/ 是否已存在（避免污染 element-ui 配置）
-    if (!merged.some(e => /^el-/.test(e) === false && e === '${widgetName}')) {
-      Vue.config.ignoredElements = merged;
-    }
-
-    // ... 其余 wrapper 逻辑
-  `;
-}
+// ─── 合并而非覆盖，避免污染基座或其他物料的 ignoredElements 配置 ───
+// 去重检查：同页多物料加载时避免重复添加 /^el-/
+const _existing = Array.isArray(Vue.config.ignoredElements) ? Vue.config.ignoredElements : [];
+const _hasEl = _existing.some(re => re instanceof RegExp && re.source === '^el-');
+if (!_hasEl) Vue.config.ignoredElements = [..._existing, /^el-/];
 ```
 
-**关键**：用合并而非覆盖，去重检查 `/^el-/` 是否已存在，避免污染基座或其他物料配置。
+**关键**：合并的是 `/^el-/` 正则（匹配所有 `el-*` 前缀的 ElementUI 组件），用 `re.source === '^el-'` 去重避免重复添加。
 
 ---
 
@@ -1120,12 +1122,16 @@ function registerUiComponent(lib, componentName, component) {
 }
 ```
 
-### 13.5 降级链路（3 级）
+### 13.5 失败处理与不阻断策略
+
+实际代码的失败处理策略为「重试 + 记录 + 不阻断」，**不存在 30% 阈值降级与全量包兜底**（后者属 docs/elementui-on-demand-loading.md 设计态规划，未落地）：
 
 ```text
-1. 单组件加载失败 → 重试 1 次
-2. 缺失组件数超 30% 阈值 → 触发全量包降级
-3. 全量包仍失败 → 渲染错误占位（复用 renderFallback）
+1. 单组件 JS 加载失败 → 重试 1 次（loadUiResourceWithRetry）
+2. 仍失败 → 记入 failed 数组，不阻断整体 Promise
+3. CSS 加载失败 → 只记录不阻断主流程（样式缺失只影响美观）
+4. full:true 模式 full.js/full.css 加载失败 → 记入 failed，不阻断
+5. 函数返回 { loaded, failed }，由调用方决定是否处理 failed
 ```
 
 ---

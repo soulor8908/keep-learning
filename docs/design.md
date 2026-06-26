@@ -160,8 +160,8 @@ WidgetLoader (class)
 - `mountedWidgets` 用 **Map**（非 WeakMap）：错误归因需 `for...of` 遍历，WeakMap 不可迭代；元素生命周期由 loader 显式 `delete` 管理，不会泄漏。
 
 **模块级常量**：
-- `SUPPORTED_DEPS`：vue2/vue3/lodash/axios/element-ui/element-plus 版本契约表。
-- `WidgetError`：错误码枚举（`LOAD_TIMEOUT` / `SCRIPT_ERROR` / `CSS_ERROR` / `DEP_VERSION_MISMATCH` / `ELEMENT_TIMEOUT` / `PROPS_ERROR` / `UI_DEP_LIB_MISMATCH` / `NOT_FOUND`）。
+- `SUPPORTED_DEPS`：vue2/vue3/lodash/axios 版本契约表（UI 组件库 element-ui/element-plus 不在此表，改由 `uiDependencies` 声明）。
+- `WidgetError`：错误码枚举（`LOAD_TIMEOUT` / `SCRIPT_ERROR` / `CSS_ERROR` / `DEP_VERSION_MISMATCH` / `NOT_FOUND` / `ELEMENT_TIMEOUT` / `PROPS_ERROR`）。注：`UI_DEP_LIB_MISMATCH` 是 `preloadUiDependencies` 内部通过 `createUiError` 抛出的字符串错误码，未纳入此枚举。
 - `DEFAULT_LOAD_TIMEOUT = 15000`。
 
 ### 3.2 widget-wrapper-plugin —— 自动包装插件
@@ -350,9 +350,9 @@ PageManager (class)
 
 ```text
 getLocaleFallbackChain(locale)
-├── 'zh-CN' → ['zh-CN', 'zh', 'en', 'zh']
-├── 'en-GB' → ['en-GB', 'en', 'zh']
-└── 最终回退到 en 再到 zh
+├── 'zh-CN' → ['zh-CN', 'zh', 'en']
+├── 'en-GB' → ['en-GB', 'en']
+└── 最终回退到 en（en 也无则回退到 zh）
 ```
 
 **多 bundle 单例幂等**：
@@ -584,7 +584,7 @@ flowchart TD
     I --> K[Vue2: vm.$children 0 $forceUpdate]
 ```
 
-**locale 重渲染关键决策**：必须 `$forceUpdate` 物料组件实例本身（Vue3 通过 `ref: this._captureWidget` 拿到 `_widgetInstance`，Vue2 通过 `this.vm.$children[0]`），而非外壳 root——Vue3 的 `shouldUpdateComponent` 在 props 未变时会跳过子组件重渲染，Vue2 在子组件 props 未变时不会重渲染子组件。
+**locale 重渲染关键决策**：必须 forceUpdate 物料组件实例本身（Vue3 通过 `ref: this._captureWidget` 拿到 `_widgetInstance`，Vue2 通过 `this.vm.$children[0]`），而非外壳 root——Vue3 的 `shouldUpdateComponent` 在 props 未变时会跳过子组件重渲染，Vue2 在子组件 props 未变时不会重渲染子组件。**注意**：此逻辑仅存在于**插件生成的 wrapper**（`vue-cli-plugin.js` / `vite-plugin.js`），手动模板 `vue2/vue3-widget-template/widget-wrapper.js` 不含 locale 重渲染。
 
 ### 5.4 UI 组件按需加载流程
 
@@ -801,7 +801,7 @@ config.devtool('source-map');
 | 挂载同步抛错 | `renderWidget` try/catch | `mount_failed` | 移除半挂载元素，渲染降级占位 | 是 |
 | 运行时崩溃 | 全局 `error` + `unhandledrejection` 监听 | `runtime_crash` | 移除崩溃元素，渲染降级占位 | 是 |
 | props 循环引用 | `JSON.stringify` 失败 | `PROPS_ERROR` | 渲染降级占位 | 需修复数据 |
-| UI 依赖 lib 不匹配 | `preloadUiDependencies` | `UI_DEP_LIB_MISMATCH` | 抛错 | 否 |
+| UI 依赖 lib 不匹配 | `preloadUiDependencies` 内 `createUiError` | `UI_DEP_LIB_MISMATCH`（字符串码，未纳入 `WidgetError` 枚举） | 抛错 | 否 |
 
 ### 8.2 降级占位设计
 

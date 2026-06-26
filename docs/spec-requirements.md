@@ -132,8 +132,8 @@
 | vue3 | 3.4.21 | `^3.0.0` | `Vue3` |
 | lodash | 4.17.21 | `^4.17.0` | `_` |
 | axios | 1.7.7 | `^1.0.0` | `axios` |
-| element-ui | 2.15.14 | `^2.15.0` | `ELEMENT` |
-| element-plus | 2.7.0 | `^2.7.0` | `ElementPlus` |
+
+> 注：UI 组件库（element-ui / element-plus）**不纳入** `SUPPORTED_DEPS` 版本契约体系，改由 `schema.json` 的 `uiDependencies` 字段声明（含 lib / version / components），由 `preloadUiDependencies` 按需加载。详见 FR-UI-1。
 
 ### 3.4 关键超时常量
 
@@ -460,7 +460,7 @@ The system SHALL provide a Vue-version-agnostic i18n runtime shared by widget-lo
 
 #### Scenario: locale 回退链
 - **WHEN** `setLocale('zh-CN')` 但未注册 `zh-CN` 语言包
-- **THEN** 按回退链 `['zh-CN', 'zh', 'en', 'zh']` 查找，最终回退到 en 再到 zh
+- **THEN** 按回退链 `['zh-CN', 'zh', 'en']` 查找，最终回退到 en
 - **AND THEN** 回退链无任何已知 locale 时忽略设置
 
 #### Scenario: 语言切换广播
@@ -711,7 +711,7 @@ The system SHALL define structured error codes for all failure scenarios.
   - `DEP_VERSION_MISMATCH`：不可重试（版本不兼容）
   - `ELEMENT_TIMEOUT`：可重试
   - `PROPS_ERROR`：需修复数据（循环引用）
-  - `UI_DEP_LIB_MISMATCH`：UI 依赖与 vueVersion 不匹配
+  - `UI_DEP_LIB_MISMATCH`：UI 依赖与 vueVersion 不匹配（注：此为 `preloadUiDependencies` 内部通过 `createUiError` 抛出的字符串错误码，**未纳入 `WidgetError` 枚举**，无法通过 `WidgetError.UI_DEP_LIB_MISMATCH` 引用）
   - `NOT_FOUND`：配置错误
 
 ---

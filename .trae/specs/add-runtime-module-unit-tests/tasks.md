@@ -5,7 +5,7 @@
 ## T1 i18n 测试
 
 - [x] T1.1 通读 `wc/i18n/index.js`，梳理 getLocaleFallbackChain / addMessages / setLocale / onLocaleChange / t。
-- [x] T1.2 `wc/i18n/__tests__/i18n.test.js`：回退链顺序（zh-CN→zh→en→zh）、addMessages 深合并嵌套对象不互相覆盖、setLocale force 参数、onLocaleChange 订阅与取消、t 带参数插值。
+- [x] T1.2 `wc/i18n/__tests__/i18n.test.js`：回退链顺序（zh-CN→zh→en）、addMessages 深合并嵌套对象不互相覆盖、setLocale force 参数、onLocaleChange 订阅与取消、t 带参数插值。
 
 ## T2 widget-context 测试
 

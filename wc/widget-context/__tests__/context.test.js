@@ -319,5 +319,21 @@ describe('widget-context', () => {
       expect(() => injectContext(null)).not.toThrow();
       expect(injectContext(null)).toBeUndefined();
     });
+
+    it('含循环引用的上下文不抛错（safeStringify 去环，字段被丢弃）', () => {
+      // 构造循环引用对象：JSON.stringify 会抛 TypeError，触发 safeStringify 兜底
+      const cyclic = { a: 1 };
+      cyclic.self = cyclic;
+      setContext({ cyclic });
+      const el = document.createElement('div');
+      // safeStringify 的 replacer 对循环引用返回 undefined，JSON.stringify 丢弃该字段
+      expect(() => injectContext(el)).not.toThrow();
+      const parsed = JSON.parse(el.getAttribute('data-context'));
+      expect(parsed.cyclic.a).toBe(1);
+      // cyclic.self 被 replacer 返回 undefined 后被 JSON.stringify 丢弃
+      expect(parsed.cyclic.self).toBeUndefined();
+      // 实例属性仍保留原始引用（含环）
+      expect(el._wcContext.cyclic).toBe(cyclic);
+    });
   });
 });

@@ -6,7 +6,7 @@
 
 下列运行时模块直接影响生产物料行为，目前完全无测试：
 
-1. **i18n**：locale 回退链（zh-CN→zh→en→zh）顺序、addMessages 深合并策略、setLocale 通过 widget-bus 广播 locale-change。回退顺序一旦回归，物料会显示错乱文案甚至 key 本身。
+1. **i18n**：locale 回退链（zh-CN→zh→en）顺序、addMessages 深合并策略、setLocale 通过 widget-bus 广播 locale-change。回退顺序一旦回归，物料会显示错乱文案甚至 key 本身。
 2. **widget-context**：onChange 订阅是物料响应基座上下文变化的唯一通道，订阅清理若泄漏会导致物料卸载后仍触发回调。
 3. **widget-registry**：承担远程 registry JSON 归一化（数组/对象两种格式），字段缺失兜底若回归会导致物料加载失败。
 4. **widget templates（vue2/vue3/h5 widget-wrapper.js）**：物料项目入口模板，承担 config attribute 解析容错、light DOM 挂载、scope 注入、生命周期映射、disconnected 清理。
@@ -39,7 +39,7 @@ The system SHALL be verified by tests that i18n resolves keys via the locale fal
 
 #### Scenario: 回退链顺序
 - **WHEN** 当前 locale 为 zh-CN 且仅注册了 zh 与 en 文案
-- **THEN** 按 zh-CN→zh→en→zh 顺序回退命中
+- **THEN** 按 zh-CN→zh→en 顺序回退命中
 
 #### Scenario: setLocale 广播
 - **WHEN** 调用 setLocale('en')

@@ -73,6 +73,16 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
       // wrapper 内不直接引用 vueGlobal（external 已处理全局名），但函数签名接受
       expect(code2).toContain("customElements.define('bi-x'");
     });
+
+    it('ignoredElements 合并 /^el-/ 正则去重（非覆盖）', () => {
+      // Vue2 需告诉编译器 el-* 是自定义元素；合并而非覆盖，去重检查 /^el-/
+      expect(code).toContain('ignoredElements');
+      expect(code).toContain('/^el-/');
+      expect(code).toContain("re.source === '^el-'");
+      // 合并已有配置而非覆盖
+      expect(code).toContain('..._existing');
+      expect(code).toContain('_hasEl');
+    });
   });
 
   describe('T1.4b Vue3 wrapper (generateVue3Wrapper)', () => {
