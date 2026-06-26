@@ -9,15 +9,16 @@
  *
  * 入口约定（entry 指向的源文件）：
  *   方式 A：导出 render 函数
- *     export default function render(config, scope) {
+ *     export default function render(props, scope) {
  *       return `<div class="bi-weather-card">...</div>`;
  *     }
  *   方式 B：导出配置对象
  *     export default {
- *       render(config, scope) { return `<div>...</div>`; },
- *       onMount(el, config, scope) { /* 绑定事件 *\/ },
+ *       props: ['title', 'items'],
+ *       render(props, scope) { return `<div>...</div>`; },
+ *       onMount(el, props, scope) { /* 绑定事件 *\/ },
  *       onUnmount(el, scope) { /* 清理 *\/ },
- *       onConfigChange(el, newCfg, oldCfg, scope) {}
+ *       onPropsChange(el, newProps, oldProps, scope) {}
  *     };
  *
  * 用法（vite.config.js）：
@@ -62,9 +63,6 @@ import { createWidgetScope } from 'wc-widget-scope';
 // ─── 重要：禁止使用 Shadow DOM ───
 // H5 物料挂载到 light DOM，与基座共享全局样式（主题、字体图标等）。
 // 若未来误引入 attachShadow，element-plus / 基座主题样式将无法穿透。
-function parseConfig(value) {
-  try { return value ? JSON.parse(value) : {}; } catch { return {}; }
-}
 
 // ─── 内建最小 scope（wc-widget-scope 不可用时的兜底）───
 // 结构与 wc/widget-scope 一致，仅提供 meta + log + no-op 的 context/bus/t/request。
@@ -104,16 +102,32 @@ const widgetOpts = typeof widgetEntry === 'function'
   ? { render: widgetEntry }
   : (widgetEntry && typeof widgetEntry === 'object' ? widgetEntry : {});
 
-const { render, onMount, onUnmount, onConfigChange } = widgetOpts;
+const { render, onMount, onUnmount, onPropsChange, props: declaredProps } = widgetOpts;
 
 if (typeof render !== 'function') {
   throw new Error('[h5-widget-wrapper] 物料入口必须 default 导出 render 函数或含 render 的配置对象');
 }
 
+// camelCase → kebab-case，把 prop 名映射为可观察的 attribute 名
+function camelToKebab(str) {
+  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+// 按属性值解析为最终值：优先 JSON.parse，失败回退原始字符串
+function parseAttrValue(raw) {
+  if (raw === null) return undefined;
+  try { return JSON.parse(raw); } catch (_) { return raw; }
+}
+
+// 独立 prop 的 kebab attribute 名 → camel prop 名 映射
+const propAttrMap = new Map(
+  (Array.isArray(declaredProps) ? declaredProps : []).map(p => [camelToKebab(p), p])
+);
+
 class H5WidgetElement extends HTMLElement {
   constructor() {
     super();
-    this._config = null;
+    this._props = null;
     this._cleanup = null;
     // 每个物料实例创建独立的 widgetScope 软隔离对象。
     // 优先用完整 scope（基座提供 wc-widget-scope），否则用最小 scope 兜底。
@@ -127,7 +141,19 @@ class H5WidgetElement extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ['config'];
+    // 仅观察声明的独立 prop 的 kebab attribute
+    return [...propAttrMap.keys()];
+  }
+
+  // 收集所有已设置的独立 prop 属性，解析为扁平 props 对象传给 render
+  _collectProps() {
+    const result = {};
+    for (const [attrName, propName] of propAttrMap) {
+      if (this.hasAttribute(attrName)) {
+        result[propName] = parseAttrValue(this.getAttribute(attrName));
+      }
+    }
+    return result;
   }
 
   connectedCallback() {
@@ -138,10 +164,10 @@ class H5WidgetElement extends HTMLElement {
         '基座全局样式将无法穿透。请勿使用 attachShadow。'
       );
     }
-    this._config = parseConfig(this.getAttribute('config'));
+    this._props = this._collectProps();
     this._render();
     if (typeof onMount === 'function') {
-      this._cleanup = onMount(this, this._config, this._scope) || null;
+      this._cleanup = onMount(this, this._props, this._scope) || null;
     }
   }
 
@@ -153,32 +179,31 @@ class H5WidgetElement extends HTMLElement {
       this._cleanup();
       this._cleanup = null;
     }
-    this._config = null;
+    this._props = null;
     this._scope = null;
     this._widgetScope = null;
   }
 
   attributeChangedCallback(attrName, oldValue, newValue) {
-    if (attrName !== 'config') return;
     if (oldValue === newValue) return;
-    const oldConfig = this._config;
-    this._config = parseConfig(newValue);
+    const oldProps = this._props;
+    this._props = this._collectProps();
     this._render();
-    if (typeof onConfigChange === 'function') {
-      onConfigChange(this, this._config, oldConfig, this._scope);
+    if (typeof onPropsChange === 'function') {
+      onPropsChange(this, this._props, oldProps, this._scope);
     }
   }
 
   _render() {
     if (typeof render !== 'function') return;
-    const html = render(this._config, this._scope);
+    const html = render(this._props, this._scope);
     if (typeof html === 'string') {
       this.innerHTML = html;
     }
   }
 
-  getConfig() {
-    return this._config ? Object.assign({}, this._config) : {};
+  getProps() {
+    return this._props ? Object.assign({}, this._props) : {};
   }
 
   getScope() {

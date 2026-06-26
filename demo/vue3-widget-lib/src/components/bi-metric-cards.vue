@@ -1,5 +1,5 @@
 <template>
-  <el-card :header="config.title || '指标卡组'">
+  <el-card :header="title || '指标卡组'">
     <el-row :gutter="12">
       <el-col :span="12" v-for="c in cards" :key="c.id">
         <div class="metric-card">
@@ -19,21 +19,20 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
-
 defineOptions({ name: 'BiMetricCards' });
 
-const props = defineProps({
-  // 形如：{ title, cards: [{ id, label, value, trend: 'up'|'down', trendValue, extra }] }
-  config: {
-    type: Object,
-    default: () => ({})
+defineProps({
+  // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
+  // 形如：title, cards: [{ id, label, value, trend: 'up'|'down', trendValue, extra }]
+  title: {
+    type: String,
+    default: ''
+  },
+  cards: {
+    type: Array,
+    default: () => []
   }
 });
-
-const cards = computed(() =>
-  Array.isArray(props.config.cards) ? props.config.cards : []
-);
 </script>
 
 <style scoped>

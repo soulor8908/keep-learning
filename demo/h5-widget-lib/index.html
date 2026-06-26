@@ -34,11 +34,17 @@
   <p>以下物料由 h5-vite-plugin 自动包装为 Custom Element，无框架依赖。</p>
 
   <div class="grid">
-    <!-- 时钟卡片：配置对象模式（render + onMount + onUnmount + onConfigChange） -->
-    <bi-clock-card config='{"label":"北京时间","timezone":"Asia/Shanghai"}'></bi-clock-card>
+    <!-- 时钟卡片：扁平化 props（render + onMount + onUnmount + onPropsChange） -->
+    <bi-clock-card
+      label="北京时间"
+      timezone="Asia/Shanghai"
+    ></bi-clock-card>
 
     <!-- 公告板：纯函数模式（仅 render） -->
-    <bi-notice-board config='{"title":"系统公告","items":[{"text":"系统将于今晚 22:00 维护","level":"warning"},{"text":"新版本已发布","level":"info"}]}'></bi-notice-board>
+    <bi-notice-board
+      title="系统公告"
+      items='[{"text":"系统将于今晚 22:00 维护","level":"warning"},{"text":"新版本已发布","level":"info"}]'
+    ></bi-notice-board>
   </div>
 
   <div class="note">

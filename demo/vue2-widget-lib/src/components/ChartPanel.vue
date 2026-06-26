@@ -1,6 +1,6 @@
 <template>
   <el-card>
-    <div slot="header">{{ config.title || '图表面板' }}</div>
+    <div slot="header">{{ title || '图表面板' }}</div>
     <div class="chart-container">
       <div class="chart-bar" v-for="m in metrics" :key="m.id">
         <div class="chart-bar-track">
@@ -18,10 +18,10 @@
 export default {
   name: 'ChartPanel',
   props: {
-    // 包装层已经把 config String 解析为 Object
-    config: {
-      type: Object,
-      default: () => ({})
+    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
+    title: {
+      type: String,
+      default: ''
     }
   },
   data() {

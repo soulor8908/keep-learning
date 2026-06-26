@@ -5,9 +5,9 @@
   "description": "Auto-generated schema for bi-sales-panel",
   "type": "object",
   "properties": {
-    "config": {
-      "type": "object",
-      "default": {}
+    "title": {
+      "type": "string",
+      "default": ""
     }
   },
   "required": [],

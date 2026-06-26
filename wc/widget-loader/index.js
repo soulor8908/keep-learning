@@ -182,7 +182,7 @@ export const WidgetError = {
   VERSION_MISMATCH: 'DEP_VERSION_MISMATCH', // 公共依赖版本不兼容
   NOT_FOUND: 'NOT_FOUND',               // 物料未找到（name/js 缺失）
   ELEMENT_TIMEOUT: 'ELEMENT_TIMEOUT',   // Custom Element 注册超时
-  CONFIG_ERROR: 'CONFIG_ERROR'          // 物料 config 序列化失败（如循环引用）
+  PROPS_ERROR: 'PROPS_ERROR'            // props 序列化失败（如循环引用）
 };
 
 function createError(message, code) {
@@ -779,28 +779,14 @@ class WidgetLoader {
    * @param {HTMLElement} container
    * @param {Object} widget
    * @param {string} widget.name
-   * @param {Object} [widget.config] 整包通讯配置（兼容老物料）；与 props 二选一或共存
-   * @param {Object} [widget.props] 逐项属性映射，会按 kebab-case 拆为独立 attribute，
-   *   供改造后复用原 props 的物料直接接收（无需新增 config prop）
+   * @param {Object} [widget.props] 逐项属性映射，按 kebab-case 拆为独立 attribute，
+   *   供物料包装层按声明类型解析并注入业务组件原有 props（无需 config 属性）
    * @returns {HTMLElement}
    */
   renderWidget(container, widget) {
-    const { name, config = {}, props } = widget;
+    const { name, props } = widget;
     const element = document.createElement(name);
-    // config 含循环引用时 JSON.stringify 抛 TypeError，需捕获并转为明确错误码，
-    // 否则物料无法挂载且错误信息晦涩；mountWidget 会据此渲染降级占位
-    let configStr;
-    try {
-      configStr = JSON.stringify(config);
-    } catch (e) {
-      throw createError(
-        `[widget-loader] ${t('loader.config_serialize_failed', { name })}: ${e.message}`,
-        WidgetError.CONFIG_ERROR
-      );
-    }
-    element.setAttribute('config', configStr);
     // ─── 逐项 props：按 kebab-case 写为独立 attribute（与 wrapper observedAttributes 对齐）───
-    // 仅在提供 props 对象时写入；缺省/非对象跳过，保持与旧调用方完全向后兼容。
     // 序列化规则与 wrapper parseAttrValue 互逆：
     //   - boolean true  → setAttribute(attr, '')           （presence 语义，wrapper 解析为 true）
     //   - boolean false → setAttribute(attr, 'false')      （显式 false，wrapper 解析为 false；
@@ -810,11 +796,11 @@ class WidgetLoader {
     //                                                       false 丢失——尤其当默认值为 true 时）
     //   - null/undefined → removeAttribute(attr)           （表示"未设置"，由 Vue 应用 prop 默认值）
     //   - string → 原样写入（wrapper 端 JSON.parse 失败时回退为原始字符串，故普通字符串无歧义）
-    //   - number/object/array → JSON.stringify
+    //   - number/object/array → JSON.stringify（含循环引用时抛错，转为 PROPS_ERROR）
     if (props && typeof props === 'object') {
       for (const [propName, value] of Object.entries(props)) {
-        // config 与 scope 由 loader/wrapper 内部维护，不允许从 props 覆盖
-        if (propName === 'config' || propName === 'scope') continue;
+        // scope 由 loader/wrapper 内部维护，不允许从 props 覆盖
+        if (propName === 'scope') continue;
         const attrName = camelToKebab(propName);
         if (value == null) {
           // null / undefined：表示未设置，移除 attribute 让 Vue 应用默认值
@@ -829,8 +815,8 @@ class WidgetLoader {
             element.setAttribute(attrName, typeof value === 'string' ? value : JSON.stringify(value));
           } catch (e) {
             throw createError(
-              `[widget-loader] ${t('loader.config_serialize_failed', { name })}: props.${propName}: ${e.message}`,
-              WidgetError.CONFIG_ERROR
+              `[widget-loader] ${t('loader.props_serialize_failed', { name })}: props.${propName}: ${e.message}`,
+              WidgetError.PROPS_ERROR
             );
           }
         }

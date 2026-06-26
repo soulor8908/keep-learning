@@ -13,9 +13,10 @@
 defineOptions({ name: 'BiCrashTester' });
 
 defineProps({
-  config: {
-    type: Object,
-    default: () => ({})
+  // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
+  title: {
+    type: String,
+    default: ''
   }
 });
 

@@ -8,16 +8,16 @@
  * 支持两种声明式写法：
  *
  * 1) 宏调用（JS/JSX/TS 中均可）：
- *    $widget('bi-sales-panel', config)                       // 自动创建容器
- *    $widget('bi-sales-panel', containerEl, config)          // 指定容器
+ *    $widget('bi-sales-panel', props)                       // 自动创建容器
+ *    $widget('bi-sales-panel', containerEl, props)          // 指定容器
  *    转换为：
- *    widgetMount({ name, js, css, vueVersion }, containerEl, config)
+ *    widgetMount({ name, js, css, vueVersion }, containerEl, props)
  *
  * 2) JSX 元素（.jsx/.tsx）：
- *    <Widget name="bi-sales-panel" config={cfg} />           // 自动创建容器
- *    <Widget name="bi-sales-panel" config={cfg} container={el} />
+ *    <Widget name="bi-sales-panel" props={p} />           // 自动创建容器
+ *    <Widget name="bi-sales-panel" props={p} container={el} />
  *    转换为：
- *    widgetMount({ name, js, css, vueVersion }, el, cfg)
+ *    widgetMount({ name, js, css, vueVersion }, el, p)
  *
  * 物料元信息来源：插件选项 registry = { 'bi-sales-panel': { js, css, vueVersion } }
  * 若 registry 未声明该物料，则把 name 原样传入，运行时再从远程注册表解析
@@ -118,7 +118,7 @@ module.exports = function widgetDeclarativeBabelPlugin(babel) {
   return {
     name: 'widget-declarative-transform',
     visitor: {
-      // ─── 宏调用转换：$widget('name', config) 或 $widget('name', container, config) ───
+      // ─── 宏调用转换：$widget('name', props) 或 $widget('name', container, props) ───
       CallExpression(path, pluginState) {
         const { macroName, registry } = { ...DEFAULT_OPTS, ...(pluginState.opts || {}) };
         const node = path.node;
@@ -135,27 +135,27 @@ module.exports = function widgetDeclarativeBabelPlugin(babel) {
         }
         const widgetName = nameArg.value;
 
-        let containerExpr, configExpr;
+        let containerExpr, propsExpr;
         if (args.length === 1) {
           containerExpr = t.identifier('undefined');
-          configExpr = t.identifier('undefined');
+          propsExpr = t.identifier('undefined');
         } else if (args.length === 2) {
-          // $widget('name', config) —— 第二个参数是 config
+          // $widget('name', props) —— 第二个参数是 props
           containerExpr = t.identifier('undefined');
-          configExpr = args[1];
+          propsExpr = args[1];
         } else {
-          // $widget('name', container, config)
+          // $widget('name', container, props)
           containerExpr = args[1];
-          configExpr = args[2] || t.identifier('undefined');
+          propsExpr = args[2] || t.identifier('undefined');
         }
 
         const helperCallee = ensureHelperImport(t, path, pluginState);
         const metaExpr = buildMetaExpression(t, widgetName, registry);
-        const replacement = t.callExpression(helperCallee, [metaExpr, containerExpr, configExpr]);
+        const replacement = t.callExpression(helperCallee, [metaExpr, containerExpr, propsExpr]);
         path.replaceWith(replacement);
       },
 
-      // ─── JSX 元素转换：<Widget name="..." [config={...}] [container={...}] /> ───
+      // ─── JSX 元素转换：<Widget name="..." [props={...}] [container={...}] /> ───
       JSXElement(path, pluginState) {
         const { jsxTag, registry } = { ...DEFAULT_OPTS, ...(pluginState.opts || {}) };
         const node = path.node;
@@ -164,7 +164,7 @@ module.exports = function widgetDeclarativeBabelPlugin(babel) {
 
         // 收集属性
         let widgetName = null;
-        let configExpr = t.identifier('undefined');
+        let propsExpr = t.identifier('undefined');
         let containerExpr = t.identifier('undefined');
         for (const attr of opening.attributes) {
           if (!t.isJSXAttribute(attr)) continue;
@@ -176,9 +176,9 @@ module.exports = function widgetDeclarativeBabelPlugin(babel) {
             } else if (t.isJSXExpressionContainer(attr.value) && t.isStringLiteral(attr.value.expression)) {
               widgetName = attr.value.expression.value;
             }
-          } else if (attrName === 'config') {
+          } else if (attrName === 'props') {
             if (t.isJSXExpressionContainer(attr.value)) {
-              configExpr = attr.value.expression;
+              propsExpr = attr.value.expression;
             }
           } else if (attrName === 'container') {
             if (t.isJSXExpressionContainer(attr.value)) {
@@ -191,7 +191,7 @@ module.exports = function widgetDeclarativeBabelPlugin(babel) {
 
         const helperCallee = ensureHelperImport(t, path, pluginState);
         const metaExpr = buildMetaExpression(t, widgetName, registry);
-        const callExpr = t.callExpression(helperCallee, [metaExpr, containerExpr, configExpr]);
+        const callExpr = t.callExpression(helperCallee, [metaExpr, containerExpr, propsExpr]);
         // 替换节点类型需匹配上下文：
         // - 作为 JSX 子节点（parent 是 JSXElement/JSXFragment）→ 用 JSXExpressionContainer 包裹
         // - 表达式位置（如 const el = <Widget/>）→ 直接用 CallExpression

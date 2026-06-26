@@ -2,17 +2,23 @@
  * 原生 H5 物料示例：推荐区域（C 业务团队）
  *
  * 演示配置对象入口模式——default 导出含 render + onMount 的对象：
- *   render(config, scope) 返回 HTML 字符串
- *   onMount(element, config, scope) 绑定点击事件，返回清理函数
+ *   render(props, scope) 返回 HTML 字符串
+ *   onMount(element, props, scope) 绑定点击事件，返回清理函数
+ *
+ * 扁平化 props 协议：宿主把每个 prop 作为独立 kebab-case attribute 传入
+ * （title、items），包装层收集后作为扁平 props 对象传给 render/onMount。
  *
  * 无框架依赖，vueVersion='none'，构建产物极小。
  * 点击推荐卡片通过 widget-bus 发出 recommend:expose 事件。
  */
 
 export default {
-  render(config, scope) {
-    const items = Array.isArray(config.items) ? config.items : [];
-    const title = config.title || '推荐区域';
+  // 声明的独立 prop 名：包装层据此观察对应 kebab-case attribute
+  props: ['title', 'items'],
+
+  render(props, scope) {
+    const items = Array.isArray(props.items) ? props.items : [];
+    const title = props.title || '推荐区域';
 
     const cardsHtml = items.length > 0
       ? items.map(item => {
@@ -39,7 +45,7 @@ export default {
     `;
   },
 
-  onMount(element, config, scope) {
+  onMount(element, props, scope) {
     const cards = element.querySelectorAll('.bi-recommend-panel__card');
     const handler = (e) => {
       const card = e.currentTarget;

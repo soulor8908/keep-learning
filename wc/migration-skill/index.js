@@ -5,18 +5,18 @@
  * 把现有 Vue2/Vue3 业务组件快速迁移为看板物料组件。
  * 当前能力：
  * - 给根元素添加命名空间类名
- * - 按 --mode 决定是否补充 config prop：
- *     props 模式（默认）：保留原有 props，不强行新增 config prop
- *     config 模式：补充 config prop（用于需要聚合通讯配置的物料）
+ * - 保留组件原有 props（扁平化 props 协议：宿主把每个 prop 作为独立 kebab-case
+ *   attribute 传入，包装层按声明类型解析后注入业务组件原有 props，组件无需新增
+ *   任何聚合 prop）
  * - 调用 css-namespace-checker / js-risk-scanner 做质量扫描
  * - 输出推荐的 vue.config.js / vite.config.js 配置
  *
  * 用法：
- *   node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version] [--mode props|config]
+ *   node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version]
  *
  * 示例：
  *   node wc/migration-skill/index.js bi-sales-panel demo/vue2-widget-lib/src/components/SalesPanel.vue 2
- *   node wc/migration-skill/index.js bi-finance-panel demo/vue3-widget-lib/src/components/FinancePanel.vue 3 --mode config
+ *   node wc/migration-skill/index.js bi-finance-panel demo/vue3-widget-lib/src/components/FinancePanel.vue 3
  */
 
 const fs = require('fs');
@@ -34,51 +34,6 @@ function toKebab(str) {
 function inferWidgetName(filePath) {
   const base = path.basename(filePath, '.vue');
   return `bi-${toKebab(base)}`;
-}
-
-function hasConfigProp(source) {
-  const scriptMatch = source.match(/<script[^>]*>([\s\S]*?)<\/script>/);
-  if (!scriptMatch) return false;
-  const script = scriptMatch[1];
-  return /(?:props|defineProps)\s*[:(]\s*\{[\s\S]*?\bconfig\b[\s\S]*?\}/.test(script) ||
-         /\bconfig\s*:\s*\{[^}]*type\s*:\s*Object/.test(script);
-}
-
-function addConfigProp(source) {
-  const scriptRegex = /(<script[^>]*>)([\s\S]*?)(<\/script>)/;
-  return source.replace(scriptRegex, (match, open, script, close) => {
-    // 情况 1：已有 props: { ... }
-    const propsRegex = /props\s*:\s*\{/;
-    if (propsRegex.test(script)) {
-      return match.replace(propsRegex, `props: {\n    config: { type: Object, default: () => ({}) },`);
-    }
-
-    // 情况 2：export default { ... } 但没有 props
-    const exportMatch = script.match(/export\s+default\s*\{/);
-    if (exportMatch) {
-      const insertIdx = exportMatch.index + exportMatch[0].length;
-      const before = script.slice(0, insertIdx);
-      const after = script.slice(insertIdx);
-      return `${open}${before}\n  props: {\n    config: { type: Object, default: () => ({}) }\n  },${after}${close}`;
-    }
-
-    // 情况 3：Vue3 Composition API defineProps({ ... })
-    const definePropsMatch = script.match(/defineProps\s*\(\s*\{/);
-    if (definePropsMatch) {
-      const insertIdx = definePropsMatch.index + definePropsMatch[0].length;
-      const before = script.slice(0, insertIdx);
-      const after = script.slice(insertIdx);
-      return `${open}${before}\n  config: { type: Object, default: () => ({}) },${after}${close}`;
-    }
-
-    // 情况 4：<script setup> 使用类型式 defineProps<{}> 或无参 defineProps()，
-    //   无法安全注入对象式 config prop，保持原样不改写（hasConfigProp 未命中时会提示）
-    if (/defineProps\s*\(\s*\)/.test(script) || /defineProps\s*</.test(script)) {
-      return match;
-    }
-
-    return match;
-  });
 }
 
 function addRootClass(source, widgetName) {
@@ -145,39 +100,22 @@ export default defineConfig({
 `;
 }
 
-function migrate(widgetName, filePath, vueVersion, mode = 'props') {
+function migrate(widgetName, filePath, vueVersion) {
   const source = fs.readFileSync(filePath, 'utf-8');
   const report = {
     widgetName,
     filePath,
     vueVersion,
-    mode,
     changes: [],
     warnings: []
   };
 
   let migrated = source;
 
-  // 1. 通讯模式处理
-  //    props 模式（默认）：保留原有 props，不强行新增 config prop；
-  //                       仅当组件已有 config prop 时记录，不强制添加。
-  //    config 模式：若组件无 config prop 则补充（用于需要聚合通讯配置的物料）。
-  const alreadyHasConfig = hasConfigProp(source);
-  if (mode === 'config') {
-    if (!alreadyHasConfig) {
-      migrated = addConfigProp(migrated);
-      report.changes.push('补充 config prop（config 模式）');
-    } else {
-      report.changes.push('已存在 config prop，无需补充');
-    }
-  } else {
-    // props 模式
-    if (alreadyHasConfig) {
-      report.changes.push('已存在 config prop，与 props 模式兼容，保留');
-    } else {
-      report.changes.push('props 模式：保留原有 props，未新增 config prop');
-    }
-  }
+  // 1. props 协议：保留组件原有 props，无需新增任何聚合 prop。
+  //    扁平化 props 协议下，宿主把每个 prop 作为独立 kebab-case attribute 传入，
+  //    包装层按声明类型解析后注入业务组件原有 props，组件源码无需改动 props 部分。
+  report.changes.push('保留原有 props（扁平化 props 协议，无需新增聚合 prop）');
 
   // 2. 检查根元素命名空间
   const rootClassRegex = new RegExp(`class=["'][^"']*\\b${widgetName}\\b`);
@@ -213,31 +151,12 @@ function migrate(widgetName, filePath, vueVersion, mode = 'props') {
 }
 
 function main() {
-  // 解析位置参数与 --mode 标志
-  // 用法：node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version:2|3] [--mode props|config]
-  const args = process.argv.slice(2);
-  let mode = 'props'; // 默认 props 模式：保留原有 props，不强制新增 config
-  const positional = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--mode') {
-      mode = args[i + 1];
-      i++;
-    } else if (args[i].startsWith('--mode=')) {
-      mode = args[i].slice('--mode='.length);
-    } else {
-      positional.push(args[i]);
-    }
-  }
-
-  if (mode !== 'props' && mode !== 'config') {
-    console.error(`无效的 --mode 值: ${mode}（仅支持 props 或 config）`);
-    process.exit(1);
-  }
-
+  // 用法：node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version:2|3]
+  const positional = process.argv.slice(2);
   let [widgetName, filePath, vueVersion] = positional;
 
   if (!filePath) {
-    console.log('用法：node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version:2|3] [--mode props|config]');
+    console.log('用法：node wc/migration-skill/index.js <widget-name> <vue-file> [vue-version:2|3]');
     process.exit(1);
   }
 
@@ -250,7 +169,7 @@ function main() {
   widgetName = widgetName || inferWidgetName(absolutePath);
   vueVersion = vueVersion || '3';
 
-  const { migrated, report } = migrate(widgetName, absolutePath, vueVersion, mode);
+  const { migrated, report } = migrate(widgetName, absolutePath, vueVersion);
 
   // 输出迁移后的文件
   const outPath = absolutePath.replace(/\.vue$/, '.migrated.vue');
@@ -260,7 +179,6 @@ function main() {
   console.log('\n========== 物料迁移报告 ==========');
   console.log(`物料名称: ${report.widgetName}`);
   console.log(`Vue 版本: ${report.vueVersion}`);
-  console.log(`通讯模式: ${report.mode}`);
   console.log(`源文件: ${report.filePath}`);
   console.log(`迁移后文件: ${outPath}`);
   console.log('\n变更:');
@@ -285,4 +203,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { migrate, addConfigProp, addRootClass, hasConfigProp };
+module.exports = { migrate, addRootClass };

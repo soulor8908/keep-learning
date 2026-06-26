@@ -32,7 +32,7 @@
  * 之后业务代码可直接写：
  *   const el = await $widget('bi-sales-panel', { title: '销售面板' });
  * 或在 JSX 中：
- *   <Widget name="bi-sales-panel" config={{ title: '销售面板' }} />
+ *   <Widget name="bi-sales-panel" props={{ title: '销售面板' }} />
  */
 import { createRequire } from 'module';
 import fs from 'fs';

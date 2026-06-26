@@ -6,20 +6,21 @@
  *
  * 使用方式：
  *   1. 复制本文件到物料项目
- *   2. 实现 render(config) 方法，返回 HTML 字符串或操作 DOM
+ *   2. 实现 render(props, scope) 方法，返回 HTML 字符串或操作 DOM
  *   3. 通过环境变量 WIDGET_NAME 指定物料名
  *   4. 用任何打包工具（或直接 IIFE）输出 UMD/IIFE 格式 JS
  *
  * 核心模式（与 vue2/vue3-widget-template 一致）：
  * - 手写 HTMLElement + light DOM（禁止 Shadow DOM）
- * - config attribute 协议（String → JSON.parse → Object）
+ * - 扁平化 props 协议：宿主把每个 prop 作为独立 kebab-case attribute 传入，
+ *   包装层收集后作为扁平 props 对象传给 render(props, scope)
  * - 生命周期映射：connectedCallback/attributeChangedCallback/disconnectedCallback
  * - customElements.define 注册
  *
  * 与 Vue 模板的差异：
  * - 无 Vue 运行时依赖，checkDependencies 中 vueVersion='none' 跳过 Vue 校验
  * - 渲染直接用 innerHTML 或 DOM API，无响应式系统
- * - config 变化时需手动调用 render 重绘（无自动 diff）
+ * - props 变化时需手动调用 render 重绘（无自动 diff）
  * - 可选接入 widget-bus 实现跨物料通信
  */
 
@@ -64,13 +65,8 @@ function camelToKebab(str) {
   return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
-// kebab-case → camelCase
-function kebabToCamel(str) {
-  return str.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-}
-
 /**
- * 按属性值解析为最终值：优先 JSON.parse（与 config 协议一致，无歧义），失败回退原始字符串
+ * 按属性值解析为最终值：优先 JSON.parse，失败回退原始字符串
  */
 function parseAttrValue(raw) {
   if (raw === null) return undefined;
@@ -85,19 +81,18 @@ function parseAttrValue(raw) {
  * 创建原生物料的 Custom Element 类
  * @param {object} opts
  * @param {string} opts.name 物料名（Custom Element 标签名，如 bi-weather-card）
- * @param {function} opts.render 渲染函数，接收 (config, scope) ，返回 HTML 字符串
- * @param {function} [opts.onMount] 挂载后回调，接收 (element, config, scope)，可绑定事件
+ * @param {function} opts.render 渲染函数，接收 (props, scope) ，返回 HTML 字符串
+ * @param {function} [opts.onMount] 挂载后回调，接收 (element, props, scope)，可绑定事件
  * @param {function} [opts.onUnmount] 卸载前回调，接收 (element, scope)，可清理监听
- * @param {function} [opts.onConfigChange] config 变化回调，接收 (element, newConfig, oldConfig, scope)
+ * @param {function} [opts.onPropsChange] props 变化回调，接收 (element, newProps, oldProps, scope)
  * @param {object} [opts.scope] 自定义 scope 实例（多 Host 场景），不传则按 name 自动创建
  * @param {string[]} [opts.props] 物料声明的独立 prop 名列表。提供后包装层会观察这些
- *   prop 对应的 kebab attribute，并把它们合并进 render 收到的 config 对象
- *   （独立 prop 同名键覆盖 config attribute 的值）。不传则仅观察 config（向后兼容）。
- *   这样老的原生物料改造时无需把所有字段塞进 config，可直接用 <bi-xxx title="a" count="5">。
+ *   prop 对应的 kebab attribute，并把它们收集为扁平 props 对象传给 render。
+ *   不传则不观察任何属性（render 收到空对象）。
  * @returns {typeof HTMLElement} Custom Element 类
  */
 function createH5Widget(opts) {
-  const { name, render, onMount, onUnmount, onConfigChange } = opts;
+  const { name, render, onMount, onUnmount, onPropsChange } = opts;
 
   if (!name || typeof render !== 'function') {
     throw new Error('[h5-widget-template] name 和 render 函数必须提供');
@@ -107,13 +102,13 @@ function createH5Widget(opts) {
   const propAttrMap = new Map(
     (opts.props || []).map(p => [camelToKebab(p), p])
   );
-  // 观察的属性：config（向后兼容）+ 各独立 prop 的 kebab attribute
-  const observedAttrs = [...new Set(['config', ...propAttrMap.keys()])];
+  // 观察的属性：仅各独立 prop 的 kebab attribute（去重）
+  const observedAttrs = [...new Set(propAttrMap.keys())];
 
   class H5WidgetElement extends HTMLElement {
     constructor() {
       super();
-      this._config = null;
+      this._props = null;
       this._cleanup = null;
       // 每个物料实例创建独立的 widgetScope 软隔离对象，
       // 通过回调参数注入给物料，而非让物料直接访问 window
@@ -128,42 +123,25 @@ function createH5Widget(opts) {
     }
 
     /**
-     * 解析 config attribute 为 Object
-     * 解析失败时返回空对象，不抛错（与 Vue 模板的 parseConfig 一致）
+     * 收集所有已设置的独立 prop 属性，解析为扁平 props 对象传给 render
      */
-    _parseConfig(value) {
-      try {
-        return value ? JSON.parse(value) : {};
-      } catch (e) {
-        console.error(`[${name}] config parse error:`, e);
-        return {};
-      }
-    }
-
-    /**
-     * 构建传入 render 的合并 config：
-     * 以 config attribute 解析的对象为基础，叠加各独立 prop 属性（同名键覆盖）。
-     * 这样老物料可继续用 config，新物料可直接用独立 prop，二者可混用。
-     */
-    _buildMergedConfig() {
-      const base = this._parseConfig(this.getAttribute('config'));
-      if (propAttrMap.size === 0) return base;
-      const merged = { ...base };
+    _collectProps() {
+      const result = {};
       for (const [attrName, propName] of propAttrMap) {
         if (this.hasAttribute(attrName)) {
-          merged[propName] = parseAttrValue(this.getAttribute(attrName));
+          result[propName] = parseAttrValue(this.getAttribute(attrName));
         }
       }
-      return merged;
+      return result;
     }
 
     connectedCallback() {
-      this._config = this._buildMergedConfig();
+      this._props = this._collectProps();
       this._render();
 
       // 挂载后回调：绑定事件、初始化交互等；注入 scope 作为第三参数
       if (typeof onMount === 'function') {
-        this._cleanup = onMount(this, this._config, this._scope) || null;
+        this._cleanup = onMount(this, this._props, this._scope) || null;
       }
     }
 
@@ -176,22 +154,22 @@ function createH5Widget(opts) {
         this._cleanup();
         this._cleanup = null;
       }
-      this._config = null;
+      this._props = null;
       this._scope = null;
       this._widgetScope = null;
     }
 
     attributeChangedCallback(attrName, oldValue, newValue) {
-      // config attribute 值未变化时跳过（首次挂载时 oldValue 为 null）
-      if (attrName === 'config' && oldValue === newValue) return;
+      // 首次挂载时 oldValue 为 null，但 connectedCallback 已统一收集，这里跳过
+      if (oldValue === newValue) return;
 
-      const oldConfig = this._config;
-      this._config = this._buildMergedConfig();
+      const oldProps = this._props;
+      this._props = this._collectProps();
       this._render();
 
-      // config 变化回调；注入 scope
-      if (typeof onConfigChange === 'function') {
-        onConfigChange(this, this._config, oldConfig, this._scope);
+      // props 变化回调；注入 scope
+      if (typeof onPropsChange === 'function') {
+        onPropsChange(this, this._props, oldProps, this._scope);
       }
     }
 
@@ -203,17 +181,17 @@ function createH5Widget(opts) {
      */
     _render() {
       if (typeof render !== 'function') return;
-      const html = render(this._config, this._scope);
+      const html = render(this._props, this._scope);
       if (typeof html === 'string') {
         this.innerHTML = html;
       }
     }
 
     /**
-     * 外部获取当前 config（只读快照，含已合并的独立 prop）
+     * 外部获取当前 props（只读快照）
      */
-    getConfig() {
-      return this._config ? { ...this._config } : {};
+    getProps() {
+      return this._props ? { ...this._props } : {};
     }
 
     /**
@@ -237,8 +215,9 @@ if (widgetName) {
   //   import { createH5Widget } from './widget-wrapper';
   //   const Widget = createH5Widget({
   //     name: 'bi-weather-card',
-  //     render(config) { return `<div class="bi-weather-card">...</div>`; },
-  //     onMount(el, config) { /* 绑定事件 */ },
+  //     props: ['title', 'items'],
+  //     render(props, scope) { return `<div class="bi-weather-card">...</div>`; },
+  //     onMount(el, props, scope) { /* 绑定事件 */ },
   //   });
   //   customElements.define('bi-weather-card', Widget);
   //

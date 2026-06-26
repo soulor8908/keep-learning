@@ -1,7 +1,7 @@
 <template>
   <el-card class="bi-orders-panel">
     <div slot="header">
-      <span>{{ config.title || '订单区域' }}</span>
+      <span>{{ title || '订单区域' }}</span>
       <span class="team-tag">A 业务团队 · Vue2</span>
     </div>
     <el-table :data="orders" size="small" @row-click="onRowClick">
@@ -19,14 +19,14 @@
 export default {
   name: 'OrdersPanel',
   props: {
-    config: {
-      type: Object,
-      default: () => ({})
-    }
-  },
-  computed: {
-    orders() {
-      return (this.config && this.config.orders) || [];
+    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
+    title: {
+      type: String,
+      default: ''
+    },
+    orders: {
+      type: Array,
+      default: () => []
     }
   },
   methods: {

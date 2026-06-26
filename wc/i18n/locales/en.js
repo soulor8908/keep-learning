@@ -7,7 +7,7 @@ export default {
     mount_failed: 'Widget "{name}" mount failed, degraded:',
     load_failed: 'Widget "{name}" load failed, degraded:',
     runtime_crash: 'Widget "{name}" crashed at runtime, isolated:',
-    config_serialize_failed: 'Widget "{name}" config serialization failed (possible circular reference)',
+    props_serialize_failed: 'Widget "{name}" props serialization failed (possible circular reference)',
     retry: 'Retry'
   },
   sales: {

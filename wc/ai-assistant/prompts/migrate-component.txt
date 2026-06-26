@@ -4,26 +4,21 @@
 
 1. 保持原有业务逻辑不变。
 2. 给组件根元素添加类名 `bi-<widget-name>`，例如 `bi-sales-panel`。
-3. 通讯协议（config 与 props 双模兼容，优先保留原有 props）：
-   - **props 模式（推荐）**：保留组件原有的 props 不变。宿主会通过独立的 HTML 属性
-     （kebab-case）把每个 prop 传入，包装层自动按声明类型解析并注入。
+3. 通讯协议（扁平化 props，单一模式）：
+   - 保留组件原有的 props 不变。宿主会通过独立的 HTML 属性（kebab-case）把每个 prop
+     传入，包装层自动按声明类型解析并注入业务组件原有 props，组件无需新增任何聚合 prop。
      例如组件声明 `props: { title: String, maxCount: Number }`，宿主写
-     `<bi-xxx title="hello" max-count="5">`，无需新增 config prop。
-   - **config 模式（仅当需要聚合配置时）**：若组件需要接收一个聚合的通讯配置对象
-     （含多个字段、嵌套结构、宿主上下文等），可保留或新增 `config` prop：
-     ```js
-     props: {
-       config: { type: Object, default: () => ({}) }
-     }
-     ```
-     宿主通过 `config='{"host":"demo","lang":"zh"}'` 传入。
-   - 两种模式可混用：组件可同时声明 config（聚合配置）和其它独立 props。
-   - **不要为已有独立 props 的组件强行新增 config prop**；仅当确实需要聚合配置时才加。
-4. 把组件内部原本从外部注入的数据或全局状态，改为从对应 prop（或 config）读取或组件内部自治。
+     `<bi-xxx title="hello" max-count="5">`。
+   - **不要新增 `config` 聚合 prop**。所有外部输入一律走组件原有 props，由宿主按
+     kebab-case attribute 逐项传入；包装层负责按声明类型（Boolean/Number/Object/Array 等）
+     解析 attribute 值并注入对应 prop。
+   - 若组件原本依赖某个聚合对象（如 `config.host`、`config.lang`），应拆解为独立的
+     命名 prop（如 `host: String`、`lang: String`），由宿主分别传入。
+4. 把组件内部原本从外部注入的数据或全局状态，改为从对应 prop 读取或组件内部自治。
 5. 如果组件使用了 scoped style，保持；否则建议添加命名空间前缀避免样式污染。
-6. 返回完整的迁移后代码，以及一份简要的迁移说明（列出改了哪些点、使用了哪种通讯模式）。
+6. 返回完整的迁移后代码，以及一份简要的迁移说明（列出改了哪些点、props 拆解情况）。
 
 注意：
 - 不要引入新的依赖。
-- 不要改变组件的对外接口，除非是为了适配通讯协议。
+- 不要改变组件的对外接口，除非是为了适配扁平化 props 协议。
 - 代码注释使用中文。

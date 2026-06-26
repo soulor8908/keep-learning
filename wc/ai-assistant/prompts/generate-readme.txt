@@ -5,7 +5,7 @@
 2. 依赖环境（Vue 版本、ElementUI/ElementPlus 版本等）
 3. 如何打包发布
 4. 基座侧如何加载（给出 HTML/JS 示例）
-5. config 配置项说明表格（字段、类型、默认值、说明）
+5. props 配置项说明表格（字段、类型、默认值、说明；均为扁平化独立 prop，宿主按 kebab-case attribute 传入）
 6. 常见问题或注意事项
 
 要求：

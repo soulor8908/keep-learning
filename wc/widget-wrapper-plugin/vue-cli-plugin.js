@@ -34,8 +34,39 @@ const _existing = Array.isArray(Vue.config.ignoredElements) ? Vue.config.ignored
 const _hasEl = _existing.some(re => re instanceof RegExp && re.source === '^el-');
 if (!_hasEl) Vue.config.ignoredElements = [..._existing, /^el-/];
 
-function parseConfig(value) {
-  try { return value ? JSON.parse(value) : {}; } catch { return {}; }
+// camelCase → kebab-case，把 prop 名映射为可观察的 attribute 名
+function camelToKebab(str) {
+  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+// 提取业务组件声明的 prop 名列表（数组 / 对象）
+function getDeclaredPropNames(Component) {
+  const props = Component && Component.props;
+  if (!props) return [];
+  if (Array.isArray(props)) return props.filter(p => typeof p === 'string');
+  return Object.keys(props);
+}
+
+// 取某个 prop 的声明类型构造器（简写 / 简写数组 / 完整形式）
+function getPropType(Component, name) {
+  const props = Component && Component.props;
+  if (!props || Array.isArray(props)) return null;
+  const def = props[name];
+  if (!def) return null;
+  if (Array.isArray(def)) return def;
+  if (typeof def === 'function') return def;
+  return def.type || null;
+}
+
+// 按属性值与 prop 类型解析为最终值
+function parseAttrValue(raw, type) {
+  if (type === Boolean) {
+    if (raw === '' || raw === 'true') return true;
+    if (raw === 'false') return false;
+    return true;
+  }
+  if (raw === null) return undefined;
+  try { return JSON.parse(raw); } catch (_) { return raw; }
 }
 
 class WidgetElement extends HTMLElement {
@@ -50,19 +81,33 @@ class WidgetElement extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ['config'];
+    // 仅观察组件声明的独立 prop 的 kebab attribute（剔除 scope）
+    return getDeclaredPropNames(Component)
+      .filter(n => n !== 'scope')
+      .map(camelToKebab);
+  }
+
+  // 收集所有已设置的独立 prop 属性，按声明类型解析为值
+  _collectProps() {
+    const result = {};
+    const names = getDeclaredPropNames(Component).filter(n => n !== 'scope');
+    for (const propName of names) {
+      const attrName = camelToKebab(propName);
+      if (this.hasAttribute(attrName)) {
+        result[propName] = parseAttrValue(this.getAttribute(attrName), getPropType(Component, propName));
+      }
+    }
+    return result;
   }
 
   connectedCallback() {
-    const config = this.getAttribute('config');
     // 不使用 Shadow DOM，直接挂载到 light DOM，让 ElementUI 全局样式能穿透
-    // 使用 reactive data 承载 config 与 scope，attributeChangedCallback 中更新
-    // this.vm.widgetConfig 即可触发响应式重渲染，无需依赖 $children 内部 API
-    // 注入 scope 作为业务组件 props：物料声明 props: { scope: Object, config: Object }
+    // 使用 reactive data 承载 props 与 scope，attributeChangedCallback 中更新
+    // this.vm.widgetProps 即可触发响应式重渲染
     this.vm = new Vue({
-      data: { widgetConfig: parseConfig(config), widgetScope: this._scope },
+      data: { widgetProps: this._collectProps(), widgetScope: this._scope },
       render(h) {
-        return h(Component, { props: { config: this.widgetConfig, scope: this.widgetScope } });
+        return h(Component, { props: { ...this.widgetProps, scope: this.widgetScope } });
       }
     });
     this.vm.$mount();
@@ -79,9 +124,15 @@ class WidgetElement extends HTMLElement {
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    // 更新 reactive data，Vue 自动触发重渲染，不依赖 $children[0] 顺序
-    if (name === 'config' && this.vm) {
-      this.vm.widgetConfig = parseConfig(newValue);
+    if (!this.vm || oldValue === newValue) return;
+    // 独立 prop 属性变化：反查 prop 名，整体替换 widgetProps 触发重渲染
+    const names = getDeclaredPropNames(Component).filter(n => n !== 'scope');
+    const propName = names.find(n => camelToKebab(n) === name);
+    if (propName) {
+      this.vm.widgetProps = {
+        ...this.vm.widgetProps,
+        [propName]: parseAttrValue(newValue, getPropType(Component, propName))
+      };
     }
   }
 }

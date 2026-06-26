@@ -27,10 +27,10 @@ import { t, onLocaleChange, addMessages } from 'wc-i18n';
 export default {
   name: 'FilterBar',
   props: {
-    // 包装层已经把 config String 解析为 Object
-    config: {
-      type: Object,
-      default: () => ({})
+    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
+    filters: {
+      type: Array,
+      default: () => []
     }
   },
   data() {
@@ -48,9 +48,6 @@ export default {
       // 引用 localeTick 使其成为依赖，locale 变化时重新求值
       void this.localeTick;
       return t;
-    },
-    filters() {
-      return (this.config && this.config.filters) || [];
     }
   },
   mounted() {

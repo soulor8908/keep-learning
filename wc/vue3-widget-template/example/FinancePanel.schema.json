@@ -5,9 +5,21 @@
   "description": "Auto-generated schema for bi-finance-panel",
   "type": "object",
   "properties": {
-    "config": {
-      "type": "object",
-      "default": {}
+    "title": {
+      "type": "string",
+      "default": ""
+    },
+    "showChart": {
+      "type": "boolean",
+      "default": false
+    },
+    "progress": {
+      "type": "number",
+      "default": 0
+    },
+    "progressStatus": {
+      "type": "string",
+      "default": ""
     }
   },
   "required": [],

@@ -1,18 +1,30 @@
 <template>
   <div class="bi-finance-panel">
-    <h3>{{ config.title || '财务看板' }}</h3>
-    <div v-if="config.showChart" class="chart">
-      <el-progress :percentage="config.progress || 60" :status="config.progressStatus || 'success'" />
+    <h3>{{ title || '财务看板' }}</h3>
+    <div v-if="showChart" class="chart">
+      <el-progress :percentage="progress || 60" :status="progressStatus || 'success'" />
     </div>
   </div>
 </template>
 
 <script setup>
-const props = defineProps({
-  // wrapper 已经把 config attribute 解析为 Object 传入
-  config: {
-    type: Object,
-    default: () => ({})
+defineProps({
+  // 扁平化 props：宿主按 kebab-case attribute 传入，包装层按声明类型解析
+  title: {
+    type: String,
+    default: ''
+  },
+  showChart: {
+    type: Boolean,
+    default: false
+  },
+  progress: {
+    type: Number,
+    default: 0
+  },
+  progressStatus: {
+    type: String,
+    default: ''
   }
 });
 </script>

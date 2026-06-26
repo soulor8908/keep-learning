@@ -1,11 +1,11 @@
 <template>
   <el-card>
-    <div slot="header">{{ config.title || t('sales.title') }}</div>
+    <div slot="header">{{ title || t('sales.title') }}</div>
     <el-row>
       <el-statistic :label="t('sales.amount_label')" :prefix="symbol" :value="summary.amount.toLocaleString()" />
       <el-statistic :label="t('sales.order_label')" :value="summary.orderCount" />
     </el-row>
-    <el-progress v-if="config.showTrend" :percentage="trendPercent" />
+    <el-progress v-if="showTrend" :percentage="trendPercent" />
     <el-footer-text>{{ t('sales.period_label') }}：{{ periodText }}</el-footer-text>
   </el-card>
 </template>
@@ -16,10 +16,22 @@ import { t, onLocaleChange } from 'wc-i18n';
 export default {
   name: 'SalesPanel',
   props: {
-    // 包装层已经把 config String 解析为 Object
-    config: {
-      type: Object,
-      default: () => ({})
+    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
+    title: {
+      type: String,
+      default: ''
+    },
+    showTrend: {
+      type: Boolean,
+      default: false
+    },
+    currency: {
+      type: String,
+      default: 'CNY'
+    },
+    period: {
+      type: String,
+      default: 'month'
     }
   },
   data() {
@@ -40,7 +52,7 @@ export default {
       return t;
     },
     symbol() {
-      return this.config.currency === 'USD' ? '$' : '¥';
+      return this.currency === 'USD' ? '$' : '¥';
     },
     periodText() {
       void this.localeTick;
@@ -50,14 +62,14 @@ export default {
         month: t('sales.period_month'),
         year: t('sales.period_year')
       };
-      return map[this.config.period] || t('sales.period_month');
+      return map[this.period] || t('sales.period_month');
     },
     trendPercent() {
       return Math.min(100, (this.summary.orderCount / 500) * 100);
     }
   },
   mounted() {
-    this.$emit('widget:loaded', { widget: 'bi-sales-panel', config: this.config });
+    this.$emit('widget:loaded', { widget: 'bi-sales-panel', props: this.$props });
     // 演示跨技术栈通信：监听全局刷新指令
     if (window.widgetBus) {
       this._offBus = window.widgetBus.on('refresh-data', () => {

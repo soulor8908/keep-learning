@@ -1,6 +1,6 @@
 <template>
   <div class="bi-sales-panel">
-    <h3>{{ config.title || '销售看板' }}</h3>
+    <h3>{{ title || '销售看板' }}</h3>
     <div class="stats">
       <el-statistic title="销售额" :value="summary.amount" />
       <el-statistic title="订单数" :value="summary.orderCount" />
@@ -12,10 +12,10 @@
 export default {
   name: 'SalesPanel',
   props: {
-    // wrapper 已经把 config attribute 解析为 Object 传入
-    config: {
-      type: Object,
-      default: () => ({})
+    // 扁平化 props：宿主按 kebab-case attribute 传入，包装层按声明类型解析
+    title: {
+      type: String,
+      default: ''
     }
   },
   data() {

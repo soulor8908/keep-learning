@@ -3,15 +3,18 @@ import Vue from 'vue';
 import wrap from '@vue/web-component-wrapper';
 import SalesPanel from './components/SalesPanel.vue';
 
-function parseConfig(value) {
-  try { return value ? JSON.parse(value) : {}; } catch { return {}; }
-}
-
+// 桥接组件：把宿主传入的扁平化 props 透传给 SalesPanel
+// （@vue/web-component-wrapper 把宿主 attribute 映射为桥接组件的 prop）
 const BridgeComponent = {
-  props: ['config'],
+  props: ['title', 'showTrend', 'currency', 'period'],
   render(h) {
     return h(SalesPanel, {
-      props: { config: parseConfig(this.config) }
+      props: {
+        title: this.title,
+        showTrend: this.showTrend,
+        currency: this.currency,
+        period: this.period
+      }
     });
   }
 };
@@ -23,22 +26,23 @@ new Vue({
   template: `
     <div>
       <h2>Vue2 物料库本地预览</h2>
-      <bi-sales-panel :config='JSON.stringify(config)'></bi-sales-panel>
+      <bi-sales-panel
+        title="Vue2 销售看板"
+        show-trend
+        currency="CNY"
+        :period="period"
+      ></bi-sales-panel>
       <button @click="togglePeriod">切换周期</button>
     </div>
   `,
   data: {
-    config: {
-      title: 'Vue2 销售看板',
-      period: 'month',
-      showTrend: true
-    }
+    period: 'month'
   },
   methods: {
     togglePeriod() {
       const periods = ['day', 'week', 'month', 'year'];
-      const idx = periods.indexOf(this.config.period);
-      this.config.period = periods[(idx + 1) % periods.length];
+      const idx = periods.indexOf(this.period);
+      this.period = periods[(idx + 1) % periods.length];
     }
   }
 });

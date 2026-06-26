@@ -6,26 +6,15 @@
  * 重要：不使用 @vue/web-component-wrapper（默认创建 Shadow DOM），
  *   改为手写 HTMLElement 挂载到 light DOM，让 ElementUI 全局样式与主题变量能穿透。
  *
- * ─── config 与 props 双模兼容 ───
- * 包装层同时支持两种传参方式，业务组件改造时无需额外添加 config 属性：
- *   1. config 模式（向后兼容）：宿主写 <bi-xxx config='{"title":"a"}'>，
- *      包装层解析为 Object，作为 config prop 传入（组件需声明 props.config）。
- *   2. props 模式（推荐）：宿主把业务组件原有的 props 直接作为属性传入，
- *      如 <bi-xxx title="a" :count="5">，包装层按属性名（kebab→camel）解析后
- *      作为独立 prop 传入，组件无需新增 config，原有 props 即可直接复用。
- * 两种模式可混用：config 提供聚合配置，个别 props 显式覆盖。
+ * ─── 扁平化 props 传递 ───
+ * 宿主把业务组件原有的 props 直接作为独立属性传入，如
+ *   <bi-xxx title="a" max-count="5" is-visible>
+ * 包装层按属性名（kebab→camel）与声明类型解析后，作为独立 prop 传入组件。
+ * 组件无需新增任何 config 属性，原有 props 即可直接复用。
+ * scope 仍由框架作为独立 prop 注入（与业务 props 区分）。
  */
 import Vue from 'vue';
 import { createWidgetScope } from '../widget-scope/index.js';
-
-export function parseConfig(value) {
-  try {
-    return value ? JSON.parse(value) : {};
-  } catch (e) {
-    console.error(`[${process.env.WIDGET_NAME}] config parse error:`, e);
-    return {};
-  }
-}
 
 // camelCase → kebab-case，用于把 prop 名映射为可观察的 attribute 名
 function camelToKebab(str) {
@@ -80,18 +69,17 @@ export function createWidgetWrapper(Component, widgetName) {
   // 手写 HTMLElement，挂载到 light DOM（不使用 Shadow DOM）
   // 原因：ElementUI 全局样式与主题变量需要穿透到物料内部，Shadow DOM 会隔离样式
   //
-  // config 处理：connectedCallback/attributeChangedCallback 中调用 parseConfig
-  // 解析为 Object 存入 reactive data widgetConfig，Vue 检测到引用变化后
-  // 自动重渲染并传给业务组件。每次 parseConfig 返回新对象引用，确保
-  // 业务组件的 watch: { config } / watch: { config: { deep: true } } 都能触发（P2-22）
+  // props 处理：connectedCallback/attributeChangedCallback 中调用 _collectProps
+  // 把已设置的独立 prop 属性解析为值，存入 reactive data widgetProps，Vue 检测到
+  // 引用变化后自动重渲染并传给业务组件。每次 _collectProps 返回新对象引用，确保
+  // 业务组件的 watch: { xxx } / deep watch 都能触发。
 
-  // 声明的 prop 名：剔除 config（由专用 widgetConfig data 处理）与 scope（框架注入）
+  // 声明的 prop 名：剔除 scope（框架注入，非宿主传入）
   const individualPropNames = getDeclaredPropNames(Component)
-    .filter(n => n !== 'config' && n !== 'scope');
+    .filter(n => n !== 'scope');
   const attrToProp = new Map(individualPropNames.map(n => [camelToKebab(n), n]));
-  // 观察的属性：config（向后兼容）+ 各独立 prop 的 kebab attribute（去重）
-  const observedAttrs = [...new Set(['config', ...individualPropNames.map(camelToKebab)])];
-  const declaresConfig = getDeclaredPropNames(Component).includes('config');
+  // 观察的属性：仅各独立 prop 的 kebab attribute（去重）
+  const observedAttrs = [...new Set(individualPropNames.map(camelToKebab))];
 
   class WidgetElement extends HTMLElement {
     constructor() {
@@ -108,22 +96,16 @@ export function createWidgetWrapper(Component, widgetName) {
     }
 
     connectedCallback() {
-      const config = this.getAttribute('config');
-      // 使用 reactive data 承载已解析的 config 与独立 props，
+      // 使用 reactive data 承载已解析的独立 props，
       // attributeChangedCallback 中更新即可触发响应式重渲染，无需依赖 $children 内部 API
       // 同时把 scope 作为 data 暴露给 render，注入到业务组件 props
       this.vm = new Vue({
         data: {
-          widgetConfig: parseConfig(config),
           widgetProps: this._collectProps(),
           widgetScope: this._scope
         },
         render(h) {
-          const props = { ...this.widgetProps, scope: this.widgetScope };
-          if (declaresConfig) {
-            props.config = this.widgetConfig;
-          }
-          return h(Component, { props });
+          return h(Component, { props: { ...this.widgetProps, scope: this.widgetScope } });
         }
       });
       this.vm.$mount();
@@ -153,11 +135,6 @@ export function createWidgetWrapper(Component, widgetName) {
 
     attributeChangedCallback(name, oldValue, newValue) {
       if (!this.vm || oldValue === newValue) return;
-      // 更新 reactive data，Vue 自动触发重渲染，不依赖 $children[0] 顺序
-      if (name === 'config') {
-        this.vm.widgetConfig = parseConfig(newValue);
-        return;
-      }
       // 独立 prop 属性变化：整体替换 widgetProps 触发重渲染
       const propName = attrToProp.get(name);
       if (propName) {
@@ -182,7 +159,7 @@ if (!widgetName || !componentPath) {
 
 // 动态引入业务组件并注册 Custom Element。
 // 生产环境（webpack CJS）require 必然存在；ESM 环境下 require 可能未定义，
-// 此时跳过自动注册（仅导出 parseConfig/createWidgetWrapper 供测试），
+// 此时跳过自动注册（仅导出 createWidgetWrapper 供测试），
 // 不影响生产构建行为。
 if (typeof require !== 'undefined') {
   const Component = require(componentPath).default;

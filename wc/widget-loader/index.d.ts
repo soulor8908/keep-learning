@@ -44,8 +44,8 @@ export interface Widget {
   js?: string;
   /** CSS 文件 URL */
   css?: string;
-  /** 物料展示配置（renderWidget/mountWidget 时序列化到 config 属性） */
-  config?: any;
+  /** 物料扁平化 props（renderWidget/mountWidget 时按 kebab-case 拆为独立 attribute） */
+  props?: Record<string, any>;
   /** 物料依赖的 Vue 主版本，默认 '2'；'none' 表示原生 H5 物料 */
   vueVersion?: VueVersion;
   /** 物料版本 */
@@ -80,7 +80,7 @@ export const WidgetError: {
   readonly VERSION_MISMATCH: 'DEP_VERSION_MISMATCH';
   readonly NOT_FOUND: 'NOT_FOUND';
   readonly ELEMENT_TIMEOUT: 'ELEMENT_TIMEOUT';
-  readonly CONFIG_ERROR: 'CONFIG_ERROR';
+  readonly PROPS_ERROR: 'PROPS_ERROR';
 };
 
 /** 物料加载错误（带 code 字段，便于基座差异化降级） */
@@ -264,7 +264,7 @@ export class WidgetLoader {
 
   /**
    * 渲染物料到指定容器（同步，触发 connectedCallback）。
-   * config 含循环引用时序列化失败抛 CONFIG_ERROR；自动注入全局上下文。
+   * props 含循环引用时序列化失败抛 PROPS_ERROR；自动注入全局上下文。
    * @returns 创建并挂载的物料元素
    */
   renderWidget(container: HTMLElement, widget: Widget): HTMLElement;

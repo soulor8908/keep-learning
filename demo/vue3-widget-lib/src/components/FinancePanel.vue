@@ -1,10 +1,10 @@
 <template>
-  <el-card :header="config.title || t('finance.title')">
+  <el-card :header="title || t('finance.title')">
     <el-row>
       <el-statistic :title="t('finance.income_label')" :prefix="symbol" :value="summary.income" />
       <el-statistic :title="t('finance.expense_label')" :prefix="symbol" :value="summary.expense" />
     </el-row>
-    <template v-if="config.showBreakdown">
+    <template v-if="showBreakdown">
       <div
         v-for="(item, idx) in breakdown"
         :key="idx"
@@ -25,10 +25,18 @@ import { t, onLocaleChange } from 'wc-i18n';
 export default {
   name: 'FinancePanel',
   props: {
-    // 包装层已经把 config String 解析为 Object
-    config: {
-      type: Object,
-      default: () => ({})
+    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
+    title: {
+      type: String,
+      default: ''
+    },
+    showBreakdown: {
+      type: Boolean,
+      default: false
+    },
+    currency: {
+      type: String,
+      default: 'CNY'
     }
   },
   setup() {
@@ -71,11 +79,11 @@ export default {
   },
   computed: {
     symbol() {
-      return this.config.currency === 'USD' ? '$' : '¥';
+      return this.currency === 'USD' ? '$' : '¥';
     },
     currencyText() {
       void this.localeTick;
-      return this.config.currency === 'USD' ? t('finance.usd') : t('finance.cny');
+      return this.currency === 'USD' ? t('finance.usd') : t('finance.cny');
     }
   }
 };

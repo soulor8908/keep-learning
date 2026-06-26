@@ -37,15 +37,47 @@ import { createWidgetScope } from 'wc-widget-scope';
 // 会把物料样式完全隔离，导致基座注入的 element-plus 全局样式 / 主题变量 / 字体图标无法穿透。
 // 本包装层手写 HTMLElement + createApp().mount(this)，挂载到 light DOM，
 // 与"不开启 Shadow DOM"的架构决策保持一致。
-function parseConfig(value) {
-  try { return value ? JSON.parse(value) : {}; } catch { return {}; }
+
+// camelCase → kebab-case，把 prop 名映射为可观察的 attribute 名
+function camelToKebab(str) {
+  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+// 提取业务组件声明的 prop 名列表（数组 / 对象 / <script setup> defineProps 产物）
+function getDeclaredPropNames(Component) {
+  const props = Component && Component.props;
+  if (!props) return [];
+  if (Array.isArray(props)) return props.filter(p => typeof p === 'string');
+  return Object.keys(props);
+}
+
+// 取某个 prop 的声明类型构造器（简写 / 简写数组 / 完整形式）
+function getPropType(Component, name) {
+  const props = Component && Component.props;
+  if (!props || Array.isArray(props)) return null;
+  const def = props[name];
+  if (!def) return null;
+  if (Array.isArray(def)) return def;
+  if (typeof def === 'function') return def;
+  return def.type || null;
+}
+
+// 按属性值与 prop 类型解析为最终值
+function parseAttrValue(raw, type) {
+  if (type === Boolean) {
+    if (raw === '' || raw === 'true') return true;
+    if (raw === 'false') return false;
+    return true;
+  }
+  if (raw === null) return undefined;
+  try { return JSON.parse(raw); } catch (_) { return raw; }
 }
 
 class WidgetElement extends HTMLElement {
   constructor() {
     super();
     this.app = null;
-    this._configRef = null;
+    this._propsRef = null;
     // 每个物料实例创建独立的 widgetScope 软隔离对象，
     // 物料组件通过 props.scope 接收，而非直接访问 window。
     // scope 含 context/bus/log/t/request/loader（嵌套加载带循环检测）
@@ -54,7 +86,10 @@ class WidgetElement extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ['config'];
+    // 仅观察组件声明的独立 prop 的 kebab attribute（剔除 scope）
+    return getDeclaredPropNames(Component)
+      .filter(n => n !== 'scope')
+      .map(camelToKebab);
   }
 
   connectedCallback() {
@@ -68,40 +103,57 @@ class WidgetElement extends HTMLElement {
     this._mount();
   }
 
-  // 挂载：仅首次创建 app 与 reactive config ref
+  // 挂载：仅首次创建 app 与 reactive props ref
   _mount() {
-    if (this.app) return; // 已挂载，config 变化由 _updateConfig 处理
-    // 使用 ref 承载 config，render 中访问 .value 建立响应式依赖
-    // config 变化时只需更新 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
-    // 注入 scope 作为业务组件 props：物料声明 props: { scope: Object, config: Object }
-    this._configRef = ref(parseConfig(this.getAttribute('config')));
+    if (this.app) return; // 已挂载，属性变化由 _updateProp 处理
+    // props 用 ref 承载，render 中访问 .value 建立响应式依赖；
+    // 任一 prop 变化时整体替换 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
+    this._propsRef = ref(this._collectProps());
     this.app = createApp({
-      render: () => h(Component, { config: this._configRef.value, scope: this._scope })
+      render: () => h(Component, { ...this._propsRef.value, scope: this._scope })
     });
     this.app.mount(this);
   }
 
-  // config 变化时更新 ref，避免 unmount/remount 带来的性能损耗与状态丢失
-  _updateConfig(newValue) {
-    if (this._configRef) {
-      this._configRef.value = parseConfig(newValue);
+  // 收集所有已设置的独立 prop 属性，按声明类型解析为值
+  _collectProps() {
+    const result = {};
+    const names = getDeclaredPropNames(Component).filter(n => n !== 'scope');
+    for (const propName of names) {
+      const attrName = camelToKebab(propName);
+      if (this.hasAttribute(attrName)) {
+        result[propName] = parseAttrValue(this.getAttribute(attrName), getPropType(Component, propName));
+      }
     }
+    return result;
+  }
+
+  // 独立 prop 属性变化时更新对应键，整体替换 value 触发重渲染
+  _updateProp(propName, newValue) {
+    if (!this._propsRef) return;
+    this._propsRef.value = {
+      ...this._propsRef.value,
+      [propName]: parseAttrValue(newValue, getPropType(Component, propName))
+    };
   }
 
   disconnectedCallback() {
     if (this.app) {
       this.app.unmount();
       this.app = null;
-      this._configRef = null;
+      this._propsRef = null;
       this._scope = null;
       this._widgetScope = null;
     }
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    // config 变化：更新 reactive ref，走标准公开 API，不触碰内部 _instance
-    if (name === 'config' && this.app && oldValue !== newValue) {
-      this._updateConfig(newValue);
+    // 首次挂载前 connectedCallback 会统一收集，这里只处理挂载后的变化
+    if (oldValue === newValue) return;
+    const names = getDeclaredPropNames(Component).filter(n => n !== 'scope');
+    const propName = names.find(n => camelToKebab(n) === name);
+    if (propName && this.app) {
+      this._updateProp(propName, newValue);
     }
   }
 }

@@ -8,7 +8,7 @@ export const widgets = [
     name: 'bi-filter-bar',
     vueVersion: '2',
     js: isLocal ? 'http://localhost:8081/bi-filter-bar.js' : '/widgets/bi-filter-bar.js',
-    config: {
+    props: {
       title: '筛选栏',
       filters: [
         { field: 'region', label: '地区', default: 'all', options: [
@@ -31,7 +31,7 @@ export const widgets = [
     name: 'bi-data-source',
     vueVersion: '3',
     js: isLocal ? 'http://localhost:8082/bi-data-source.js' : '/widgets/bi-data-source.js',
-    config: {
+    props: {
       title: '数据源面板',
       metrics: [
         { id: 'sales', name: '销售额', value: 128000, unit: '元' },
@@ -45,7 +45,7 @@ export const widgets = [
     name: 'bi-metric-cards',
     vueVersion: '3',
     js: isLocal ? 'http://localhost:8082/bi-metric-cards.js' : '/widgets/bi-metric-cards.js',
-    config: {
+    props: {
       title: '指标卡组',
       cards: [
         { id: 'growth', label: '增长率', value: '23.5%', trend: 'up', trendValue: '5.2%', extra: '同比上月' },
@@ -59,7 +59,7 @@ export const widgets = [
     name: 'bi-chart-panel',
     vueVersion: '2',
     js: isLocal ? 'http://localhost:8081/bi-chart-panel.js' : '/widgets/bi-chart-panel.js',
-    config: {
+    props: {
       title: '图表面板',
       chartType: 'bar'
     }
@@ -68,13 +68,13 @@ export const widgets = [
     name: 'bi-event-tester',
     vueVersion: '2',
     js: isLocal ? 'http://localhost:8081/bi-event-tester.js' : '/widgets/bi-event-tester.js',
-    config: { title: '事件测试器' }
+    props: { title: '事件测试器' }
   },
   {
     name: 'bi-crash-tester',
     vueVersion: '3',
     js: isLocal ? 'http://localhost:8082/bi-crash-tester.js' : '/widgets/bi-crash-tester.js',
-    config: { title: '崩溃测试器' }
+    props: { title: '崩溃测试器' }
   },
   // ===== 交叉页面演示：三业务域物料同页（Vue2 + Vue3 + 原生 H5）=====
   // 直接用 /widgets/ 路径，确保仅启动 vue2-host 即可运行，无需三个 widget-lib dev server
@@ -82,7 +82,7 @@ export const widgets = [
     name: 'bi-orders-panel',
     vueVersion: '2',
     js: '/widgets/bi-orders-panel.js',
-    config: {
+    props: {
       title: '订单区',
       orders: [
         { id: 'ORD-1001', name: '无线蓝牙耳机', amount: 299.00, status: '已支付' },
@@ -96,7 +96,7 @@ export const widgets = [
     name: 'bi-payment-panel',
     vueVersion: '3',
     js: '/widgets/bi-payment-panel.js',
-    config: {
+    props: {
       title: '支付区',
       amount: 4385.00,
       methods: [
@@ -110,7 +110,7 @@ export const widgets = [
     name: 'bi-recommend-panel',
     vueVersion: 'none',
     js: '/widgets/bi-recommend-panel.js',
-    config: {
+    props: {
       title: '推荐区',
       items: [
         { id: 'REC-01', name: 'USB-C 扩展坞', price: 159, tag: '热销' },
@@ -124,6 +124,6 @@ export const widgets = [
     name: 'bi-load-fail-test',
     vueVersion: '2',
     js: '/widgets/bi-not-exist.js',
-    config: { title: '加载失败测试（应降级）' }
+    props: { title: '加载失败测试（应降级）' }
   }
 ];

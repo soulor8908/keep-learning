@@ -14,11 +14,11 @@
  *   const el = await $widget('bi-sales-panel', { title: '销售面板' });
  *
  *   // 2) JSX 形式（.jsx/.tsx，需配 Babel/Vite 插件）
- *   <Widget name="bi-sales-panel" config={{ title: '销售面板' }} />
+ *   <Widget name="bi-sales-panel" props={{ title: '销售面板' }} />
  *
  *   // 3) 直接运行时调用（无需构建期转换）
  *   import { widgetMount } from 'wc/widget-declarative-plugin/runtime';
- *   await widgetMount({ name: 'bi-sales-panel' }, container, config);
+ *   await widgetMount({ name: 'bi-sales-panel' }, container, props);
  */
 
 export { default as babelPlugin } from './babel-plugin.js';

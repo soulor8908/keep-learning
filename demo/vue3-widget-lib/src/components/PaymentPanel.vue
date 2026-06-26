@@ -1,5 +1,5 @@
 <template>
-  <el-card :header="config.title || '支付区域'" class="bi-payment-panel">
+  <el-card :header="title || '支付区域'" class="bi-payment-panel">
     <div class="team-tag-row">
       <span class="team-tag">B 业务团队 · Vue3</span>
     </div>
@@ -28,15 +28,24 @@ import { ref, computed } from 'vue';
 export default {
   name: 'PaymentPanel',
   props: {
-    config: {
-      type: Object,
-      default: () => ({})
+    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
+    title: {
+      type: String,
+      default: ''
+    },
+    amount: {
+      type: Number,
+      default: 0
+    },
+    methods: {
+      type: Array,
+      default: () => []
     }
   },
   setup(props) {
     const selected = ref(null);
-    const methods = computed(() => (props.config && props.config.methods) || []);
-    const amount = computed(() => Number((props.config && props.config.amount) || 0));
+    const methods = computed(() => props.methods || []);
+    const amount = computed(() => Number(props.amount || 0));
 
     function select(m) {
       selected.value = m.id;
