@@ -143,6 +143,15 @@ export function checkDependencies(widget) {
   const { name, vueVersion = '2', runtimeDeps } = widget;
   const errors = [];
 
+  // vueVersion 缺失告警：默认按 Vue2 校验，但 Vue3 物料漏配会被静默校验为 Vue2，
+  // 错误信息指向 Vue2 极难定位。此处仅告警不阻断（保持向后兼容）
+  if (widget.vueVersion === undefined) {
+    console.warn(
+      `[widget-loader] 物料 ${name} 未声明 vueVersion，默认按 Vue2 校验。` +
+      `Vue3 物料请显式声明 vueVersion:'3'，H5 物料请声明 vueVersion:'none'。`
+    );
+  }
+
   // 1. Vue 运行时校验：按物料声明的 vueVersion 选择对应全局变量
   //    vueVersion='none' 表示原生 H5 物料，不依赖 Vue，跳过校验
   if (vueVersion !== 'none') {
@@ -323,6 +332,9 @@ class WidgetLoader {
     this.definedElements = new Set();
     // 物料名 -> { js, css }：记录每个物料加载的资源 URL，供 unloadWidget 清理
     this.widgetResources = new Map();
+    // URL -> script/link DOM 节点引用：_loadScriptOnce/_loadStyleOnce 创建时存入，
+    // unloadWidget 直接 node.remove() 做 O(1) 卸载，避免全文档 querySelectorAll 扫描
+    this.resourceNodes = new Map();
 
     // ─── 错误边界（Step 3）：单点失败不影响整体 ───
     // 跟踪已挂载物料，全局监听运行时错误并归因到对应物料，
@@ -396,6 +408,8 @@ class WidgetLoader {
         reject(createError(`Failed to load script: ${url}`, WidgetError.SCRIPT_ERROR));
       };
       document.head.appendChild(script);
+      // 保存节点引用，供 unloadWidget 做 O(1) 卸载（避免全文档 querySelectorAll）
+      this.resourceNodes.set(url, script);
     });
 
     // 真正失败时清理缓存，允许重试（仅当缓存仍指向当前 promise）
@@ -471,6 +485,8 @@ class WidgetLoader {
         reject(createError(`Failed to load style: ${url}`, WidgetError.CSS_ERROR));
       };
       document.head.appendChild(link);
+      // 保存节点引用，供 unloadWidget 做 O(1) 卸载（避免全文档 querySelectorAll）
+      this.resourceNodes.set(url, link);
     });
 
     loadPromise.catch(() => {
@@ -986,22 +1002,34 @@ class WidgetLoader {
     const resources = this.widgetResources.get(name);
     if (resources) {
       // 移除 <script> / <link> 标签
-      // 遍历所有标签比较 src/href，而非用 querySelectorAll(URL)，
-      // 避免 URL 含 " 或 ] 等特殊字符时 CSS 选择器语法错误
+      // 优先用 resourceNodes 中保存的节点引用做 O(1) 卸载；
+      // 兜底用 querySelectorAll（兼容非 loader 加载的标签或节点引用丢失场景）
       if (resources.js) {
-        Array.from(document.querySelectorAll('script')).forEach(s => {
-          if (s.src === resources.js || s.getAttribute('src') === resources.js) {
-            if (s.parentNode) s.parentNode.removeChild(s);
-          }
-        });
+        const node = this.resourceNodes.get(resources.js);
+        if (node && node.parentNode) {
+          node.parentNode.removeChild(node);
+        } else {
+          Array.from(document.querySelectorAll('script')).forEach(s => {
+            if (s.src === resources.js || s.getAttribute('src') === resources.js) {
+              if (s.parentNode) s.parentNode.removeChild(s);
+            }
+          });
+        }
+        this.resourceNodes.delete(resources.js);
         this.loadedResources.delete(resources.js);
       }
       if (resources.css) {
-        Array.from(document.querySelectorAll('link[rel="stylesheet"]')).forEach(l => {
-          if (l.href === resources.css || l.getAttribute('href') === resources.css) {
-            if (l.parentNode) l.parentNode.removeChild(l);
-          }
-        });
+        const node = this.resourceNodes.get(resources.css);
+        if (node && node.parentNode) {
+          node.parentNode.removeChild(node);
+        } else {
+          Array.from(document.querySelectorAll('link[rel="stylesheet"]')).forEach(l => {
+            if (l.href === resources.css || l.getAttribute('href') === resources.css) {
+              if (l.parentNode) l.parentNode.removeChild(l);
+            }
+          });
+        }
+        this.resourceNodes.delete(resources.css);
         this.loadedResources.delete(resources.css);
       }
       this.widgetResources.delete(name);

@@ -22,6 +22,7 @@
 14. [声明式插件 Babel AST 转换](#14-声明式插件-babel-ast-转换)
 15. [DevTools 三层桥接架构](#15-devtools-三层桥接架构)
 16. [构建期 AST 风险扫描](#16-构建期-ast-风险扫描)
+17. [性能优化与 API 一致性改进](#17-性能优化与-api-一致性改进)
 
 ---
 
@@ -146,6 +147,49 @@ _loadScriptOnce(url, opts) {
 ```
 
 **关键点**：超时后真实加载成功仍可复用缓存（后续 `loadWidget` 命中 `loadedResources` 直接返回），避免重复创建 `<script>`。
+
+### 2.3 资源节点引用与 O(1) 卸载
+
+`unloadWidget` 需移除 `<script>` / `<link>` 节点。旧实现用 `document.querySelectorAll('script')` 全文档扫描，O(n) 且匹配字符串。改为在加载时保存节点引用到 `resourceNodes` Map，卸载时 O(1) 直接移除。
+
+```js
+// 构造函数中初始化
+constructor(hostId) {
+  this.resourceNodes = new Map();  // url → DOM node 引用
+  // ...
+}
+
+// _loadScriptOnce / _loadStyleOnce 中保存引用
+_loadScriptOnce(url, opts) {
+  // ... 创建 script 节点 ...
+  document.head.appendChild(script);
+  this.resourceNodes.set(url, script);  // 保存引用
+  // ...
+}
+
+// unloadWidget 中 O(1) 移除
+function unloadWidget(name) {
+  // ...
+  if (resources.js) {
+    const node = this.resourceNodes.get(resources.js);
+    if (node && node.parentNode) {
+      node.parentNode.removeChild(node);  // O(1) 直接移除
+    } else {
+      // 回退全文档扫描（兼容边缘场景）
+      Array.from(document.querySelectorAll('script')).forEach(s => {
+        if (s.src === resources.js || s.getAttribute('src') === resources.js) {
+          if (s.parentNode) s.parentNode.removeChild(s);
+        }
+      });
+    }
+    this.resourceNodes.delete(resources.js);
+    this.loadedResources.delete(resources.js);
+  }
+  // CSS 同理
+}
+```
+
+**回退策略**：若 `resourceNodes` 中找不到引用（如跨实例操作），回退到 `querySelectorAll` 全文档扫描，保证健壮性。
 
 ### 2.2 重试策略
 
@@ -700,10 +744,19 @@ function extractUiDependencies(source) {
 
 **文件**：`wc/i18n/index.js`
 
-### 8.1 locale 回退链
+### 8.1 locale 回退链（纯函数 memoize）
+
+`t()` 是渲染期最高频热路径，每次调用都重新计算回退链（split/includes/push）会产生冗余开销。`getLocaleFallbackChain` 是纯函数（输入 locale → 输出确定数组），用模块级 Map 缓存后，同一 locale 仅计算一次。
 
 ```js
+// 模块级缓存（纯函数 memoize）
+const _fallbackChainCache = new Map();
+
 function getLocaleFallbackChain(locale) {
+  // 缓存命中直接返回
+  const cached = _fallbackChainCache.get(locale);
+  if (cached) return cached;
+
   const chain = [locale];
   const base = String(locale).split('-')[0];
   if (base !== locale) chain.push(base);        // 'zh-CN' → push 'zh'
@@ -713,11 +766,15 @@ function getLocaleFallbackChain(locale) {
   // 最终回退到 zh（若 en 也没有，作为最后保障）
   if (!chain.includes('zh')) chain.push('zh');
 
+  _fallbackChainCache.set(locale, chain);
   return chain;
   // 'zh-CN' → ['zh-CN', 'zh', 'en']    （base='zh' 已在链中，跳过 push 'zh'）
   // 'en-GB' → ['en-GB', 'en']           （base='en' 已在链中，跳过 push 'en' 与 'zh'）
   // 'fr'    → ['fr', 'en', 'zh']
 }
+```
+
+**缓存安全性**：`getLocaleFallbackChain` 是纯函数（无副作用、不依赖可变状态、输出确定性），同一 locale 永远返回同一数组。locale 集合有限（通常 zh-CN / en-US 等几种），缓存大小可控，无需淘汰策略。
 ```
 
 ### 8.2 点分键查找
@@ -884,17 +941,63 @@ function isDeepEqual(a, b) {
 
 **注意**：同引用直接判等（`oldValue !== newValue` 浅比较先执行），对「同一对象原地突变后再次传入」无法检测。
 
-### 10.2 injectContext 序列化兜底
+### 10.2 injectContext 序列化缓存与兜底
+
+`renderWidget` 每次挂载物料都调 `injectContext`，每次都 `JSON.stringify` 全量上下文。N 个物料 = N 次序列化。引入版本号缓存后，同一上下文版本仅序列化一次，后续挂载直接复用缓存字符串。
+
+**store 版本号**：`setContext` / `clearContext` 在数据变化时递增 `store.version`，作为缓存失效信号。
 
 ```js
+// store 含 version 字段
+function getStore() {
+  if (!window.__wcContext__) {
+    window.__wcContext__ = { data: {}, listeners: new Map(), version: 0 };
+  }
+  return window.__wcContext__;
+}
+
+// setContext 数据变化时递增版本号
+function setContext(partial, opts) {
+  // ...浅比较/deep 比较...
+  if (changedKeys.length > 0) {
+    // 写入数据
+    store.version++;  // 递增版本号，使 injectContext 缓存失效
+  }
+}
+
+// injectContext 三重缓存键：(store 引用 + version + keys 指纹)
+let _injectCacheStore = null;
+let _injectCacheVersion = -1;
+let _injectCacheKeysFp = undefined;
+let _injectCacheSerialized = null;
+
 function injectContext(element, keys) {
+  if (!element) return;
+  const store = getStore();
   const context = getContext(keys);
+  const keysFp = keys ? JSON.stringify(keys) : null;
+
+  // 三重缓存键：store 引用（跨用例隔离）+ version（变更检测）+ keys 指纹
   let json;
-  try {
-    json = JSON.stringify(context);  // 优先 JSON.stringify（快）
-  } catch (e) {
-    json = safeStringify(context);  // 失败回退 safeStringify（WeakSet 去环）
-    if (!json) json = '{}';  // 再失败为 '{}'
+  if (store && store === _injectCacheStore
+      && store.version === _injectCacheVersion
+      && _injectCacheKeysFp === keysFp
+      && _injectCacheSerialized !== null) {
+    json = _injectCacheSerialized;  // 缓存命中
+  } else {
+    try {
+      json = JSON.stringify(context);  // 优先 JSON.stringify（快）
+    } catch (e) {
+      json = safeStringify(context);  // 失败回退 safeStringify（WeakSet 去环）
+      if (!json) json = '{}';  // 再失败为 '{}'
+    }
+    // 写缓存
+    if (store) {
+      _injectCacheStore = store;
+      _injectCacheVersion = store.version;
+      _injectCacheKeysFp = keysFp;
+      _injectCacheSerialized = json;
+    }
   }
 
   // 同时写入 attribute 与实例属性
@@ -904,6 +1007,11 @@ function injectContext(element, keys) {
   // 序列化失败不阻断挂载
 }
 ```
+
+**三重缓存键的必要性**：
+- **store 引用**：测试中 `delete window.__wcContext__` 后重建 store，引用不同即缓存自动失效，避免跨测试用例状态污染。
+- **version**：`setContext` 递增 version，下次 `injectContext` 检测到 version 不匹配即重新序列化。
+- **keys 指纹**：不同 `keys` 参数序列化不同子集，需区分缓存。
 
 ### 10.3 safeStringify
 
@@ -939,12 +1047,18 @@ Vue3 的 `shouldUpdateComponent` 在 props 未变时会跳过子组件重渲染�
 class WidgetElement extends HTMLElement {
   connectedCallback() {
     // ...
+    this._propsRef = ref(this._collectProps());
+    // 仅当组件声明了 scope prop 时才注入，防止 $attrs fallthrough 到根元素
+    const hasScopeProp = getDeclaredPropNames(Component).includes('scope');
     this._app = createApp({
-      render: () => h(Component, {
-        ...this._propsRef.value,
-        scope: this._scope,
-        ref: this._captureWidget  // 捕获物料组件实例
-      })
+      render: () => {
+        const props = { ...this._propsRef.value };
+        if (hasScopeProp) props.scope = this._scope;
+        return h(Component, {
+          ...props,
+          ref: this._captureWidget  // 捕获物料组件实例
+        });
+      }
     });
 
     // onLocaleChange 注册回调触发 forceUpdate
@@ -964,6 +1078,8 @@ class WidgetElement extends HTMLElement {
 ```
 
 **关键**：必须 forceUpdate 物料组件实例本身（`_widgetInstance`），而非外壳 root。`ref: this._captureWidget` 拿到组件实例引用。
+
+**scope 条件注入**：未声明 `scope` prop 的组件不应收到 `scope`——否则 Vue3 会把它放入 `$attrs` 并 fallthrough 到根元素，渲染成无意义的 `scope="[object Object]"` 属性。通过 `getDeclaredPropNames(Component).includes('scope')` 检测后条件注入，消除此问题。
 
 ### 11.3 Vue2 的对应实现
 
@@ -1520,6 +1636,71 @@ const RISK_PATTERNS = {
 
 ---
 
+## 17. 性能优化与 API 一致性改进
+
+> 本节记录 6 项面向用户体验（降低学习成本、减少改造成本、提升性能）的优化，均为内部实现变更，不改变公开 API 签名，不需用户修改业务代码。
+
+### 17.1 i18n t() 回退链 memoize
+
+**问题**：`t()` 是渲染期最高频热路径，每次调用都重新计算 locale 回退链（split/includes/push），造成冗余计算。
+
+**方案**：`getLocaleFallbackChain` 是纯函数，用模块级 Map 缓存计算结果，同一 locale 仅计算一次。
+
+**收益**：高频 `t()` 调用从 O(chain-length) 降到 O(1) 查找。详见 [§8.1](#81-locale-回退链纯函数-memoize)。
+
+### 17.2 scope.context/t 同步化
+
+**问题**：`scope.context.get()` / `scope.context.onChange()` / `scope.t()` 是异步的（内部用 `import()` 懒加载），但全局 `getContext()` / `onContextChange()` / `t()` 是同步的。同一上下文存在两套异步语义，增加心智负担。
+
+**方案**：将 `widget-context` / `i18n` 改为静态 import（`widget-bus` 已是静态），消除 `import()` 懒加载。`widget-loader` 保持懒加载（`loadWidget` 本身是异步操作）。
+
+**收益**：scope API 与全局 API 语义完全一致，无需区分"scope 里是异步、全局是同步"。改造成本为零（公开 API 签名不变，仅返回值从 Promise 变为同步值，await 同步值不会报错）。
+
+### 17.3 injectContext 序列化缓存
+
+**问题**：`renderWidget` 每次挂载物料都调 `injectContext`，每次都 `JSON.stringify` 全量上下文。N 个物料 = N 次序列化。
+
+**方案**：store 引入 `version` 字段，`setContext` / `clearContext` 变更时递增。`injectContext` 用三重缓存键（store 引用 + version + keys 指纹）缓存序列化结果。
+
+**收益**：同一上下文版本下 N 次挂载仅序列化 1 次，后续直接复用缓存字符串。详见 [§10.2](#102-injectcontext-序列化缓存与兜底)。
+
+### 17.4 unloadWidget 节点引用 O(1) 卸载
+
+**问题**：`unloadWidget` 用 `document.querySelectorAll('script')` 全文档扫描移除节点，O(n) 且字符串匹配。
+
+**方案**：加载时保存 DOM 节点引用到 `resourceNodes` Map，卸载时 O(1) 直接移除。找不到引用时回退 `querySelectorAll`。
+
+**收益**：卸载从 O(n) 全文档扫描降到 O(1) 引用查找。详见 [§2.3](#23-资源节点引用与-o1-卸载)。
+
+### 17.5 vueVersion 缺失告警
+
+**问题**：`vueVersion` 默认 `'2'`，Vue3 物料若遗漏声明会被静默按 Vue2 校验，错误指向 Vue2 依赖链，极难排查。
+
+**方案**：`checkDependencies` 检测到 `vueVersion === undefined` 时 `console.warn` 告警（不阻断），提示显式声明 `vueVersion`。
+
+**收益**：开发者第一时间发现遗漏声明，避免静默降级带来的困惑。
+
+### 17.6 Vue3 wrapper scope 条件注入
+
+**问题**：Vue3 wrapper 无条件注入 `scope: this._scope`。若组件未声明 `scope` prop，Vue3 将其放入 `$attrs` 并 fallthrough 到根元素，渲染成无意义的 `scope="[object Object]"` attribute。
+
+**方案**：通过 `getDeclaredPropNames(Component).includes('scope')` 检测组件是否声明了 `scope` prop，仅在声明时注入。
+
+**收益**：消除 DOM 中无意义的 `scope` attribute，避免对 CSS 选择器 / DOM 查询产生干扰。详见 [§11.2](#112-解决方案forceupdate-物料组件实例)。
+
+### 17.7 优化总览
+
+| 编号 | 优化项 | 维度 | 改造影响 | 性能收益 |
+| ------ | ------ | ------ | ------ | ------ |
+| K1 | i18n 回退链 memoize | 性能 | 无 | t() 热路径 O(chain)→O(1) |
+| K2 | scope.context/t 同步化 | 学习成本 | 无 | 消除 import() 开销 |
+| K3 | injectContext 序列化缓存 | 性能 | 无 | N 次序列化→1 次 |
+| K4 | unloadWidget 节点引用 | 性能 | 无 | O(n) 扫描→O(1) 查找 |
+| K5 | vueVersion 缺失告警 | 学习成本 | 无 | 快速定位遗漏声明 |
+| K6 | scope 条件注入 | 正确性 | 无 | 消除 $attrs fallthrough |
+
+---
+
 ## 附录：关键实现索引
 
 | 技术点 | 文件 | 关键行 |
@@ -1541,3 +1722,9 @@ const RISK_PATTERNS = {
 | 声明式 Babel 转换 | [babel-plugin.js](file:///workspace/wc/widget-declarative-plugin/babel-plugin.js) | `CallExpression` / `JSXElement` visitor |
 | DevTools Hook | [injected.js](file:///workspace/wc/devtools-extension/injected.js) | `customElements.define` / `widgetBus.emit` Hook |
 | AST 风险扫描 | [js-risk-scanner/index.js](file:///workspace/wc/js-risk-scanner/index.js) | `scanViaAST` / `stripCommentsAndStrings` |
+| i18n 回退链缓存 | [i18n/index.js](file:///workspace/wc/i18n/index.js) | `_fallbackChainCache` / `getLocaleFallbackChain` |
+| scope 同步化 | [widget-scope/index.js](file:///workspace/wc/widget-scope/index.js) | 静态 import `widget-context` / `i18n` |
+| injectContext 缓存 | [widget-context/index.js](file:///workspace/wc/widget-context/index.js) | `store.version` / `_injectCacheVersion` |
+| 资源节点引用 | [widget-loader/index.js](file:///workspace/wc/widget-loader/index.js) | `resourceNodes` Map / `unloadWidget` |
+| vueVersion 告警 | [widget-loader/index.js](file:///workspace/wc/widget-loader/index.js) | `checkDependencies` |
+| scope 条件注入 | [vite-plugin.js](file:///workspace/wc/widget-wrapper-plugin/vite-plugin.js) | `hasScopeProp` / `getDeclaredPropNames` |

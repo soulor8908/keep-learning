@@ -35,7 +35,8 @@ function getStore() {
   if (!window[GLOBAL_KEY]) {
     window[GLOBAL_KEY] = {
       data: {},           // 上下文数据 { user, permissions, theme, ... }
-      listeners: new Map() // key -> Set<callback>
+      listeners: new Map(), // key -> Set<callback>
+      version: 0          // 上下文版本号：每次 data 变更（set/clear）递增，供 injectContext 缓存判定
     };
   }
   return window[GLOBAL_KEY];
@@ -106,6 +107,8 @@ export function setContext(partial, opts = {}) {
   if (broadcast && changedKeys.length > 0 && typeof window !== 'undefined' && window.widgetBus) {
     window.widgetBus.emit('context-change', { keys: changedKeys, context: { ...store.data } });
   }
+  // data 变更时递增版本号，使 injectContext 的序列化缓存失效
+  if (changedKeys.length > 0) store.version++;
 }
 
 /**
@@ -163,6 +166,8 @@ export function clearContext(key) {
       try { cb(undefined); } catch (e) { /* ignore */ }
     });
   }
+  // data 变更时递增版本号，使 injectContext 的序列化缓存失效
+  store.version++;
 }
 
 // ─── 多 Host 场景：独立上下文实例 ───
@@ -245,6 +250,18 @@ function safeStringify(obj) {
   });
 }
 
+// ─── injectContext 序列化缓存 ───
+// renderWidget 每次挂载物料都调 injectContext，对整个上下文做 JSON.stringify 后写
+// data-context attribute。看板有 N 个物料时即 N 次全量序列化 + N 次大字符串 DOM 写。
+// 优化：同一上下文版本（version 未变）+ 同 keys 时序列化结果恒定，缓存后跨 element 复用，
+// 把 N 次序列化降为 1 次。setContext/clearContext 递增 version 使缓存自动失效。
+// 注意：缓存键含 store 引用，store 重建（如测试 beforeEach 删 window.__wcContext__）后
+// 引用不同，缓存自动失效，避免新 store 的 version 恰好等于旧 store 缓存 version 时误命中。
+let _injectCacheStore = null;
+let _injectCacheVersion = -1;
+let _injectCacheKeysFp = undefined;
+let _injectCacheSerialized = null;
+
 /**
  * 将全局上下文注入到物料元素
  * @param {HTMLElement} element 物料 DOM 元素
@@ -252,6 +269,7 @@ function safeStringify(obj) {
  */
 export function injectContext(element, keys) {
   if (!element) return;
+  const store = getStore();
   const ctx = getContext();
   const filtered = keys ? {} : ctx;
   if (keys) {
@@ -260,11 +278,24 @@ export function injectContext(element, keys) {
   // 注入到元素属性（供 attributeChangedCallback 读取）
   // 优先用普通 stringify（快）；循环引用等导致失败时降级为 safeStringify，
   // 既保证不抛错，又让 data-context 携带去环后的可用数据而非整体缺失
+  // 序列化缓存：同版本 + 同 keys 复用，避免每次挂载都全量 JSON.stringify
+  const keysFp = keys ? JSON.stringify(keys) : null;
   let serialized;
-  try {
-    serialized = JSON.stringify(filtered);
-  } catch (e) {
-    try { serialized = safeStringify(filtered); } catch (_) { serialized = '{}'; }
+  if (store && store === _injectCacheStore && store.version === _injectCacheVersion
+      && _injectCacheKeysFp === keysFp && _injectCacheSerialized !== null) {
+    serialized = _injectCacheSerialized;
+  } else {
+    try {
+      serialized = JSON.stringify(filtered);
+    } catch (e) {
+      try { serialized = safeStringify(filtered); } catch (_) { serialized = '{}'; }
+    }
+    if (store) {
+      _injectCacheStore = store;
+      _injectCacheVersion = store.version;
+      _injectCacheKeysFp = keysFp;
+      _injectCacheSerialized = serialized;
+    }
   }
   try {
     element.setAttribute('data-context', serialized);

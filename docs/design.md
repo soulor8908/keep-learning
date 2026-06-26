@@ -115,7 +115,7 @@
 - **业务层** 依赖 **编排层**（PageManager）与 **加载层**（mountWidget）。
 - **编排层** 依赖 **加载层**（createWidgetLoader）。
 - **加载层** 依赖 **通信层**（i18n 翻译错误信息）与 **隔离层**（injectContext）。
-- **隔离层** 同步引入 **通信层**（widget-bus），懒加载其他（widget-context / i18n / widget-loader）。
+- **隔离层** 同步引入 **通信层**（widget-bus / widget-context / i18n），保证 scope.context / scope.t 同步语义与全局 API 一致；懒加载 widget-loader（loadWidget 本身是异步操作）。
 - **包装层** 与运行时解耦：构建期 external，运行时通过全局变量桥接。
 
 ---
@@ -132,7 +132,7 @@
 WidgetLoader (class)
 ├── 构造：hostId, loadedResources(Map), definedElements(Set),
 │         widgetResources(Map), mountedWidgets(Map),
-│         globalErrorListenerInstalled(bool), lifecycleHooks(Object)
+│         resourceNodes(Map), globalErrorListenerInstalled(bool), lifecycleHooks(Object)
 ├── 私有方法
 │   ├── _loadScriptOnce(url, opts) / _loadStyleOnce(url, opts)
 │   ├── _attemptMount(container, widget)
@@ -195,7 +195,7 @@ generateVue3Wrapper(widgetName, vueGlobal)
 │   │   ├── shadowRoot 防御守卫
 │   │   ├── _propsRef = ref(collectProps())
 │   │   ├── _scope = createWidgetScope({ name })
-│   │   ├── _app = createApp({ render: () => h(Component, { ..._propsRef.value, scope: _scope }) })
+│   │   ├── _app = createApp({ render: () => h(Component, { ..._propsRef.value, ...(hasScopeProp ? { scope: _scope } : {}) }) })
 │   │   ├── 注册 ElementPlus 组件到 _app（name + kebab 别名）
 │   │   ├── onLocaleChange(() => _widgetInstance.$forceUpdate())
 │   │   └── _app.mount(this)
@@ -237,10 +237,10 @@ createBus(namespace?)
 ```text
 createWidgetScope({ name, version, host })
 ├── meta: { name, version, host, __isWidgetScope: true }
-├── context: { get, subscribe }（只读，set 走基座 setContext）
+├── context: { get, onChange }（只读，同步返回，set 走基座 setContext）
 ├── bus: createBus(name)（命名空间隔离）
 ├── log: { debug, info, warn, error }（debug 默认关闭）
-├── t: (key, params) => i18n.t(key, params)（懒加载 i18n）
+├── t: (key, params) => i18n.t(key, params)（同步返回，与全局 t() 一致）
 ├── request: { fetch(url, opts), addInterceptor(fn) }（受控 fetch）
 ├── loader: { loadWidget(childWidget), mountWidget(container, childWidget), ... }
 └── __noGlobalAccess: true
@@ -262,8 +262,8 @@ checkCycle(name, ancestors)
 ```
 
 **关键设计**：
-- 同步引入 `widget-bus`（保证 scope.bus 同步语义，基座同步监听器在同一事件循环内收到事件）。
-- 懒加载 `widget-context` / `i18n` / `widget-loader`（API 返回 Promise，减小首屏体积）。
+- 同步引入 `widget-bus` / `widget-context` / `i18n`（保证 scope.bus / scope.context / scope.t 同步语义，与全局 API 行为一致）。
+- 懒加载 `widget-loader`（`loadWidget` 本身是异步操作，减小首屏体积）。
 - `Object.freeze` 冻结 scope 防止物料随意扩展。
 - `isWidgetScope(obj)` 仅校验 `meta.__isWidgetScope === true`（不校验顶层 `__noGlobalAccess`，因解构丢失导致误判）。
 
@@ -277,15 +277,17 @@ checkCycle(name, ancestors)
 window.__wcContext__
 ├── data: Object（键值存储）
 ├── listeners: Map<key, Set<cb>>
+├── version: number（变更计数器，setContext/clearContext 变化时递增）
 ├── setContext(partial, opts?)
 │   ├── 浅比较（默认）/ deep 比较（opts.deep=true）
-│   ├── 变化时通知 onContextChange 订阅者
+│   ├── 变化时通知 onContextChange 订阅者 + version++
 │   └── window.widgetBus.emit('context-change', { keys, context })
 ├── getContext(key?) → 返回浅拷贝
 ├── onContextChange(key, cb) → 返回取消函数
-├── clearContext(key)
+├── clearContext(key) → version++
 └── injectContext(element, keys?)
-    ├── JSON.stringify（失败回退 safeStringify 再失败 '{}'）
+    ├── 三重缓存键（store 引用 + version + keys 指纹）命中 → 复用缓存字符串
+    ├── 未命中 → JSON.stringify（失败回退 safeStringify 再失败 '{}'）→ 写缓存
     ├── 写入 element.setAttribute('data-context', json)
     └── 写入 element._wcContext = context（实例属性）
 ```
@@ -722,7 +724,7 @@ export function isWidgetScope(obj: any): boolean;
 
 interface WidgetScope {
   meta: { name: string; version?: string; host?: string; __isWidgetScope: true };
-  context: { get(key?: string): any; subscribe(key: string, cb: Function): () => void };
+  context: { get(key?: string): any; onChange(key: string, cb: Function): () => void };
   bus: { emit, on, once, off };
   log: { debug, info, warn, error };
   t: (key: string, params?: any) => string;
@@ -855,7 +857,7 @@ mountWithFallback(container, widget)
 | `scope.context.get` | `window.__wcContext__` | 只读，set 走基座 |
 | `scope.bus` | `window.widgetBus` | 命名空间隔离 |
 | `scope.log` | `console.*` | debug 可控 |
-| `scope.t` | `window.__wcI18n__.t` | 懒加载 |
+| `scope.t` | `window.__wcI18n__.t` | 同步引入 |
 | `scope.request` | `window.fetch` | 拦截器注入 |
 | `scope.loader` | `window` 直接加载子物料 | 循环检测 |
 

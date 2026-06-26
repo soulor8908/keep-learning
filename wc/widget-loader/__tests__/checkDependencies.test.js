@@ -99,6 +99,25 @@ describe('checkDependencies', () => {
     }
   });
 
+  it("vueVersion 缺失时 console.warn 告警但不阻断（显式声明不告警）", () => {
+    // Vue2 存在，缺失 vueVersion 应通过校验但告警
+    window.Vue2 = { version: '2.6.14' };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // 缺失 vueVersion → 告警
+      expect(() => checkDependencies({ name: 'no-vv' })).not.toThrow();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('未声明 vueVersion'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('vueVersion'));
+      warnSpy.mockClear();
+      // 显式声明 vueVersion:'2' → 不告警
+      checkDependencies({ name: 'has-vv', vueVersion: '2' });
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      delete window.Vue2;
+      warnSpy.mockRestore();
+    }
+  });
+
   it('SUPPORTED_DEPS 导出结构正确', () => {
     expect(SUPPORTED_DEPS.vue2).toEqual({
       version: '2.6.14',

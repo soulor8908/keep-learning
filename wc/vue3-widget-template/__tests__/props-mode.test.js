@@ -101,7 +101,7 @@ describe('vue3 wrapper 扁平化 props 协议', () => {
     expect(vnode.props.maxCount).toBe(5);
     expect(vnode.props.isVisible).toBe(true);
     expect(vnode.props.panelData).toEqual({ x: 1 });
-    // scope 始终注入
+    // scope 在组件声明了 scope prop 时注入（fixture 声明了 scope: Object）
     expect(vnode.props.scope).toBe(el._scope);
     // 扁平化 props 协议：vnode.props 不含 config 字段
     expect(vnode.props).not.toHaveProperty('config');

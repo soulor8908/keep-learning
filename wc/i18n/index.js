@@ -23,10 +23,18 @@ let currentLocale = 'zh';
  * 解析 locale 的回退链
  * 例如 'zh-CN' -> ['zh-CN', 'zh', 'en']，'zh-TW' -> ['zh-TW', 'zh', 'en']
  * 'en-GB' -> ['en-GB', 'en']，'fr' -> ['fr', 'en']
+ *
+ * 性能：getLocaleFallbackChain 是纯函数（相同 locale 恒返回相同链），
+ * t() 是渲染期最高频的热路径，每次调用都重算回退链（split/includes/push）浪费严重。
+ * 故按 locale 做 memoize，locale 种类有限（zh/zh-CN/en/en-GB 等），缓存无界风险可忽略。
+ * 注意：返回的数组被缓存复用，调用方不得修改（当前所有调用方均只读遍历）。
  * @param {string} locale
  * @returns {string[]} 按优先级排列的 locale 列表
  */
+const _fallbackChainCache = new Map();
 function getLocaleFallbackChain(locale) {
+  const cached = _fallbackChainCache.get(locale);
+  if (cached) return cached;
   const chain = [locale];
   // 提取基础语言（如 zh-CN -> zh）
   const base = String(locale).split('-')[0];
@@ -35,6 +43,7 @@ function getLocaleFallbackChain(locale) {
   if (!chain.includes('en')) chain.push('en');
   // 最终回退到 zh（若 en 也没有，作为最后保障）
   if (!chain.includes('zh')) chain.push('zh');
+  _fallbackChainCache.set(locale, chain);
   return chain;
 }
 

@@ -69,6 +69,33 @@ describe('wc/i18n', () => {
       // 回退到 en
       expect(t('sales.title')).toBe('Sales Dashboard');
     });
+
+    it('回退链缓存：多次切换 locale 后 t() 仍返回正确结果（缓存不混淆）', () => {
+      // getLocaleFallbackChain 按 locale 做 memoize（Map 缓存）。
+      // 此用例验证：反复切换 locale 时，缓存不会返回错误 locale 的回退链，
+      // 导致 t() 命中错误字典。若缓存实现错误（如只缓存首个 locale），此用例失败。
+      addMessages('zh', { fbtest: { shared: '中文值' } });
+      addMessages('en', { fbtest: { shared: 'EN value' } });
+      // 循环切换 locale 多次，验证每次 t() 都用当前 locale 的回退链
+      setLocale('zh-CN'); expect(t('fbtest.shared')).toBe('中文值');
+      setLocale('en-GB'); expect(t('fbtest.shared')).toBe('EN value');
+      setLocale('zh-CN'); expect(t('fbtest.shared')).toBe('中文值');
+      setLocale('en');    expect(t('fbtest.shared')).toBe('EN value');
+      setLocale('zh');     expect(t('fbtest.shared')).toBe('中文值');
+      // 未知 locale 回退到 en
+      setLocale('fr');    expect(t('fbtest.shared')).toBe('EN value');
+      // 回到 zh-CN，缓存应仍正确
+      setLocale('zh-CN'); expect(t('fbtest.shared')).toBe('中文值');
+    });
+
+    it('回退链缓存：高频 t() 调用不抛错且结果稳定', () => {
+      // 渲染期 t() 是最高频热路径，缓存后应无副作用
+      setLocale('zh-CN');
+      const first = t('sales.title');
+      for (let i = 0; i < 500; i++) {
+        expect(t('sales.title')).toBe(first);
+      }
+    });
   });
 
   describe('addMessages 深合并', () => {

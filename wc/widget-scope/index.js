@@ -28,39 +28,29 @@
  *   <Component :scope="scope" :config="config" />
  *
  * 物料内部使用：
- *   props: { scope: Object, config: Object }
- *   const user = scope.context.get('user');
- *   const off = scope.context.onChange('user', u => refresh(u));
+ *   props: { scope: Object }
+ *   const user = scope.context.get('user');                    // 同步返回，与全局 getContext() 一致
+ *   const off = scope.context.onChange('user', u => refresh(u)); // 同步返回取消订阅函数
  *   scope.bus.emit('resize', { width: 100 });
  *   scope.log('info', 'mounted');
- *   scope.t('title');
+ *   scope.t('title');                                           // 同步返回，与全局 t() 一致
  */
 
-// widget-bus 同步引入：事件总线 emit/on/once 本身是同步 API（基于 window.dispatchEvent），
-// 为保证 scope.bus 同步语义（基座同步监听器在同一事件循环内收到事件），必须同步可用，
-// 故不再懒加载。widget-bus 体积极小且与 widget-scope 同属基座侧运行时（widget-scope 经
-// external 由基座 window.__wcWidgetScope__ 提供），同步引入不影响物料包首屏体积。
+// widget-bus / widget-context / i18n 同步引入：三者的全局 API 本就是同步的
+// （getContext/t/onContextChange 均同步返回）。若 scope 内再包成 async，会造成
+// "同一套上下文/文案两套异步语义"的心智负担——全局 getContext 同步、scope.context.get
+// 却要 await，docstring 示例也因 async 写错（用户照抄得到 [object Promise]）。
+// 同步引入后 scope.context.get/onChange/t 与全局 API 语义对齐，物料作者照示例即可运行。
+// 体积影响：三者均由基座 external 化提供（widget-scope 经 window.__wcWidgetScope__），
+// 且基座必然加载 widget-loader，后者已静态 import widget-context 与 i18n，故同步引入
+// 不增加基座首屏体积。
 import { createBus } from '../widget-bus/index.js';
+import { getContext, onContextChange } from '../widget-context/index.js';
+import { t as i18nT } from '../i18n/index.js';
 
-// ─── 懒加载依赖：仅在物料实际调用对应 API 时才 import，减小首屏体积 ───
-// 注意：bus 不在此列（见上方同步 import），因为其 API 是同步的；
-// context/i18n/loader 的 API 本身返回 Promise，保持懒加载合理。
-let contextModulePromise = null;
-function getContextModule() {
-  if (!contextModulePromise) {
-    contextModulePromise = import('../widget-context/index.js');
-  }
-  return contextModulePromise;
-}
-
-let i18nModulePromise = null;
-function getI18nModule() {
-  if (!i18nModulePromise) {
-    i18nModulePromise = import('../i18n/index.js');
-  }
-  return i18nModulePromise;
-}
-
+// ─── loader 保持懒加载：loadWidget/mountWidget 底层加载 JS/CSS 资源返回 Promise，
+// API 本质即异步，懒加载合理。且 widget-loader 较重（含 semver/错误边界/资源缓存），
+// 若物料无嵌套加载子物料的需求则不必引入。
 let loaderModulePromise = null;
 function getLoaderModule() {
   if (!loaderModulePromise) {
@@ -150,29 +140,32 @@ export function createWidgetScope(opts = {}) {
   const busNS = name;
   const busInstance = opts.busInstance || createBus(busNS);
 
-  // ─── 只读上下文访问 ───
+  // ─── 只读上下文访问（同步，与全局 getContext/onContextChange 语义对齐）───
   // 物料只能 get/订阅，不能 set（set 走基座 setContext，避免反向耦合）
+  // opts.contextInstance 用于多 Host 场景注入自定义上下文实例（createContext() 产物）
   const context = {
     /**
-     * 获取上下文值（只读快照）
+     * 获取上下文值（只读快照，同步返回）
      * @param {string} [key] 不传返回整个上下文快照
      */
-    async get(key) {
-      const mod = await getContextModule();
-      const inst = opts.contextInstance || mod;
-      return typeof inst.get === 'function'
-        ? inst.get(key)
-        : (mod.getContext ? mod.getContext(key) : undefined);
+    get(key) {
+      if (opts.contextInstance) {
+        return typeof opts.contextInstance.get === 'function'
+          ? opts.contextInstance.get(key)
+          : undefined;
+      }
+      return getContext(key);
     },
     /**
-     * 订阅上下文变化，返回取消订阅函数
+     * 订阅上下文变化，同步返回取消订阅函数
      */
-    async onChange(key, cb) {
-      const mod = await getContextModule();
-      const inst = opts.contextInstance || mod;
-      if (typeof inst.onChange === 'function') return inst.onChange(key, cb);
-      if (typeof mod.onContextChange === 'function') return mod.onContextChange(key, cb);
-      return () => {};
+    onChange(key, cb) {
+      if (opts.contextInstance) {
+        return typeof opts.contextInstance.onChange === 'function'
+          ? opts.contextInstance.onChange(key, cb)
+          : (() => {});
+      }
+      return onContextChange(key, cb);
     }
   };
 
@@ -223,11 +216,9 @@ export function createWidgetScope(opts = {}) {
     }
   };
 
-  // ─── i18n 翻译（共享基座 locale 状态）───
-  async function t(key, params) {
-    const mod = await getI18nModule();
-    if (typeof mod.t === 'function') return mod.t(key, params);
-    return key;
+  // ─── i18n 翻译（同步，与全局 t() 语义对齐，共享基座 locale 状态）───
+  function t(key, params) {
+    return i18nT(key, params);
   }
 
   // ─── 环境元信息（只读）───

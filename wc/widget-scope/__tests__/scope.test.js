@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createWidgetScope, isWidgetScope } from '../index.js';
+import { setContext, getContext } from '../../widget-context/index.js';
 import { createBus } from '../../widget-bus/index.js';
 
 // 刷新微任务队列：用 setTimeout(0) 宏任务确保所有 pending 微任务（含 chained .then）执行完毕
@@ -252,6 +253,66 @@ describe('widget-scope 基础', () => {
       await scope.bus.emit('evt');
       await flush();
       expect(calls).toEqual(['h2']);
+    });
+  });
+
+  // scope.context / scope.t 同步语义：与全局 getContext/t() 对齐，
+  // 消除"同一套上下文/文案两套异步语义"的心智负担。
+  // 旧实现因懒加载 widget-context/i18n，scope.context.get/t 返回 Promise，
+  // docstring 示例也因 async 写错。同步化后 scope API 与全局 API 语义一致。
+  describe('scope.context / scope.t 同步语义（与全局 API 对齐）', () => {
+    // clearContext() 不传 key 不会清空所有数据（只 delete store.data[undefined]），
+    // 故直接删除 window.__wcContext__ 重建 store，确保各用例上下文互不污染
+    beforeEach(() => { delete window.__wcContext__; delete window.widgetBus; });
+    afterEach(() => { delete window.__wcContext__; delete window.widgetBus; });
+
+    it('scope.context.get(key) 同步返回值（非 Promise）', () => {
+      setContext({ user: { id: 42 } });
+      const scope = createWidgetScope({ name: 'sync-ctx' });
+      const result = scope.context.get('user');
+      expect(result).toEqual({ id: 42 });
+      expect(result).not.toBeInstanceOf(Promise);
+    });
+
+    it('scope.context.get() 不传 key 同步返回整个上下文快照', () => {
+      setContext({ theme: 'dark', lang: 'zh' });
+      const scope = createWidgetScope({ name: 'sync-ctx2' });
+      const snap = scope.context.get();
+      expect(snap).toEqual({ theme: 'dark', lang: 'zh' });
+      expect(snap).not.toBeInstanceOf(Promise);
+    });
+
+    it('scope.context.onChange 同步返回取消订阅函数（非 Promise）', () => {
+      const scope = createWidgetScope({ name: 'sync-ctx3' });
+      const off = scope.context.onChange('x', () => {});
+      expect(typeof off).toBe('function');
+      expect(off).not.toBeInstanceOf(Promise);
+      off();
+    });
+
+    it('scope.t 同步返回翻译（非 Promise）', () => {
+      const scope = createWidgetScope({ name: 'sync-t' });
+      const result = scope.t('hello.world');
+      // i18n 默认无 hello.world 翻译，返回 key 本身
+      expect(typeof result).toBe('string');
+      expect(result).not.toBeInstanceOf(Promise);
+    });
+
+    it('scope.context.get 与全局 getContext 返回一致', () => {
+      setContext({ foo: 'bar' });
+      const scope = createWidgetScope({ name: 'sync-consistency' });
+      expect(scope.context.get('foo')).toBe(getContext('foo'));
+    });
+
+    it('scope.context.onChange 收到 setContext 触发的变更', () => {
+      const scope = createWidgetScope({ name: 'sync-change' });
+      const calls = [];
+      const off = scope.context.onChange('cnt', v => calls.push(v));
+      setContext({ cnt: 1 });
+      setContext({ cnt: 2 });
+      off();
+      setContext({ cnt: 3 });
+      expect(calls).toEqual([1, 2]);
     });
   });
 });

@@ -118,12 +118,15 @@ class WidgetElement extends HTMLElement {
     // props 用 ref 承载，render 中访问 .value 建立响应式依赖；
     // 任一 prop 变化时整体替换 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
     this._propsRef = ref(this._collectProps());
+    // 仅当业务组件声明了 scope prop 时才注入，避免未声明时 Vue3 把 scope
+    // 放入 $attrs 并 fallthrough 到根元素（渲染成无意义的 scope="[object Object]" 属性）
+    const hasScopeProp = getDeclaredPropNames(Component).includes('scope');
     this.app = createApp({
-      render: () => h(Component, {
-        ref: this._captureWidget,
-        ...this._propsRef.value,
-        scope: this._scope
-      })
+      render: () => {
+        const props = { ref: this._captureWidget, ...this._propsRef.value };
+        if (hasScopeProp) props.scope = this._scope;
+        return h(Component, props);
+      }
     });
     // 注册基座提供的 element-plus 组件到物料 app（Vue3 app 隔离，基座注册的组件对物料 app 不可见）
     // window.ElementPlus 由基座 setupElementPlus 挂载，含物料用到的 ElCard/ElButton 等

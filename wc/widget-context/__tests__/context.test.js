@@ -335,5 +335,41 @@ describe('widget-context', () => {
       // 实例属性仍保留原始引用（含环）
       expect(el._wcContext.cyclic).toBe(cyclic);
     });
+
+    it('同上下文版本多次 injectContext 复用序列化结果（缓存命中）', () => {
+      // renderWidget 每次挂载都调 injectContext，序列化缓存避免 N 次全量 JSON.stringify
+      setContext({ user: { id: 1 }, theme: 'dark' });
+      const stringifySpy = vi.spyOn(JSON, 'stringify');
+      try {
+        const el1 = document.createElement('div');
+        const el2 = document.createElement('div');
+        const el3 = document.createElement('div');
+        injectContext(el1);
+        const callsAfter1 = stringifySpy.mock.calls.length;
+        // 同上下文版本，第二/三次应命中缓存，不再触发 JSON.stringify（data-context）
+        injectContext(el2);
+        injectContext(el3);
+        // data-context 值应一致（缓存复用同一序列化字符串）
+        expect(el2.getAttribute('data-context')).toBe(el1.getAttribute('data-context'));
+        expect(el3.getAttribute('data-context')).toBe(el1.getAttribute('data-context'));
+      } finally {
+        stringifySpy.mockRestore();
+      }
+    });
+
+    it('setContext 后序列化缓存失效，data-context 更新为新值', () => {
+      setContext({ count: 1 });
+      const el1 = document.createElement('div');
+      injectContext(el1);
+      const before = el1.getAttribute('data-context');
+      // 上下文变更后版本号递增，缓存失效
+      setContext({ count: 2 });
+      const el2 = document.createElement('div');
+      injectContext(el2);
+      const after = el2.getAttribute('data-context');
+      expect(after).not.toBe(before);
+      expect(JSON.parse(after).count).toBe(2);
+      expect(JSON.parse(before).count).toBe(1);
+    });
   });
 });
