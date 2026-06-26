@@ -86,8 +86,11 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { mountWidget, unmountWidget, onWidgetLifecycle } from '../../../wc/widget-loader';
 import { on, emit } from '../../../wc/widget-bus';
-import { widgets } from './widgetRegistry';
+import { loadWidgets } from './widgetRegistry';
 import { changeLocale } from './i18n';
+
+// 物料清单：通过 widget-registry 模块异步加载（远程优先，本地兜底）
+let widgets = [];
 
 const { t, locale } = useI18n();
 
@@ -195,11 +198,22 @@ onMounted(() => {
   unsubs.push(on('payment:success', payload => addLog('bus', `[payment:success] ${payload.method} ¥${payload.amount.toFixed(2)}`)));
   unsubs.push(on('recommend:expose', payload => addLog('bus', `[recommend:expose] ${payload.name} (${payload.id})`)));
 
+  // 加载物料清单（远程注册表 / 本地兜底）后挂载
+  loadAndMount();
+});
+
+async function loadAndMount() {
+  try {
+    widgets = await loadWidgets();
+  } catch (err) {
+    addLog('error', `[registry-load-fail] ${(err.message || '').split('\n')[0]}`);
+    return;
+  }
   // 逐个挂载物料
   mountAll();
   // 挂载交叉页面三物料
   mountCrossPage();
-});
+}
 
 onUnmounted(() => {
   unsubs.forEach(off => { try { off(); } catch (e) { /* ignore */ } });

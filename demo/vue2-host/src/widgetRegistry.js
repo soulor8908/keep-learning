@@ -1,9 +1,15 @@
 // 基座物料注册表
-// 开发模式下自动指向本地物料热构建服务，生产环境使用 public/widgets 下的产物
+// 通过 wc/widget-registry 模块从远程加载物料清单（生产环境），
+// 开发模式或远程失败时回退到本地 FALLBACK_WIDGETS（保留热构建 localhost URL）。
+// 这样部门新增物料只需更新 CDN 上的 registry.json，无需基座配合发版。
+
+import { createRegistry } from '../../../wc/widget-registry';
 
 const isLocal = process.env.NODE_ENV === 'development';
 
-export const widgets = [
+// 本地兜底清单：远程注册表不可用时使用。
+// dev 模式下指向物料热构建服务（localhost:808x），prod 模式下指向 /widgets/ 产物。
+const FALLBACK_WIDGETS = [
   {
     name: 'bi-filter-bar',
     vueVersion: '2',
@@ -127,3 +133,34 @@ export const widgets = [
     props: { title: '加载失败测试（应降级）' }
   }
 ];
+
+// 创建注册表实例：
+// - dev 模式：url=null，直接使用 FALLBACK_WIDGETS（localhost URL），保留热构建体验
+// - prod 模式：url=/widgets/registry.json，远程拉取，失败时回退到 FALLBACK_WIDGETS（/widgets/ URL）
+const registry = createRegistry({
+  url: isLocal ? null : '/widgets/registry.json',
+  fallback: FALLBACK_WIDGETS,
+  cacheKey: 'widget-registry-vue2-host',
+  timeout: 8000,
+  env: { mode: isLocal ? 'development' : 'production' }
+});
+
+/**
+ * 加载物料清单（远程优先，失败回退本地）
+ * @param {boolean} [force=false] 强制刷新缓存
+ * @returns {Promise<Array>}
+ */
+export async function loadWidgets(force = false) {
+  return registry.fetch(force);
+}
+
+/**
+ * 按名称查找物料
+ * @param {string} name
+ * @returns {Promise<object|null>}
+ */
+export function findWidget(name) {
+  return registry.find(name);
+}
+
+export { registry };

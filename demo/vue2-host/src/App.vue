@@ -84,7 +84,7 @@
 <script>
 import { mountWidget, unmountWidget, onWidgetLifecycle } from '../../../wc/widget-loader';
 import { on, emit } from '../../../wc/widget-bus';
-import { widgets } from './widgetRegistry';
+import { loadWidgets } from './widgetRegistry';
 import { changeLocale } from './i18n';
 
 export default {
@@ -92,7 +92,7 @@ export default {
   data() {
     return {
       logs: [],
-      widgets,
+      widgets: [],
       eventTesterMounted: true,
       eventTesterElement: null
     };
@@ -117,10 +117,8 @@ export default {
     this.unsubs.push(on('payment:success', payload => this.addLog('bus', `[payment:success] ${payload.method} ¥${payload.amount.toFixed(2)}`)));
     this.unsubs.push(on('recommend:expose', payload => this.addLog('bus', `[recommend:expose] ${payload.name} (${payload.id})`)));
 
-    // 逐个挂载物料
-    this.mountAll();
-    // 挂载交叉页面三物料
-    this.mountCrossPage();
+    // 加载物料清单（远程注册表 / 本地兜底）后挂载
+    this.loadAndMount();
   },
   beforeDestroy() {
     if (this.unsubs) {
@@ -132,6 +130,18 @@ export default {
     addLog(type, msg) {
       this.logs.unshift({ time: new Date().toLocaleTimeString(), type, msg });
       if (this.logs.length > 30) this.logs.pop();
+    },
+    async loadAndMount() {
+      try {
+        this.widgets = await loadWidgets();
+      } catch (err) {
+        this.addLog('error', `[registry-load-fail] ${(err.message || '').split('\n')[0]}`);
+        return;
+      }
+      // 逐个挂载物料
+      this.mountAll();
+      // 挂载交叉页面三物料
+      this.mountCrossPage();
     },
     async mountAll() {
       const refs = ['filterBar', 'dataSource', 'metricCards', 'chartPanel', 'eventTester', 'crashTester', 'loadFailTest'];
