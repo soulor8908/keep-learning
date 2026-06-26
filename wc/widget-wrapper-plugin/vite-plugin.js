@@ -31,6 +31,7 @@ export function generateVue3Wrapper(widgetName, vueGlobal) {
 import { createApp, h, ref } from 'vue';
 import Component from '__WIDGET_COMPONENT__';
 import { createWidgetScope } from 'wc-widget-scope';
+import { onLocaleChange } from 'wc-i18n';
 
 // ─── 重要：禁止使用 Shadow DOM ───
 // 不要改用 Vue3 官方的 defineCustomElement()——它默认调用 attachShadow()，
@@ -78,6 +79,7 @@ class WidgetElement extends HTMLElement {
     super();
     this.app = null;
     this._propsRef = null;
+    this._offLocale = null;
     // 每个物料实例创建独立的 widgetScope 软隔离对象，
     // 物料组件通过 props.scope 接收，而非直接访问 window。
     // scope 含 context/bus/log/t/request/loader（嵌套加载带循环检测）
@@ -124,6 +126,11 @@ class WidgetElement extends HTMLElement {
       });
     }
     this.app.mount(this);
+    // locale 变化时整体替换 _propsRef.value 触发 Vue3 reactivity 重渲染，
+    // 组件内 t() 自然返回新语言文案（物料组件无需自建 localeTick/onLocaleChange）
+    this._offLocale = onLocaleChange(() => {
+      if (this._propsRef) this._propsRef.value = { ...this._propsRef.value };
+    });
   }
 
   // 收集所有已设置的独立 prop 属性，按声明类型解析为值
@@ -149,6 +156,7 @@ class WidgetElement extends HTMLElement {
   }
 
   disconnectedCallback() {
+    if (this._offLocale) { this._offLocale(); this._offLocale = null; }
     if (this.app) {
       this.app.unmount();
       this.app = null;

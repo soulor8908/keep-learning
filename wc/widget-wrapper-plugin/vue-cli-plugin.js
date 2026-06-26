@@ -26,6 +26,7 @@ function generateVue2Wrapper(widgetName, vueGlobal) {
 import Vue from 'vue';
 import Component from '__WIDGET_COMPONENT__';
 import { createWidgetScope } from 'wc-widget-scope';
+import { onLocaleChange } from 'wc-i18n';
 
 // 告诉 Vue2 编译器 el-* 是自定义元素，不要当 Vue 组件解析
 // 使用合并而非覆盖，避免污染基座或其他物料的 ignoredElements 配置
@@ -73,6 +74,7 @@ class WidgetElement extends HTMLElement {
   constructor() {
     super();
     this.vm = null;
+    this._offLocale = null;
     // 每个物料实例创建独立的 widgetScope 软隔离对象，
     // 物料组件通过 props.scope 接收，而非直接访问 window。
     // scope 含 context/bus/log/t/request/loader（嵌套加载带循环检测）
@@ -112,9 +114,15 @@ class WidgetElement extends HTMLElement {
     });
     this.vm.$mount();
     this.appendChild(this.vm.$el);
+    // locale 变化时强制重渲染，组件内 t() 自然返回新语言文案
+    // （物料组件无需自建 localeTick/onLocaleChange，由 wrapper 基础设施层统一处理）
+    this._offLocale = onLocaleChange(() => {
+      if (this.vm) this.vm.$forceUpdate();
+    });
   }
 
   disconnectedCallback() {
+    if (this._offLocale) { this._offLocale(); this._offLocale = null; }
     if (this.vm) {
       this.vm.$destroy();
       this.vm = null;
