@@ -111,4 +111,79 @@ describe('checkDependencies', () => {
       globalVar: 'Vue3'
     });
   });
+
+  // ─── 高频第三方库（lodash/axios）runtimeDeps 校验 ───
+  describe('runtimeDeps 高频第三方库校验', () => {
+    let originalLodash, originalAxios;
+
+    beforeEach(() => {
+      originalLodash = window._;
+      originalAxios = window.axios;
+      delete window._;
+      delete window.axios;
+    });
+
+    afterEach(() => {
+      if (originalLodash === undefined) delete window._;
+      else window._ = originalLodash;
+      if (originalAxios === undefined) delete window.axios;
+      else window.axios = originalAxios;
+    });
+
+    it('Vue3 + runtimeDeps 均存在且兼容时不抛错', () => {
+      window.Vue3 = { version: '3.4.21' };
+      window._ = { version: '4.17.21' };
+      window.axios = { VERSION: '1.7.7' };
+      expect(() =>
+        checkDependencies({ name: 'w', vueVersion: '3', runtimeDeps: ['lodash', 'axios'] })
+      ).not.toThrow();
+    });
+
+    it('声明 runtimeDeps 但 lodash 缺失时抛错', () => {
+      window.Vue3 = { version: '3.4.21' };
+      window.axios = { VERSION: '1.7.7' };
+      try {
+        checkDependencies({ name: 'w', vueVersion: '3', runtimeDeps: ['lodash', 'axios'] });
+        throw new Error('should have thrown');
+      } catch (err) {
+        expect(err.code).toBe('DEP_VERSION_MISMATCH');
+        expect(err.details.some(d => d.includes('lodash'))).toBe(true);
+      }
+    });
+
+    it('lodash 版本不兼容时抛错', () => {
+      window.Vue3 = { version: '3.4.21' };
+      window._ = { version: '3.10.0' }; // 不满足 ^4.17.0
+      window.axios = { VERSION: '1.7.7' };
+      try {
+        checkDependencies({ name: 'w', vueVersion: '3', runtimeDeps: ['lodash'] });
+        throw new Error('should have thrown');
+      } catch (err) {
+        expect(err.code).toBe('DEP_VERSION_MISMATCH');
+        expect(err.details.some(d => d.includes('lodash') && d.includes('3.10.0'))).toBe(true);
+      }
+    });
+
+    it('H5 物料（vueVersion=none）也可声明 runtimeDeps', () => {
+      window._ = { version: '4.17.21' };
+      expect(() =>
+        checkDependencies({ name: 'h5', vueVersion: 'none', runtimeDeps: ['lodash'] })
+      ).not.toThrow();
+    });
+
+    it('未声明 runtimeDeps 时不校验（向后兼容）', () => {
+      window.Vue3 = { version: '3.4.21' };
+      // window._ 不存在，但因未声明 runtimeDeps，不应报错
+      expect(() => checkDependencies({ name: 'w', vueVersion: '3' })).not.toThrow();
+    });
+
+    it('runtimeDeps 含未知库名时跳过（不阻断）', () => {
+      window.Vue3 = { version: '3.4.21' };
+      window._ = { version: '4.17.21' };
+      // moment 不在 RUNTIME_DEP_KEYS 中，跳过；lodash 存在且兼容，通过
+      expect(() =>
+        checkDependencies({ name: 'w', vueVersion: '3', runtimeDeps: ['moment', 'lodash'] })
+      ).not.toThrow();
+    });
+  });
 });

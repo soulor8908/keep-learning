@@ -274,10 +274,14 @@ export default function h5WidgetVitePlugin(options = {}) {
         },
         rollupOptions: {
           // H5 物料无 Vue 依赖；wc-widget-scope 由基座提供（window.__wcWidgetScope__）
-          external: ['wc-widget-scope'],
+          // 高频第三方库（lodash/axios）同样 external 化，基座统一加载一份
+          external: ['wc-widget-scope', 'lodash', 'axios'],
           output: {
             globals: {
-              'wc-widget-scope': '__wcWidgetScope__'
+              'wc-widget-scope': '__wcWidgetScope__',
+              // 高频库全局变量：lodash → window._，axios → window.axios
+              'lodash': '_',
+              'axios': 'axios'
             }
           }
         }

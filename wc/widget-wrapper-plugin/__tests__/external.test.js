@@ -57,7 +57,7 @@ function createMockWebpackChainConfig() {
 
 describe('widget-wrapper-plugin external 映射', () => {
   describe('T1.3a vue-cli-plugin (Vue2) external', () => {
-    it('默认 vueGlobal=Vue 时，vue → Vue、element-ui → ELEMENT、i18n/scope 走全局变量', () => {
+    it('默认 vueGlobal=Vue 时，vue → Vue、element-ui → ELEMENT、i18n/scope/高频库 走全局变量', () => {
       const { config, captured } = createMockWebpackChainConfig();
       const chainWebpack = widgetVueCliPlugin({
         name: 'bi-sales-panel',
@@ -73,6 +73,9 @@ describe('widget-wrapper-plugin external 映射', () => {
       expect(captured.externals['element-ui']).toBe('ELEMENT');
       expect(captured.externals['wc-i18n']).toBe('__wcI18n__');
       expect(captured.externals['wc-widget-scope']).toBe('__wcWidgetScope__');
+      // 高频第三方库 external 化，避免 N 个物料打包 N 份
+      expect(captured.externals['lodash']).toBe('_');
+      expect(captured.externals['axios']).toBe('axios');
     });
 
     it('自定义 vueGlobal=Vue2 时，vue 被映射到 window.Vue2', () => {
@@ -113,7 +116,7 @@ describe('widget-wrapper-plugin external 映射', () => {
   });
 
   describe('T1.3b vite-plugin (Vue3) external', () => {
-    it('external 含 vue/element-plus/wc-i18n/wc-widget-scope，globals 映射到 Vue/ElementPlus/全局变量', () => {
+    it('external 含 vue/element-plus/wc-i18n/wc-widget-scope/lodash/axios，globals 映射到 Vue/ElementPlus/全局变量', () => {
       const plugin = widgetVitePlugin({
         name: 'bi-finance-panel',
         component: './does-not-exist.vue'
@@ -121,12 +124,15 @@ describe('widget-wrapper-plugin external 映射', () => {
       const cfg = plugin.config();
       const external = cfg.build.rollupOptions.external;
       expect(Array.isArray(external)).toBe(true);
-      expect(external).toEqual(['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope']);
+      expect(external).toEqual(['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope', 'lodash', 'axios']);
       const globals = cfg.build.rollupOptions.output.globals;
       expect(globals.vue).toBe('Vue');
       expect(globals['element-plus']).toBe('ElementPlus');
       expect(globals['wc-i18n']).toBe('__wcI18n__');
       expect(globals['wc-widget-scope']).toBe('__wcWidgetScope__');
+      // 高频第三方库全局变量映射
+      expect(globals['lodash']).toBe('_');
+      expect(globals['axios']).toBe('axios');
     });
 
     it('自定义 vueGlobal=Vue3 时，vue 全局变量为 Vue3', () => {
@@ -156,16 +162,19 @@ describe('widget-wrapper-plugin external 映射', () => {
     // 用真实存在文件作为 entry（h5 插件会检查 fs.existsSync）
     const dummyEntry = path.resolve(process.cwd(), 'wc/widget-wrapper-plugin/postcss-namespace.js');
 
-    it('不 external 任何 vue，仅 external wc-widget-scope', () => {
+    it('不 external 任何 vue，仅 external wc-widget-scope + 高频库 lodash/axios', () => {
       const plugin = h5WidgetVitePlugin({
         name: 'bi-weather-card',
         entry: dummyEntry
       });
       const cfg = plugin.config();
       const external = cfg.build.rollupOptions.external;
-      expect(external).toEqual(['wc-widget-scope']);
+      expect(external).toEqual(['wc-widget-scope', 'lodash', 'axios']);
       const globals = cfg.build.rollupOptions.output.globals;
       expect(globals['wc-widget-scope']).toBe('__wcWidgetScope__');
+      // 高频第三方库全局变量映射
+      expect(globals['lodash']).toBe('_');
+      expect(globals['axios']).toBe('axios');
       // 不含 vue / element-plus / element-ui
       expect(external).not.toContain('vue');
       expect(external).not.toContain('element-plus');

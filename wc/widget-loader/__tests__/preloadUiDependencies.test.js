@@ -65,6 +65,27 @@ describe('preloadUiDependencies', () => {
     expect(jsUrls.some(u => u.endsWith('/input.js'))).toBe(true);
   });
 
+  it('base.css 始终自动加载一次（物料不再自带 base CSS）', async () => {
+    const widgets = [
+      { name: 'a', vueVersion: '3', schema: { uiDependencies: { lib: 'element-plus', version: '^2.7.0', components: ['button'] } } }
+    ];
+    await preloadUiDependencies(widgets, { cdnBase: 'https://cdn.x.com' });
+    const cssUrls = loadStyleSpy.mock.calls.map(c => c[0]);
+    // base.css 由基座统一加载一次，物料无需在产物中自带
+    expect(cssUrls.some(u => u.endsWith('/base.css'))).toBe(true);
+  });
+
+  it('多物料共用同一 lib 时 base.css 只加载一次（去重）', async () => {
+    const widgets = [
+      { name: 'a', vueVersion: '3', schema: { uiDependencies: { lib: 'element-plus', version: '^2.7.0', components: ['button'] } } },
+      { name: 'b', vueVersion: '3', schema: { uiDependencies: { lib: 'element-plus', version: '^2.7.0', components: ['card'] } } }
+    ];
+    await preloadUiDependencies(widgets, { cdnBase: 'https://cdn.x.com' });
+    const cssUrls = loadStyleSpy.mock.calls.map(c => c[0]);
+    const baseCssLoads = cssUrls.filter(u => u.endsWith('/base.css'));
+    expect(baseCssLoads.length).toBe(1);
+  });
+
   it('lib 与 vueVersion 不匹配抛 UI_DEP_LIB_MISMATCH', async () => {
     const widgets = [
       { name: 'a', vueVersion: '3', schema: { uiDependencies: { lib: 'element-ui', version: '^2.15.0', components: ['button'] } } }

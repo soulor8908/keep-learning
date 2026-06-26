@@ -190,7 +190,9 @@ export default function widgetVitePlugin(options = {}) {
           cssFileName
         },
         rollupOptions: {
-          external: ['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope'],
+          // 高频第三方库（lodash/axios）external 化，基座统一加载一份，
+          // 避免 N 个物料各自打包导致体积膨胀与多版本冲突
+          external: ['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope', 'lodash', 'axios'],
           output: {
             globals: {
               vue: vueGlobal,
@@ -198,7 +200,10 @@ export default function widgetVitePlugin(options = {}) {
               // 国际化运行时：基座提供 window.__wcI18n__，物料共享同一实例与 locale 状态
               'wc-i18n': '__wcI18n__',
               // 软隔离 scope 运行时：基座提供 window.__wcWidgetScope__ = { createWidgetScope }
-              'wc-widget-scope': '__wcWidgetScope__'
+              'wc-widget-scope': '__wcWidgetScope__',
+              // 高频库全局变量：lodash → window._，axios → window.axios
+              'lodash': '_',
+              'axios': 'axios'
             }
           }
         }

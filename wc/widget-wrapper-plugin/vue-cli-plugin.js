@@ -174,6 +174,8 @@ module.exports = function widgetVueCliPlugin(options = {}) {
       .libraryTarget('umd');
 
     // external 公共依赖，允许自定义 Vue 全局变量名
+    // 高频第三方库（lodash/axios）external 化，基座统一加载一份，
+    // 避免 N 个物料各自打包导致体积膨胀与多版本冲突
     config.externals({
       vue: vueGlobal,
       'element-ui': 'ELEMENT',
@@ -181,7 +183,10 @@ module.exports = function widgetVueCliPlugin(options = {}) {
       'wc-i18n': '__wcI18n__',
       // 软隔离 scope 运行时：基座提供 window.__wcWidgetScope__ = { createWidgetScope }
       // 物料 wrapper 通过 createWidgetScope 创建独立 scope，作为 prop 注入业务组件
-      'wc-widget-scope': '__wcWidgetScope__'
+      'wc-widget-scope': '__wcWidgetScope__',
+      // 高频库全局变量：lodash → window._，axios → window.axios
+      'lodash': '_',
+      'axios': 'axios'
     });
 
     // 注入组件路径别名

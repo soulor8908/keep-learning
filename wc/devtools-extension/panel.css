@@ -1,0 +1,149 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  font-size: 12px;
+  color: #1a1a1a;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ─── 工具栏 ─── */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+.tabs { display: flex; gap: 2px; }
+
+.tab {
+  padding: 4px 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  border-radius: 3px;
+  color: #555;
+}
+.tab:hover { background: #e0e0e0; }
+.tab.active { background: #fff; border-color: #ddd; color: #1a73e8; font-weight: 600; }
+
+.actions { display: flex; align-items: center; gap: 8px; }
+
+.actions button {
+  padding: 3px 10px;
+  border: 1px solid #ccc;
+  background: #fff;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.actions button:hover { background: #f0f0f0; }
+
+.auto-toggle { font-size: 11px; color: #555; display: flex; align-items: center; gap: 3px; }
+
+/* ─── 状态栏 ─── */
+.status-bar {
+  padding: 3px 8px;
+  background: #e8f0fe;
+  color: #1a73e8;
+  font-size: 11px;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+.status-bar.error { background: #fce8e6; color: #d93025; }
+.status-bar.warning { background: #fef7e0; color: #b06000; }
+
+/* ─── Tab 内容 ─── */
+.tab-content { display: none; flex: 1; overflow: auto; padding: 8px; }
+.tab-content.active { display: block; }
+
+/* ─── 运行时信息 ─── */
+.runtime-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.runtime-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  background: #e8f0fe;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #1a73e8;
+}
+.runtime-badge.missing { background: #fce8e6; color: #d93025; }
+.runtime-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #34a853; }
+.runtime-badge.missing .dot { background: #d93025; }
+
+/* ─── 物料表格 ─── */
+.widget-table { width: 100%; border-collapse: collapse; }
+.widget-table th, .widget-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+.widget-table th { background: #f9f9f9; font-weight: 600; color: #555; }
+.widget-table tr:hover td { background: #f5f9ff; }
+
+.status-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.status-pill.connected { background: #e6f4ea; color: #137333; }
+.status-pill.disconnected { background: #fce8e6; color: #d93025; }
+
+.props-cell, .scope-cell { max-width: 250px; overflow: auto; font-family: monospace; font-size: 11px; }
+
+.empty { text-align: center; color: #999; padding: 20px; }
+
+/* ─── 事件流 ─── */
+.event-list { display: flex; flex-direction: column; gap: 2px; }
+.event-item {
+  display: flex;
+  gap: 8px;
+  padding: 3px 6px;
+  border-bottom: 1px solid #f0f0f0;
+  font-family: monospace;
+}
+.event-item:hover { background: #f5f9ff; }
+.event-time { color: #999; flex-shrink: 0; width: 80px; }
+.event-type { color: #1a73e8; font-weight: 600; flex-shrink: 0; width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.event-payload { color: #333; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─── 性能时间线 ─── */
+.perf-stats { display: flex; gap: 12px; margin-bottom: 8px; font-size: 11px; }
+.perf-stat { color: #555; }
+.perf-stat strong { color: #1a73e8; }
+
+.timeline { display: flex; flex-direction: column; gap: 1px; }
+.timeline-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 6px;
+  border-left: 3px solid #ccc;
+  font-family: monospace;
+  font-size: 11px;
+}
+.timeline-row.loading { border-color: #fbbc04; }
+.timeline-row.loaded { border-color: #34a853; }
+.timeline-row.error { border-color: #d93025; background: #fce8e6; }
+.timeline-row.unmount { border-color: #999; }
+
+.timeline-time { color: #999; width: 80px; flex-shrink: 0; }
+.timeline-event { font-weight: 600; width: 80px; flex-shrink: 0; }
+.timeline-detail { color: #333; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

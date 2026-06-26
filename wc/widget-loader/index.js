@@ -21,10 +21,19 @@ function camelToKebab(str) {
 // ─── 公共依赖版本契约 ───
 // 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖。
 // 导出供基座读取实际承诺版本，避免硬编码导致版本不一致
+//
+// runtimeDeps：高频第三方库（lodash/axios），基座统一加载一份并挂到 window，
+// 物料构建期 external 化（见 widget-wrapper-plugin/*），通过 widget.runtimeDeps
+// 声明使用，checkDependencies 按 window[globalVar] 校验存在性与版本兼容。
 export const SUPPORTED_DEPS = {
   vue2: { version: '2.6.14', compatibleRange: '^2.6.0', globalVar: 'Vue2' },
-  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' }
+  vue3: { version: '3.4.21', compatibleRange: '^3.0.0', globalVar: 'Vue3' },
+  lodash: { version: '4.17.21', compatibleRange: '^4.17.0', globalVar: '_' },
+  axios: { version: '1.7.7', compatibleRange: '^1.0.0', globalVar: 'axios' }
 };
+
+// 物料可选声明的高频第三方库名集合（与 SUPPORTED_DEPS 的非 vue 键对应）
+const RUNTIME_DEP_KEYS = ['lodash', 'axios'];
 
 // ─── 轻量 semver 实现（避免引入外部依赖）───
 // 支持 ^、~、>=、>、<=、<、= 与精确版本、||（或范围）、*（通配符）、预发布版本。
@@ -126,10 +135,12 @@ export function satisfies(version, range) {
  * @param {string} widget.name
  * @param {('2'|'3'|'none')} [widget.vueVersion='2'] 物料依赖的 Vue 主版本；
  *   'none' 表示原生 H5 物料，不依赖任何 Vue 运行时，跳过 Vue 校验
+ * @param {string[]} [widget.runtimeDeps] 物料声明使用的高频第三方库，
+ *   如 ['lodash', 'axios']；基座按 SUPPORTED_DEPS 校验 window[globalVar] 存在性与版本
  * @throws {Error} code='DEP_VERSION_MISMATCH'，message 含逐条不兼容原因
  */
 export function checkDependencies(widget) {
-  const { name, vueVersion = '2' } = widget;
+  const { name, vueVersion = '2', runtimeDeps } = widget;
   const errors = [];
 
   // 1. Vue 运行时校验：按物料声明的 vueVersion 选择对应全局变量
@@ -146,6 +157,30 @@ export function checkDependencies(widget) {
       errors.push(
         t('loader.dep_version', { name, dep: `Vue${vueVersion}`, range: vueDep.compatibleRange, actual: vueRuntime.version })
       );
+    }
+  }
+
+  // 2. 高频第三方库校验：物料通过 runtimeDeps 声明使用（如 ['lodash', 'axios']）
+  //    基座统一加载并挂到 window[globalVar]；缺失或不兼容版本则拒绝加载
+  if (Array.isArray(runtimeDeps)) {
+    for (const depKey of runtimeDeps) {
+      if (!RUNTIME_DEP_KEYS.includes(depKey)) continue; // 未知库名跳过，不阻断
+      const dep = SUPPORTED_DEPS[depKey];
+      const runtime = typeof window !== 'undefined' ? window[dep.globalVar] : undefined;
+      if (!runtime) {
+        errors.push(
+          t('loader.dep_missing', { name, dep: depKey, range: dep.compatibleRange, globalVar: dep.globalVar })
+        );
+      } else {
+        // lodash 挂到 window._ 时无 .version 属性，axios 有 VERSION 字段；
+        // 尝试多字段读取，读不到则跳过版本校验（只校验存在性）
+        const actual = runtime.version || runtime.VERSION || '';
+        if (actual && !satisfies(actual, dep.compatibleRange)) {
+          errors.push(
+            t('loader.dep_version', { name, dep: depKey, range: dep.compatibleRange, actual })
+          );
+        }
+      }
     }
   }
 
@@ -670,6 +705,11 @@ class WidgetLoader {
   emitLifecycle(event, payload) {
     // 统一在 payload 上附加 hostId，基座订阅者可据此区分多 Host 实例的事件来源（修复 N8）
     const enriched = { ...payload, hostId: this.hostId };
+    // DevTools 桥接：若页面注入了 DevTools 扩展的 hook，转发生命周期事件用于性能瀑布图
+    if (typeof window !== 'undefined' && window.__wcDevtoolsBridge &&
+        typeof window.__wcDevtoolsBridge.onLifecycle === 'function') {
+      try { window.__wcDevtoolsBridge.onLifecycle(event, enriched); } catch (_) { /* 不影响主流程 */ }
+    }
     (this.lifecycleHooks[event] || []).forEach(cb => {
       try { cb(enriched); } catch (e) { console.error('[widget-loader] lifecycle hook error:', e); }
     });
@@ -1105,7 +1145,9 @@ export async function preloadUiDependencies(widgets, options = {}) {
     }
 
     if (!groups[lib]) {
-      groups[lib] = { version: stripRange(ui.version), full: !!ui.full, components: new Set(), styles: new Set() };
+      // base 样式（reset/变量）始终纳入加载集合：基座统一加载一次，
+      // 物料不再自带 base CSS，避免 N 个物料重复打包同一份 reset/变量。
+      groups[lib] = { version: stripRange(ui.version), full: !!ui.full, components: new Set(), styles: new Set(['base']) };
     }
     // full 一旦为 true，整组走全量包
     if (ui.full) groups[lib].full = true;
@@ -1138,12 +1180,13 @@ export async function preloadUiDependencies(widgets, options = {}) {
     }
 
     // per-component：base 样式 + 每个组件的 js/css
-    // 先加载 base.css（styles 集合）
-    const baseCssUrls = Array.from(g.styles)
-      .filter(s => s !== 'base' || true) // base 始终加载
-      .map(s => s === 'base'
+    // styles 集合已含 'base'（见分组初始化），base.css 由基座统一加载一次，
+    // 物料不再自带。loadedResources 去重保证多次调用只加载一份。
+    const baseCssUrls = Array.from(g.styles).map(s =>
+      s === 'base'
         ? resolveUiResource(cdnBase, lib, g.version, 'base', 'css')
-        : resolveUiResource(cdnBase, lib, g.version, s, 'css'));
+        : resolveUiResource(cdnBase, lib, g.version, s, 'css')
+    );
 
     const tasks = [];
     for (const comp of g.components) {
