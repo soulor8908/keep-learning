@@ -81,7 +81,7 @@
 | ------ | ------ | ------ |
 | **业务解耦** | 交叉页面的各业务区域独立开发、独立部署，不再纠结归属权。 | 物料以独立 Custom Element 形式存在，基座按注册表组合渲染，各团队独立仓库 / 独立 CI / 独立发布。 |
 | **技术包容** | 不强制统一技术栈（Vue2 / Vue3 / 原生），各部门继续用现有技术。 | `widget-wrapper-plugin` 提供 Vue CLI / Vite / H5 三套打包插件，运行时通过 `window.Vue2` / `window.Vue3` 多版本共存。 |
-| **最小改造** | 业务组件零改造，只改打包配置。 | 包装层支持 `config` 与 `props` 双模兼容：保留组件原有 `props` 不变即可接入（props 模式，推荐），也可用 `config` Object prop 接收聚合配置（向后兼容）。 |
+| **最小改造** | 业务组件零改造，只改打包配置。 | 包装层采用扁平化 props 协议：保留组件原有 `props` 不变即可接入，宿主通过独立 kebab-case HTML attribute 传入每个 prop，包装层按声明类型自动解析注入。 |
 | **UI 一致** | 基座统一提供 UI 组件库与主题，物料复用基座组件，保证视觉和交互一致。 | 基座按需加载 ElementUI / ElementPlus 并暴露为全局变量，物料构建时 `external`，运行时直接用 `<el-card>` 等标签。 |
 | **按需加载** | 页面用到哪个物料才加载，不影响首屏性能。 | `widget-loader` 动态注入 `<script>` / `<link>`，URL 级去重缓存，支持 `requestIdleCallback` 空闲预加载与并发控制。 |
 | **支持嵌套** | 物料可组合嵌套，基座组件也可被物料引用。 | `widget-scope` 暴露 `scope.loader` API，物料内部可加载子物料；内置祖先链循环依赖检测，支持多级嵌套。 |
