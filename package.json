@@ -1,8 +1,4 @@
 {
-  "dependencies": {
-    "netlify-cli": "^26.1.0",
-    "puppeteer-core": "^25.2.0"
-  },
   "devDependencies": {
     "@vue/compiler-sfc": "^3.5.39",
     "acorn": "^8.17.0",

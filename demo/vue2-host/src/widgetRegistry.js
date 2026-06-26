@@ -1,19 +1,17 @@
 // 基座物料注册表
-// 通过 wc/widget-registry 模块从远程加载物料清单（生产环境），
-// 开发模式或远程失败时回退到本地 FALLBACK_WIDGETS（保留热构建 localhost URL）。
-// 这样部门新增物料只需更新 CDN 上的 registry.json，无需基座配合发版。
+// 通过 wc/widget-registry 模块从远程加载物料清单，
+// 远程失败时回退到本地 FALLBACK_WIDGETS。
+// 统一使用 /widgets/ 相对路径，无需额外启动 widget-lib dev server。
 
 import { createRegistry } from '../../../wc/widget-registry';
 
-const isLocal = process.env.NODE_ENV === 'development';
-
 // 本地兜底清单：远程注册表不可用时使用。
-// dev 模式下指向物料热构建服务（localhost:808x），prod 模式下指向 /widgets/ 产物。
+// 统一使用 /widgets/ 相对路径（public/widgets 下的预构建产物）。
 const FALLBACK_WIDGETS = [
   {
     name: 'bi-filter-bar',
     vueVersion: '2',
-    js: isLocal ? 'http://localhost:8081/bi-filter-bar.js' : '/widgets/bi-filter-bar.js',
+    js: '/widgets/bi-filter-bar.js',
     props: {
       title: '筛选栏',
       filters: [
@@ -36,7 +34,7 @@ const FALLBACK_WIDGETS = [
   {
     name: 'bi-data-source',
     vueVersion: '3',
-    js: isLocal ? 'http://localhost:8082/bi-data-source.js' : '/widgets/bi-data-source.js',
+    js: '/widgets/bi-data-source.js',
     props: {
       title: '数据源面板',
       metrics: [
@@ -50,7 +48,7 @@ const FALLBACK_WIDGETS = [
   {
     name: 'bi-metric-cards',
     vueVersion: '3',
-    js: isLocal ? 'http://localhost:8082/bi-metric-cards.js' : '/widgets/bi-metric-cards.js',
+    js: '/widgets/bi-metric-cards.js',
     props: {
       title: '指标卡组',
       cards: [
@@ -64,7 +62,7 @@ const FALLBACK_WIDGETS = [
   {
     name: 'bi-chart-panel',
     vueVersion: '2',
-    js: isLocal ? 'http://localhost:8081/bi-chart-panel.js' : '/widgets/bi-chart-panel.js',
+    js: '/widgets/bi-chart-panel.js',
     props: {
       title: '图表面板',
       chartType: 'bar'
@@ -73,13 +71,13 @@ const FALLBACK_WIDGETS = [
   {
     name: 'bi-event-tester',
     vueVersion: '2',
-    js: isLocal ? 'http://localhost:8081/bi-event-tester.js' : '/widgets/bi-event-tester.js',
+    js: '/widgets/bi-event-tester.js',
     props: { title: '事件测试器' }
   },
   {
     name: 'bi-crash-tester',
     vueVersion: '3',
-    js: isLocal ? 'http://localhost:8082/bi-crash-tester.js' : '/widgets/bi-crash-tester.js',
+    js: '/widgets/bi-crash-tester.js',
     props: { title: '崩溃测试器' }
   },
   // ===== 交叉页面演示：三业务域物料同页（Vue2 + Vue3 + 原生 H5）=====
@@ -135,14 +133,12 @@ const FALLBACK_WIDGETS = [
 ];
 
 // 创建注册表实例：
-// - dev 模式：url=null，直接使用 FALLBACK_WIDGETS（localhost URL），保留热构建体验
-// - prod 模式：url=/widgets/registry.json，远程拉取，失败时回退到 FALLBACK_WIDGETS（/widgets/ URL）
+// 统一从 /widgets/registry.json 拉取注册表，失败时回退到 FALLBACK_WIDGETS。
 const registry = createRegistry({
-  url: isLocal ? null : '/widgets/registry.json',
+  url: '/widgets/registry.json',
   fallback: FALLBACK_WIDGETS,
   cacheKey: 'widget-registry-vue2-host',
-  timeout: 8000,
-  env: { mode: isLocal ? 'development' : 'production' }
+  timeout: 8000
 });
 
 /**
