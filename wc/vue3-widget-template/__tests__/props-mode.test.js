@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-// 验证 vue3 wrapper 的 props 兼容模式：组件声明独立 props（不声明 config），
-// 宿主把每个 prop 作为独立 attribute 传入（kebab-case），包装层按声明类型解析后
-// 作为独立 prop 注入业务组件，无需额外添加 config prop。
+// 扁平化 props 协议测试：vue3 wrapper 把组件声明的 props 作为独立 kebab-case
+// attribute 传入，包装层按声明类型解析后作为独立 prop 注入业务组件。
+// 不再有 config attribute / _configRef / 向后兼容兜底；scope 由框架注入。
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -40,6 +40,7 @@ function makeWrapper(Component) {
   return { tag, WidgetElement };
 }
 
+// 扁平化 props 协议：按 attribute 名设置独立 prop
 function mount(tag, attrs = {}) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -51,7 +52,7 @@ function mount(tag, attrs = {}) {
   return el;
 }
 
-describe('vue3 wrapper props 兼容模式', () => {
+describe('vue3 wrapper 扁平化 props 协议', () => {
   const PropsComponent = {
     name: 'PropsComp',
     props: {
@@ -64,25 +65,26 @@ describe('vue3 wrapper props 兼容模式', () => {
     template: '<div class="props-comp">{{ title }}</div>'
   };
 
-  it('observedAttributes 包含 config + kebab-case 的独立 prop 名', () => {
+  it('observedAttributes 含 kebab-case 的独立 prop 名（不含 config）', () => {
     const { WidgetElement } = makeWrapper(PropsComponent);
-    // 顺序：config 在前，独立 prop 按声明顺序转 kebab（scope 被剔除）
+    // 独立 prop 按声明顺序转 kebab（scope 被剔除）
     expect(WidgetElement.observedAttributes).toEqual(
-      expect.arrayContaining(['config', 'title', 'max-count', 'is-visible', 'panel-data'])
+      expect.arrayContaining(['title', 'max-count', 'is-visible', 'panel-data'])
     );
+    // 扁平化 props 协议：不再含 config
+    expect(WidgetElement.observedAttributes).not.toContain('config');
     // scope 不应被观察（框架注入，非宿主传入）
     expect(WidgetElement.observedAttributes).not.toContain('scope');
   });
 
-  it('未声明 config 的组件：observedAttributes 仍含 config（向后兼容兜底）', () => {
-    const NoConfigComp = {
-      name: 'NoConfig',
-      props: { title: String },
-      template: '<div>{{ title }}</div>'
+  it('未声明 props 的组件：observedAttributes 为空数组', () => {
+    const NoPropsComp = {
+      name: 'NoProps',
+      template: '<div></div>'
     };
-    const { WidgetElement } = makeWrapper(NoConfigComp);
-    expect(WidgetElement.observedAttributes).toContain('config');
-    expect(WidgetElement.observedAttributes).toContain('title');
+    const { WidgetElement } = makeWrapper(NoPropsComp);
+    // 扁平化 props 协议：未声明 props 时无观察属性
+    expect(WidgetElement.observedAttributes).toEqual([]);
   });
 
   it('独立 prop 属性按声明类型解析并注入 vnode.props', () => {
@@ -101,13 +103,7 @@ describe('vue3 wrapper props 兼容模式', () => {
     expect(vnode.props.panelData).toEqual({ x: 1 });
     // scope 始终注入
     expect(vnode.props.scope).toBe(el._scope);
-    el.remove();
-  });
-
-  it('未声明 config 的组件：vnode.props 不含 config 键', () => {
-    const { tag } = makeWrapper(PropsComponent);
-    const el = mount(tag, { title: 'x' });
-    const vnode = el.app._vnode;
+    // 扁平化 props 协议：vnode.props 不含 config 字段
     expect(vnode.props).not.toHaveProperty('config');
     el.remove();
   });
@@ -135,7 +131,7 @@ describe('vue3 wrapper props 兼容模式', () => {
     el.remove();
   });
 
-  it('attributeChangedCallback 更新独立 prop 触发重渲染', () => {
+  it('attributeChangedCallback 更新独立 prop 触发 _propsRef 替换', () => {
     const { tag } = makeWrapper(PropsComponent);
     const el = mount(tag, { title: 'a' });
     expect(el._propsRef.value.title).toBe('a');
@@ -151,28 +147,6 @@ describe('vue3 wrapper props 兼容模式', () => {
     expect(el._propsRef.value.maxCount).toBe(5);
     el.setAttribute('max-count', '10');
     expect(el._propsRef.value.maxCount).toBe(10);
-    el.remove();
-  });
-
-  it('config 与 props 可混用（声明 config 的组件同时支持独立 prop）', () => {
-    const MixedComp = {
-      name: 'Mixed',
-      props: {
-        config: Object,
-        title: String,
-        scope: Object
-      },
-      template: '<div>{{ title }}</div>'
-    };
-    const { tag } = makeWrapper(MixedComp);
-    const el = mount(tag, { title: 't' });
-    // 初始 mount 时 vnode.props 反映初始 render 结果
-    expect(el.app._vnode.props.title).toBe('t');
-    expect(el.app._vnode.props.config).toEqual({});
-    el.setAttribute('config', JSON.stringify({ host: 'demo' }));
-    // 更新后通过 _configRef.value 反映（stub 不重渲染）
-    expect(el._configRef.value).toEqual({ host: 'demo' });
-    expect(el._propsRef.value.title).toBe('t');
     el.remove();
   });
 

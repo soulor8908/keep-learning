@@ -1,8 +1,8 @@
 # AI 一次性迁移演示
 
-> 本目录演示如何通过 **AI 迁移工具**，把两个**老的、未接入 wc 的业务项目**（Vue2 / Vue3）**一次性改造**成看板物料（Custom Element），且**无需为已有 props 的组件额外添加 config 属性**。
+> 本目录演示如何通过 **AI 迁移工具**，把两个**老的、未接入 wc 的业务项目**（Vue2 / Vue3）**一次性改造**成看板物料（Custom Element），且**无需为已有 props 的组件额外添加任何属性**。
 
-这是 `config ↔ props 双模兼容`特性的完整端到端验证：老组件保留原有 `props` 不变，宿主以 `props 模式`加载即可。
+这是扁平化 props 协议的完整端到端验证：老组件保留原有 `props` 不变，宿主以独立 kebab-case attribute 加载即可。
 
 ---
 
@@ -33,7 +33,7 @@ ai-migration-demo/
 
 两个老项目的共同特征：
 - **常规 Vue 业务组件**，使用各自框架的标准 `props` 写法。
-- **不依赖 wc 框架**，没有 `config` prop、没有 `wc-*` 依赖、没有 Custom Element 包装。
+- **不依赖 wc 框架**，没有 `wc-*` 依赖、没有 Custom Element 包装。
 - **可独立 `npm run serve` 预览**，就是普通 Vue 项目。
 
 ---
@@ -65,13 +65,13 @@ npm run serve          # http://localhost:5173，看到财务概览
 ```bash
 # 从仓库根目录执行
 
-# 1. Vue2 组件 → wc 物料（props 模式，保留原有 props，不新增 config）
+# 1. Vue2 组件 → wc 物料（始终 props 模式，保留原有 props）
 node wc/migration-skill/index.js bi-sales-dashboard \
-  ./demo/ai-migration-demo/legacy-vue2-app/src/components/SalesDashboard.vue 2 --mode props
+  ./demo/ai-migration-demo/legacy-vue2-app/src/components/SalesDashboard.vue 2
 
 # 2. Vue3 组件 → wc 物料（props 模式）
 node wc/migration-skill/index.js bi-finance-overview \
-  ./demo/ai-migration-demo/legacy-vue3-app/src/components/FinanceOverview.vue 3 --mode props
+  ./demo/ai-migration-demo/legacy-vue3-app/src/components/FinanceOverview.vue 3
 ```
 
 产物为同目录下的 `*.migrated.vue`。迁移报告示例：
@@ -83,7 +83,7 @@ Vue 版本: 2
 通讯模式: props
 
 变更:
-  ✅ props 模式：保留原有 props，未新增 config prop
+  ✅ 保留原有 props，未新增任何属性
   ✅ 给根元素添加 class="bi-sales-dashboard"
 
 警告:
@@ -97,9 +97,7 @@ Vue 版本: 2
 + <div class="sales-dashboard bi-sales-dashboard">
 ```
 
-`props` 原封不动 —— 这正是 `config ↔ props 双模兼容`带来的收益：**老组件无需新增 config 属性**。
-
-> 也可用 `--mode config` 显式走 config 模式（会补充 `config: Object` prop），适合确实需要聚合配置对象的场景。
+`props` 原封不动 —— 这正是扁平化 props 协议带来的收益：**老组件无需新增任何属性**。
 
 ### 方式 B：AI 辅助迁移 CLI（语义化建议）
 
@@ -114,7 +112,7 @@ node wc/ai-assistant/cli.js migrate bi-finance-overview \
   ./demo/ai-migration-demo/legacy-vue3-app/src/components/FinanceOverview.vue 3
 ```
 
-提示词已内置 `config 与 props 双模兼容`说明，会优先建议保留原有 props（props 模式），仅在需要聚合配置时才建议新增 config prop。
+提示词已内置扁平化 props 协议说明，会建议保留原有 props，宿主以独立 kebab-case attribute 加载。
 
 ### 两种方式的关系
 
@@ -207,36 +205,17 @@ await mountWidget(container, {
 - `metrics: [...]` → `metrics='[{...}]'`（JSON 序列化）
 - `title: null/undefined` → 不写 attribute（由 Vue 应用 prop 默认值）
 
-包装层 `observedAttributes` 自动包含 `config` + 各 prop 的 kebab-case 名，按声明类型解析后作为独立 prop 注入业务组件。
+包装层 `observedAttributes` 自动包含各 prop 的 kebab-case 名，按声明类型解析后作为独立 prop 注入业务组件。
 
 ---
 
-## 六、向后兼容：老基座只传 config 也能加载
-
-即使基座尚未升级到 props 模式、仍用 `config` 传参，迁移后的物料（props 模式）照样能挂载 —— `config` attribute 被包装层解析，但因组件未声明 `config` prop 不会注入；独立 props 取默认值。**升级是平滑的，不会破坏存量基座。**
-
-```js
-// 老基座代码无需改动，仍可加载 props 模式物料
-await mountWidget(container, {
-  name: 'bi-sales-dashboard',
-  js: '/widgets/bi-sales-dashboard.js',
-  config: { legacyConfig: true }   // 不会报错，组件用 props 默认值渲染
-});
-```
-
-混用也支持：`config` 提供聚合配置，`props` 提供独立属性，同名时 `props` 覆盖 `config`。
-
----
-
-## 七、验证：端到端集成测试
+## 六、验证：端到端集成测试
 
 `wc/__tests__/props-integration.test.js` 是本演示的核心验证，覆盖完整链路：
 
 | 用例 | 验证点 |
 |---|---|
-| 基座以 props 模式加载迁移后物料 | `renderWidget(props)` → wrapper → 业务组件收到独立 props（title/metrics/showFooter），未声明 config 不注入 |
-| 基座以 config + props 混用模式加载 | config 与独立 prop 共存，组件同时收到两者 |
-| 老基座仅传 config 仍可加载 props 模式物料 | 向后兼容，config 不注入，独立 props 不凭空造出 |
+| 基座以 props 模式加载迁移后物料 | `renderWidget(props)` → wrapper → 业务组件收到独立 props（title/metrics/showFooter），按声明类型解析注入 |
 
 运行：
 
@@ -246,22 +225,22 @@ npx vitest run wc/__tests__/props-integration.test.js
 
 ---
 
-## 八、迁移检查清单
+## 七、迁移检查清单
 
 迁移完成后人工复核：
 
 - [ ] 根元素是否有 `bi-xxx` 命名空间类名（CLI 已自动添加）
 - [ ] CSS 选择器是否都带 `bi-xxx` 前缀（CLI 会扫描并警告未加命名空间的选择器）
-- [ ] 组件内是否使用了全局状态（Vuex/Pinia/事件总线）——需改为从 props/config 读取或组件自治
+- [ ] 组件内是否使用了全局状态（Vuex/Pinia/事件总线）——需改为从 props 读取或组件自治
 - [ ] 弹窗/抽屉是否挂载到 `document.body`——检查 z-index 与定位是否影响基座
 - [ ] 公共依赖（Vue、ElementUI/ElementPlus）是否 external——由基座统一提供
 - [ ] 是否误用了 Shadow DOM / `defineCustomElement`——会隔离全局样式，禁止使用
 
 ---
 
-## 九、相关文档
+## 八、相关文档
 
 - 完整方案：[`demo/README.md`](../README.md)
 - wc 模块文档：[`wc/README.md`](../../wc/README.md)
 - 迁移 Skill：[`.trae/skills/wc-migration/SKILL.md`](../../.trae/skills/wc-migration/SKILL.md)
-- 双模兼容设计：`wc/widget-loader/index.js`（`renderWidget` 的 `props` 处理）、`wc/vue3-widget-template/widget-wrapper.js`（`createWidgetWrapper` + `parseAttrValue`）
+- 扁平化 props 协议实现：`wc/widget-loader/index.js`（`renderWidget` 的 `props` 序列化）、`wc/vue3-widget-template/widget-wrapper.js`（`createWidgetWrapper` + `parseAttrValue`）

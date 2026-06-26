@@ -147,7 +147,7 @@ function checkCssNamespace(css, widgetName) {
 - AI 把危险用法改成组件自治方式：
   - 全局弹窗改为 `position: fixed` 的内部节点
   - 全局事件总线改为 `widget-bus`
-  - 全局 store 改为组件内部 data / 接收 config
+  - 全局 store 改为组件内部 data / 接收 props
 
 **必要时引入轻量沙箱**：
 
@@ -177,13 +177,13 @@ function checkCssNamespace(css, widgetName) {
 
 **自动化工具**：
 
-- 包装层已经自动把 `config` String 解析为 Object。
+- 包装层已经按 prop 声明类型自动把 attribute 字符串解析为对应值（Boolean/Number/Object/Array/String）。
 - 进一步可以用 `MutationObserver` 监听 attribute 变化，触发组件细粒度更新。
 
 **AI 优化**：
 
-- AI 根据组件实际使用的 props，设计合理的 `config` 结构。
-- 自动生成 `config` 的校验规则，防止基座传入不兼容的数据。
+- AI 根据组件实际使用的 props，设计合理的 props 结构。
+- 自动生成 props 的校验规则，防止基座传入不兼容的数据。
 
 ### 4.5 缺乏生命周期管理 → 增强 loader + 钩子生成
 

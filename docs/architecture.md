@@ -150,14 +150,21 @@ function waitForCustomElement(name, timeout = 5000) { /* ... */ }
 
 #### `renderWidget(container, widget)`
 
-创建目标 Custom Element 实例，并把 `widget.config` JSON 序列化后写入 `config` 属性，最后 append 到基座容器。该操作会触发物料 wrapper 的 `connectedCallback()`。
+创建目标 Custom Element 实例，把 `widget.props` 的每个键按 kebab-case 序列化为独立 attribute 后写入元素，最后 append 到基座容器。该操作会触发物料 wrapper 的 `connectedCallback()`。
 
 ```js
 // wc/widget-loader/index.js:533-547
 export function renderWidget(container, widget) {
-  const { name, config = {} } = widget;
+  const { name, props = {} } = widget;
   const element = document.createElement(name);
-  element.setAttribute('config', JSON.stringify(config));
+  for (const [key, value] of Object.entries(props)) {
+    const attr = camelToKebab(key);
+    if (value === null || value === undefined) continue;          // 移除
+    if (value === true) element.setAttribute(attr, '');           // 空串
+    else if (value === false) element.setAttribute(attr, 'false');// "false"
+    else if (typeof value === 'object') element.setAttribute(attr, JSON.stringify(value));
+    else element.setAttribute(attr, String(value));
+  }
   container.appendChild(element);
   return element;
 }
@@ -411,9 +418,8 @@ import Component from '__WIDGET_COMPONENT__';
 class WidgetElement extends HTMLElement {
   // ...
   connectedCallback() {
-    const config = this.getAttribute('config');
     this.vm = new Vue({
-      render: h => h(Component, { props: { config: parseConfig(config) } })
+      render: h => h(Component, { props: collectProps(this) })
     });
     this.vm.$mount();
     this.appendChild(this.vm.$el);
@@ -443,9 +449,8 @@ class WidgetElement extends HTMLElement {
   // ...
   _mount() {
     if (this.app) { this.app.unmount(); this.app = null; }
-    const config = this.getAttribute('config');
     this.app = createApp({
-      render: () => h(Component, { config: parseConfig(config) })
+      render: () => h(Component, collectProps(this))
     });
     this.app.mount(this); // 挂载到 light DOM
   }

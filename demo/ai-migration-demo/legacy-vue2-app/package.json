@@ -6,9 +6,8 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "migrate": "node ../../wc/migration-skill/index.js bi-sales-dashboard ./src/components/SalesDashboard.vue 2 --mode props",
-    "migrate:config": "node ../../wc/migration-skill/index.js bi-sales-dashboard ./src/components/SalesDashboard.vue 2 --mode config",
-    "ai:migrate": "node ../../wc/ai-assistant/cli.js migrate bi-sales-dashboard ./src/components/SalesDashboard.vue 2"
+    "migrate": "node ../../../wc/migration-skill/index.js bi-sales-dashboard ./src/components/SalesDashboard.vue 2",
+    "ai:migrate": "node ../../../wc/ai-assistant/cli.js migrate bi-sales-dashboard ./src/components/SalesDashboard.vue 2"
   },
   "dependencies": {
     "vue": "^2.6.14"

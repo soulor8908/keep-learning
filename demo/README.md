@@ -77,18 +77,25 @@ import Vue from 'vue';
 import wrap from '@vue/web-component-wrapper';
 import Component from '__WIDGET_COMPONENT__';
 
-// 把 Custom Element 接收到的 String 属性解析成 Object
-function parseConfig(value) {
-  try { return value ? JSON.parse(value) : {}; } catch { return {}; }
+// 按 prop 声明类型解析 attribute 字符串
+function parseAttrValue(type, raw) {
+  if (raw === null) return undefined;            // 未写 attribute → 由 Vue 应用默认值
+  if (type === Boolean) return raw !== 'false';  // true（含空串）→ true，"false" → false
+  if (type === Number)  return Number(raw);
+  if (type === Object || type === Array) {
+    try { return JSON.parse(raw); } catch { return undefined; }
+  }
+  return raw; // String
 }
 
-// 桥接组件：只负责类型转换
+// 遍历组件声明的 props，从 kebab-case attribute 收集并解析为 camelCase prop
+function collectProps(el) { /* 遍历 observedAttributes 读取 */ }
+
+// 桥接组件：把解析后的 props 注入业务组件
 const BridgeComponent = {
-  props: ['config'],
+  props: ['widgetProps'],
   render(h) {
-    return h(Component, {
-      props: { config: parseConfig(this.config) }
-    });
+    return h(Component, { props: this.widgetProps });
   }
 };
 
@@ -112,9 +119,8 @@ import Component from '__WIDGET_COMPONENT__';
 
 class WidgetElement extends HTMLElement {
   connectedCallback() {
-    const config = this.getAttribute('config');
     this.app = createApp({
-      render: () => h(Component, { config: parseConfig(config) })
+      render: () => h(Component, collectProps(this))
     });
     this.app.mount(this);
   }
@@ -124,8 +130,9 @@ class WidgetElement extends HTMLElement {
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (name === 'config' && this.app) {
-      this.app._instance.props.config = parseConfig(newValue);
+    if (this.app) {
+      // 重新收集 props 触发 Vue 重渲染
+      this.app._instance.props = collectProps(this);
     }
   }
 }
@@ -139,13 +146,14 @@ class WidgetElement extends HTMLElement {
 <script>
 export default {
   props: {
-    config: { type: Object, default: () => ({}) }
+    title: { type: String, default: '销售看板' },
+    maxCount: { type: Number, default: 0 }
   }
 };
 </script>
 ```
 
-包装层负责把外部世界的 `String` 转换成内部的 `Object`，业务组件完全无感知。
+包装层负责把外部的 HTML attribute 字符串按声明类型解析后注入，业务组件完全无感知。
 
 ---
 
@@ -268,7 +276,15 @@ export async function mountWidget(container, widget) {
   try {
     await loadWidget(widget);
     const el = document.createElement(widget.name);
-    el.setAttribute('config', JSON.stringify(widget.config));
+    // 把每个 prop 按 kebab-case 序列化为独立 attribute
+    for (const [key, value] of Object.entries(widget.props || {})) {
+      const attr = camelToKebab(key);
+      if (value === null || value === undefined) continue;          // 移除
+      if (value === true) el.setAttribute(attr, '');               // 空串
+      else if (value === false) el.setAttribute(attr, 'false');    // "false"
+      else if (typeof value === 'object') el.setAttribute(attr, JSON.stringify(value));
+      else el.setAttribute(attr, String(value));
+    }
     container.appendChild(el);
   } catch (err) {
     container.innerHTML = `<div class="widget-error">物料加载失败: ${widget.name}</div>`;
@@ -282,7 +298,7 @@ export async function mountWidget(container, widget) {
 1. **URL 级缓存**：同一个 JS/CSS 只加载一次。
 2. **等待注册**：通过轮询 `customElements.get(name)` 等待物料完成注册。
 3. **错误占位**：加载失败时不阻断整个看板，显示友好错误提示。
-4. **配置序列化**：把 Object 配置 JSON.stringify 后作为 `config` 属性传给 Custom Element。
+4. **props 序列化**：把每个 prop 按序列化规则写为独立 kebab-case attribute（true→空串、false→"false"、null/undefined→移除、string→原样、number/object/array→JSON.stringify），包装层按声明类型解析后注入业务组件。
 
 ---
 
@@ -300,10 +316,8 @@ export async function mountWidget(container, widget) {
   "title": "bi-sales-panel",
   "type": "object",
   "properties": {
-    "config": {
-      "type": "object",
-      "default": {}
-    }
+    "title": { "type": "string", "default": "销售看板" },
+    "maxCount": { "type": "number", "default": 0 }
   },
   "layout": {
     "defaultSize": { "w": 6, "h": 4 },

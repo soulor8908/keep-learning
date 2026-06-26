@@ -8,7 +8,7 @@
 |------|---------------|---------|
 | 框架依赖 | Vue2 / Vue3 | 无 |
 | 入口 | `.vue` 组件 | `.js` 导出 render 函数或配置对象 |
-| 响应式 | Vue 响应式系统 | 手动重渲染（config 变化时调 render） |
+| 响应式 | Vue 响应式系统 | 手动重渲染（props 变化时调 render） |
 | 构建插件 | `widget-wrapper-plugin/vite-plugin` | `widget-wrapper-plugin/h5-vite-plugin` |
 | 产物体积 | 较大（含 Vue 运行时 external） | 极小 |
 
@@ -19,7 +19,7 @@
 **方式 A：纯函数（最简，适合纯展示物料）**
 
 ```js
-export default function render(config, scope) {
+export default function render(props, scope) {
   return `<div class="bi-xxx">...</div>`;
 }
 ```
@@ -28,13 +28,13 @@ export default function render(config, scope) {
 
 ```js
 export default {
-  render(config, scope) { return `<div>...</div>`; },
-  onMount(element, config, scope) {
+  render(props, scope) { return `<div>...</div>`; },
+  onMount(element, props, scope) {
     // 绑定事件、启动定时器
     return () => { /* 清理函数，卸载时自动调用 */ };
   },
   onUnmount(element, scope) { /* 额外清理 */ },
-  onConfigChange(element, newConfig, oldConfig, scope) { /* config 变化 */ }
+  onPropsChange(element, newProps, oldProps, scope) { /* props 变化 */ }
 };
 ```
 
@@ -59,7 +59,7 @@ widgetLoader.mountWidget(container, {
   js: 'https://cdn.example.com/h5-widgets/bi-clock-card.js',
   css: 'https://cdn.example.com/h5-widgets/bi-clock-card.css',
   vueVersion: 'none',
-  config: { label: '北京时间', timezone: 'Asia/Shanghai' }
+  props: { label: '北京时间', timezone: 'Asia/Shanghai' }
 });
 ```
 

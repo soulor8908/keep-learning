@@ -14,7 +14,7 @@
 
 1. **Custom Elements + light DOM**：所有物料包装为 Custom Element，**禁止 Shadow DOM**（会隔离 ElementUI/ElementPlus 全局样式）。包装层手写 `HTMLElement`，不用 Vue3 的 `defineCustomElement()`。
 2. **UMD + external**：物料构建为 UMD 格式，Vue / ElementUI / ElementPlus / `wc-i18n` / `wc-widget-scope` 设为 external，由基座统一提供，避免重复打包。
-3. **config attribute 协议**：基座通过 `<bi-xxx config='{"JSON"}'>` 传配置，包装层自动 `JSON.parse` 为 Object 传给业务组件 `props`。
+3. **扁平化 props 协议**：基座通过独立 kebab-case HTML attribute 传入每个 prop（`<bi-xxx title="..." max-count="5" is-visible>`），包装层按声明类型解析后注入业务组件。`renderWidget(container, { name, props })` 仅写 props kebab attribute，**不写 config attribute**。序列化规则：true→空串、false→"false"、null/undefined→移除、string→原样、number/object/array→JSON.stringify。错误码 `WidgetError.PROPS_ERROR`，i18n key `loader.props_serialize_failed`。Vue2/Vue3 wrapper 的 `observedAttributes` 仅含 kebab props（不含 config/scope）；Vue2 用 `data.widgetProps`、Vue3 用 `_propsRef`。H5 wrapper 用 `render(props, scope)` / `getProps()` / `onPropsChange(element, newProps, oldProps, scope)`，物料需声明 `props: ['title','items']` 数组。
 4. **软隔离（widgetScope）**：每个物料实例创建独立的 `widgetScope` 对象（context/bus/log/t/request/loader），物料通过 props/回调接收，而非直接访问 `window`。不用 Shadow DOM / iframe，通过受控 API 表面限制对全局环境的直接依赖。
 5. **构建时静态分析**：`css-namespace-checker`、`scoped-style-checker`、`js-risk-scanner` 集成到构建插件的 `closeBundle`/`done` 钩子，高危项可拦截发布。
 
@@ -164,6 +164,6 @@ widgetLoader.mountWidget(container, {
   js: 'https://cdn.example.com/widgets/bi-finance-panel.js',
   css: 'https://cdn.example.com/widgets/bi-finance-panel.css',
   vueVersion: '3',           // '2' | '3' | 'none'
-  config: { title: '财务看板' }
+  props: { title: '财务看板' }
 });
 ```

@@ -1,4 +1,8 @@
 // @vitest-environment node
+// 扁平化 props 协议测试：生成的 wrapper 代码观察声明的 kebab-case prop attribute，
+// 用 _collectProps / parseAttrValue 收集为 widgetProps（vue2）或 _propsRef（vue3），
+// H5 用 onPropsChange / getProps / render(props, scope)。不再有 parseConfig /
+// ['config'] / _configRef / _updateConfig / onConfigChange / getConfig。
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'module';
 import widgetVueCliPlugin from '../vue-cli-plugin.js';
@@ -27,11 +31,23 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
       expect(code).toContain('this._widgetScope = this._scope');
     });
 
-    it('observedAttributes 声明 config，attributeChangedCallback 解析 config', () => {
+    it('observedAttributes 由声明 props 派生（camelToKebab），不再硬编码 config', () => {
       expect(code).toContain("static get observedAttributes()");
-      expect(code).toContain("return ['config']");
+      // 扁平化 props 协议：观察的属性来自 getDeclaredPropNames + camelToKebab
+      expect(code).toContain('getDeclaredPropNames(Component)');
+      expect(code).toContain('camelToKebab');
+      expect(code).toContain("n !== 'scope'");
+      // 不再硬编码 ['config']
+      expect(code).not.toContain("return ['config']");
+      expect(code).not.toContain('parseConfig');
+    });
+
+    it('attributeChangedCallback 用 parseAttrValue 按 prop 类型解析（非 parseConfig）', () => {
       expect(code).toContain('attributeChangedCallback');
-      expect(code).toContain('parseConfig(newValue)');
+      expect(code).toContain('parseAttrValue');
+      // 扁平化 props 协议：整体替换 widgetProps 触发重渲染
+      expect(code).toContain('this.vm.widgetProps');
+      expect(code).not.toContain('parseConfig');
     });
 
     it('包含 connectedCallback / disconnectedCallback 生命周期', () => {
@@ -42,10 +58,14 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
       expect(code).toContain('this._scope = null');
     });
 
-    it('parseConfig 容错：try/catch 返回 {}', () => {
-      expect(code).toContain('function parseConfig(value)');
-      expect(code).toContain('try { return value ? JSON.parse(value) : {}; }');
-      expect(code).toContain('catch { return {}; }');
+    it('parseAttrValue 容错：Boolean 语义 + JSON.parse 回退原始字符串', () => {
+      expect(code).toContain('function parseAttrValue(raw, type)');
+      expect(code).toContain('if (type === Boolean)');
+      expect(code).toContain("raw === ''");
+      expect(code).toContain("raw === 'false'");
+      expect(code).toContain('try { return JSON.parse(raw); } catch (_) { return raw; }');
+      // 不再有 parseConfig 函数
+      expect(code).not.toContain('function parseConfig');
     });
 
     it('vueGlobal 参数注入到 wrapper（不影响默认 Vue 全局名）', () => {
@@ -64,10 +84,14 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
       expect(code).toContain('class WidgetElement extends HTMLElement');
     });
 
-    it('使用 ref 承载 config 实现响应式更新，避免 unmount/remount', () => {
-      expect(code).toContain('this._configRef = ref(');
-      expect(code).toContain('this._configRef.value =');
-      expect(code).toContain('_updateConfig');
+    it('使用 ref 承载 props 实现响应式更新（_propsRef，非 _configRef）', () => {
+      // 扁平化 props 协议：_propsRef 而非 _configRef
+      expect(code).toContain('this._propsRef = ref(');
+      expect(code).toContain('this._propsRef.value =');
+      expect(code).toContain('_updateProp');
+      // 不再含 config 相关
+      expect(code).not.toContain('_configRef');
+      expect(code).not.toContain('_updateConfig');
     });
 
     it('shadowRoot 防御性守卫：检测到 shadowRoot 时 console.error 告警', () => {
@@ -84,9 +108,13 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
       expect(code).toContain('this.app.unmount()');
     });
 
-    it('attributeChangedCallback 在 config 变化时调用 _updateConfig', () => {
-      expect(code).toContain("if (name === 'config'");
-      expect(code).toContain('this._updateConfig(newValue)');
+    it('attributeChangedCallback 在声明 prop 变化时调用 _updateProp（非 config）', () => {
+      // 扁平化 props 协议：反查 prop 名后调用 _updateProp(propName, newValue)
+      expect(code).toContain('camelToKebab(n) === name');
+      expect(code).toContain('this._updateProp(propName, newValue)');
+      // 不再硬编码 name === 'config'
+      expect(code).not.toContain("name === 'config'");
+      expect(code).not.toContain('_updateConfig');
     });
   });
 
@@ -118,24 +146,30 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
       expect(code).toContain("this._scope = createMinimalScope('bi-weather-card')");
     });
 
-    it('生命周期含 onMount/onUnmount/onConfigChange 钩子调用', () => {
+    it('生命周期含 onMount/onUnmount/onPropsChange 钩子调用（非 onConfigChange）', () => {
       expect(code).toContain('connectedCallback()');
       expect(code).toContain('typeof onMount === \'function\'');
       expect(code).toContain('disconnectedCallback()');
       expect(code).toContain('typeof onUnmount === \'function\'');
       expect(code).toContain('attributeChangedCallback');
-      expect(code).toContain('typeof onConfigChange === \'function\'');
+      // 扁平化 props 协议：onPropsChange 而非 onConfigChange
+      expect(code).toContain('typeof onPropsChange === \'function\'');
+      expect(code).not.toContain('onConfigChange');
     });
 
-    it('_render 把 render() 返回的字符串写入 innerHTML', () => {
+    it('_render 把 render(props, scope) 返回的字符串写入 innerHTML', () => {
       expect(code).toContain('_render()');
-      expect(code).toContain('const html = render(this._config, this._scope)');
+      // 扁平化 props 协议：render(this._props, this._scope) 而非 render(this._config, ...)
+      expect(code).toContain('const html = render(this._props, this._scope)');
       expect(code).toContain('this.innerHTML = html');
+      expect(code).not.toContain('this._config');
     });
 
-    it('提供 getConfig / getScope 访问器', () => {
-      expect(code).toContain('getConfig()');
+    it('提供 getProps / getScope 访问器（非 getConfig）', () => {
+      // 扁平化 props 协议：getProps 而非 getConfig
+      expect(code).toContain('getProps()');
       expect(code).toContain('getScope()');
+      expect(code).not.toContain('getConfig');
     });
   });
 });

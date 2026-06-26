@@ -366,11 +366,7 @@ npm run build
 
 ### 业务组件需要改什么？
 
-**通常不需要改代码。** 包装层支持 `config` 与 `props` 双模兼容：
-
-#### props 模式（推荐，零改造复用原有 props）
-
-保留组件原有的 `props` 不变，无需新增 `config`。宿主通过独立 HTML 属性（kebab-case）传入每个 prop，包装层按声明类型自动解析：
+**通常不需要改代码。** 包装层采用扁平化 props 协议：保留组件原有的 `props` 不变即可接入，宿主通过独立 HTML 属性（kebab-case）传入每个 prop，包装层按声明类型自动解析：
 
 ```vue
 <script>
@@ -383,7 +379,7 @@ export default {
 </script>
 ```
 
-宿主加载时通过 `props` 字段传入：
+宿主加载时通过 `props` 字段传入（每个 prop 按 kebab-case 拆为独立 attribute）：
 
 ```js
 await mountWidget(container, {
@@ -394,21 +390,7 @@ await mountWidget(container, {
 // 等价于：<bi-xxx title="Q3 概览" max-count="5">
 ```
 
-#### config 模式（向后兼容，需要聚合配置时）
-
-包装层把 Custom Element 上的 `config` 字符串属性解析为 Object，传给业务组件的 `config` prop：
-
-```vue
-<script>
-export default {
-  props: {
-    config: { type: Object, default: () => ({}) }
-  }
-};
-</script>
-```
-
-只要旧组件本来就接收 `config` Object prop，直接改打包配置即可。两种模式可混用。详见 [`wc/README.md` § 1.3](wc/README.md)。
+详见 [`wc/README.md` § 1.3](wc/README.md)。
 
 ### schema.json 自动生成
 
@@ -429,7 +411,7 @@ export const widgets = [
     vueVersion: '2',
     js: 'https://cdn.example.com/widgets/bi-sales-panel.js',
     css: 'https://cdn.example.com/widgets/bi-sales-panel.css',
-    config: { title: '销售看板' }
+    props: { title: '销售看板' }
   }
 ];
 ```
@@ -441,13 +423,11 @@ export const widgets = [
 对于旧组件迁移、schema 语义补充、README 生成，可使用迁移工具与 AI 辅助 CLI：
 
 ```bash
-# 规则化一次性迁移（推荐首选，默认 props 模式，保留原有 props）
+# 规则化一次性迁移（推荐首选，始终 props 模式，保留原有 props）
 node wc/migration-skill/index.js bi-sales-panel ./src/components/SalesPanel.vue 2
 node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3
-# 显式 config 模式（需要聚合配置时）
-node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3 --mode config
 
-# AI 辅助迁移（结合双模兼容提示词，优先建议保留原有 props）
+# AI 辅助迁移（结合扁平化 props 协议提示词，保留原有 props）
 node wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.vue
 
 # 生成更丰富的 schema

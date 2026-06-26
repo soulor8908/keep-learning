@@ -154,12 +154,15 @@ describe('wc/ai-assistant/cli', () => {
       expect(prompt).toContain('```vue');
     });
 
-    it('migrate 提示词包含 config 与 props 双模兼容说明', () => {
+    it('migrate 提示词为单一扁平化 props 模式说明', () => {
       const prompt = buildPrompt('migrate', 'bi-test-widget', FIXTURE_VUE);
-      // 验证新提示词涵盖 props 模式与 config 模式
-      expect(prompt).toContain('props 模式');
-      expect(prompt).toContain('config 模式');
-      expect(prompt).toContain('不要为已有独立 props 的组件强行新增 config prop');
+      // 验证新提示词为单一扁平化 props 协议（无 config 模式、无双模兼容说明）
+      expect(prompt).toContain('扁平化 props');
+      expect(prompt).toContain('单一模式');
+      expect(prompt).toContain('聚合 prop');
+      // 不应再出现 config 模式 / 双模 兼容说明
+      expect(prompt).not.toContain('config 模式');
+      expect(prompt).not.toContain('双模');
     });
 
     it('schema 任务加载 generate-schema 提示词', () => {

@@ -13,10 +13,7 @@ description: >
 ## 一、方案核心原则
 
 - **不修改业务逻辑**：只在组件外层包一层 Custom Element。
-- **config 与 props 双模兼容（推荐 props 模式）**：包装层同时支持两种通讯方式，业务组件改造时无需额外添加 config 属性：
-  - **props 模式（推荐）**：保留组件原有 props 不变。宿主通过独立的 HTML 属性（kebab-case）传入每个 prop，包装层按声明类型解析并注入。例如组件声明 `props: { title: String, maxCount: Number }`，宿主写 `<bi-xxx title="hello" max-count="5">`，无需新增 config prop。
-  - **config 模式（向后兼容）**：宿主通过 `config='{"title":"a"}'` 传入聚合配置对象，包装层解析为 Object 传给 `props.config`（组件需声明 `config: Object`）。
-  - 两种模式可混用：组件可同时声明 config（聚合配置）和其它独立 props，宿主可同时传 config attribute 和独立 prop 属性。
+- **扁平化 props 协议（始终 props 模式）**：保留组件原有 props 不变。宿主通过独立的 HTML 属性（kebab-case）传入每个 prop，包装层按声明类型解析并注入。例如组件声明 `props: { title: String, maxCount: Number }`，宿主写 `<bi-xxx title="hello" max-count="5">`，**禁止新增 config prop**。
 - **公共依赖 external**：Vue、ElementUI/ElementPlus 由基座统一提供，物料包只打包业务代码。
 - **schema 自动生成**：通过 `wc/schema-generator/index.js` 扫描组件 props 生成 `bi-xxx.schema.json`。
 - **无 Shadow DOM**：保持 ElementUI/ElementPlus 全局样式可用，业务组件只需加 `bi-xxx` 命名空间。
@@ -26,23 +23,18 @@ description: >
 
 ## 二、快速迁移（自动化 CLI）
 
-对于规则明确的改造，可以直接使用迁移辅助 CLI：
+对于规则明确的改造，可以直接使用迁移辅助 CLI（始终 props 模式，保留原有 props，无 `--mode` 参数）：
 
 ```bash
-# Vue2 组件（默认 props 模式，保留原有 props 不新增 config）
+# Vue2 组件（保留原有 props，禁止新增 config）
 node wc/migration-skill/index.js bi-sales-panel ./src/components/SalesPanel.vue 2
 
-# Vue3 组件（props 模式）
+# Vue3 组件（保留原有 props）
 node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3
-
-# 显式指定 config 模式（需要聚合通讯配置时）
-node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3 --mode config
 ```
 
 CLI 会自动完成：
-1. 按通讯模式处理 config prop：
-   - `--mode props`（默认）：保留原有 props，不强行新增 config prop。
-   - `--mode config`：若无 config prop 则补充 `config: { type: Object, default: () => ({}) }`。
+1. 保留组件原有 props，**禁止新增 config prop**。
 2. 给根元素添加 `bi-xxx` 命名空间类名。
 3. 调用 `css-namespace-checker` 检查样式冲突。
 4. 调用 `js-risk-scanner` 检查全局状态 / body 挂载等风险。
@@ -58,18 +50,13 @@ CLI 会自动完成：
 2. **物料名称**：统一以 `bi-` 开头，例如 `bi-sales-panel`。
 3. **技术栈**：Vue2 还是 Vue3，使用 Vue CLI 还是 Vite。
 4. **是否有 ElementUI/ElementPlus 以外的全局依赖**：如有，需要评估是否 external。
-5. **组件内部是否使用全局状态**：如 Vuex/Pinia/事件总线，需要改为组件自治或从 config 读取。
+5. **组件内部是否使用全局状态**：如 Vuex/Pinia/事件总线，需要改为组件自治或从 props 读取。
 
 ## 四、迁移执行步骤
 
 ### 步骤 1：确认并改造组件代码（如需）
 
-#### 通讯模式选择
-
-- **props 模式（推荐）**：如果组件已有独立 props（如 `title`、`maxCount`），**保留原有 props 不变**，无需新增 config prop。宿主会通过独立属性（kebab-case）传入。
-- **config 模式**：仅当组件需要接收一个聚合的通讯配置对象（含多个字段、嵌套结构、宿主上下文）时，才添加 config prop。
-
-#### props 模式（推荐，无需改组件 props）
+保留组件原有 props 不变，**禁止新增 config prop**。宿主通过独立属性（kebab-case）传入每个 prop。
 
 如果组件已有 props，直接保留即可。只需给根元素加类名：
 
@@ -83,39 +70,6 @@ CLI 会自动完成：
 
 ```html
 <bi-xxx title="hello" max-count="5" is-visible></bi-xxx>
-```
-
-#### config 模式（需要聚合配置时）
-
-检查业务组件是否已有 `config` prop：
-
-- 如果已有 `config: Object`，**无需修改组件代码**。
-- 如果没有，给组件添加：
-
-```vue
-<script>
-export default {
-  props: {
-    config: { type: Object, default: () => ({}) }
-  }
-};
-</script>
-```
-
-同时给根元素加类名：
-
-```html
-<div class="bi-xxx">
-  ...
-</div>
-```
-
-#### 混用模式
-
-组件可同时声明 config 和独立 props，宿主可同时传 config attribute 和独立 prop 属性：
-
-```html
-<bi-xxx config='{"host":"demo"}' title="hello" max-count="5"></bi-xxx>
 ```
 
 ### 步骤 2：添加打包配置
@@ -197,12 +151,11 @@ node wc/ai-assistant/cli.js readme <WIDGET_NAME> <COMPONENT_PATH>
 
 ## 五、基座接入说明
 
-基座侧使用物料加载器加载并渲染，支持 config 和 props 两种传参方式：
+基座侧使用物料加载器加载并渲染，通过 `props` 字段把每个 prop 以 kebab-case 独立 attribute 传入：
 
 ```js
 import { mountWidget } from './wc/widget-loader';
 
-// 方式 1：props 模式（推荐）—— 每个属性按 kebab-case 拆为独立 attribute
 await mountWidget(containerElement, {
   name: '<WIDGET_NAME>',
   js: 'https://cdn.xxx/<WIDGET_NAME>.js',
@@ -214,24 +167,9 @@ await mountWidget(containerElement, {
     panelData: { x: 1 }
   }
 });
-
-// 方式 2：config 模式（向后兼容）—— 整包配置对象序列化为 config attribute
-await mountWidget(containerElement, {
-  name: '<WIDGET_NAME>',
-  js: 'https://cdn.xxx/<WIDGET_NAME>.js',
-  css: 'https://cdn.xxx/<WIDGET_NAME>.css',
-  config: { title: '示例标题', host: 'demo' }
-});
-
-// 方式 3：混用 —— config 提供聚合配置，props 提供独立属性（同名时 props 覆盖）
-await mountWidget(containerElement, {
-  name: '<WIDGET_NAME>',
-  js: 'https://cdn.xxx/<WIDGET_NAME>.js',
-  css: 'https://cdn.xxx/<WIDGET_NAME>.css',
-  config: { host: 'demo', lang: 'zh' },
-  props: { title: '示例标题', maxCount: 5 }
-});
 ```
+
+加载器内部会把 `props` 的 camelCase 键序列化为独立 kebab-case attribute（`true`→空串、`false`→"false"、`null/undefined`→移除、`string`→原样、`number/object/array`→JSON.stringify），包装层按声明类型解析后注入业务组件。
 
 ## 六、关键文件位置
 
@@ -254,7 +192,7 @@ await mountWidget(containerElement, {
 
 | 风险 | 处理建议 |
 |---|---|
-| 组件使用 Vuex/Pinia | 改为从 `config` 读取数据，或组件内部自治 |
+| 组件使用 Vuex/Pinia | 改为从 `props` 读取数据，或组件内部自治 |
 | 弹窗挂载到 document.body | 检查是否影响基座样式，必要时调整 z-index/定位 |
 | 样式冲突 | 确保根类名为 `bi-xxx`，所有选择器加该前缀 |
 | 依赖版本不一致 | 约束 ElementUI/ElementPlus 等大版本一致 |

@@ -1,4 +1,7 @@
 // @vitest-environment node
+// 扁平化 props 协议测试：babel-plugin 把 $widget(name, props) 与
+// <Widget name props={...} /> 转为 widgetMount(meta, container, props)。
+// JSX 属性名为 'props'（非 'config'）；宏调用第二参数为 props（第三参数透传给 widgetMount）。
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createRequire } from 'module';
 
@@ -105,15 +108,16 @@ describe('widget-declarative-plugin babel-plugin', () => {
   });
 
   describe('T3.2a $widget 宏转换（CallExpression visitor）', () => {
-    it('$widget(name, config) 内联 registry → widgetMount(meta, undefined, config)', () => {
+    it('$widget(name, props) 内联 registry → widgetMount(meta, undefined, props)', () => {
       const registry = {
         'bi-sales-panel': { js: 'https://cdn/x.js', css: 'https://cdn/x.css', vueVersion: '2' }
       };
       const plugin = widgetDeclarativeBabelPlugin({ types: t });
-      const configArg = { type: 'ObjectExpression', properties: [] };
+      // 扁平化 props 协议：第二个参数是 props（非 config）
+      const propsArg = { type: 'ObjectExpression', properties: [] };
       const node = makeCallNode('$widget', [
         { type: 'StringLiteral', value: 'bi-sales-panel' },
-        configArg
+        propsArg
       ]);
       const path = createMockPath(node);
       const state = { opts: { registry } };
@@ -133,18 +137,18 @@ describe('widget-declarative-plugin babel-plugin', () => {
       // 第二个参数是 undefined（自动容器）
       expect(rep.arguments[1].type).toBe('Identifier');
       expect(rep.arguments[1].name).toBe('undefined');
-      // 第三个参数是 config
-      expect(rep.arguments[2]).toBe(configArg);
+      // 第三个参数是 props
+      expect(rep.arguments[2]).toBe(propsArg);
     });
 
-    it('$widget(name, container, config) 三参数：container 透传', () => {
+    it('$widget(name, container, props) 三参数：container 透传', () => {
       const plugin = widgetDeclarativeBabelPlugin({ types: t });
       const containerArg = { type: 'Identifier', name: 'hostEl' };
-      const configArg = { type: 'ObjectExpression', properties: [] };
+      const propsArg = { type: 'ObjectExpression', properties: [] };
       const node = makeCallNode('$widget', [
         { type: 'StringLiteral', value: 'bi-x' },
         containerArg,
-        configArg
+        propsArg
       ]);
       const path = createMockPath(node);
       const state = { opts: { registry: {} } };
@@ -152,14 +156,14 @@ describe('widget-declarative-plugin babel-plugin', () => {
 
       const rep = path._replacement;
       expect(rep.arguments[1]).toBe(containerArg);
-      expect(rep.arguments[2]).toBe(configArg);
+      expect(rep.arguments[2]).toBe(propsArg);
       // meta 仅含 name（registry 无此物料）
       const meta = objectExprToObj(rep.arguments[0]);
       expect(meta.name).toBe('bi-x');
       expect(meta.js).toBeUndefined();
     });
 
-    it('$widget(name) 单参数：container 与 config 均为 undefined', () => {
+    it('$widget(name) 单参数：container 与 props 均为 undefined', () => {
       const plugin = widgetDeclarativeBabelPlugin({ types: t });
       const node = makeCallNode('$widget', [{ type: 'StringLiteral', value: 'bi-x' }]);
       const path = createMockPath(node);
@@ -247,13 +251,14 @@ describe('widget-declarative-plugin babel-plugin', () => {
   });
 
   describe('T3.2b JSX <Widget> 元素转换（JSXElement visitor）', () => {
-    it('JSX 子节点位置：<Widget name="bi-x" config={cfg} /> → JSXExpressionContainer', () => {
+    it('JSX 子节点位置：<Widget name="bi-x" props={p} /> → JSXExpressionContainer', () => {
       const registry = { 'bi-x': { js: 'https://x.js', vueVersion: '3' } };
       const plugin = widgetDeclarativeBabelPlugin({ types: t });
-      const cfgExpr = { type: 'Identifier', name: 'cfg' };
+      const propsExpr = { type: 'Identifier', name: 'p' };
+      // 扁平化 props 协议：JSX 属性名为 'props'（非 'config'）
       const attrs = [
         jsxAttr('name', { type: 'StringLiteral', value: 'bi-x' }),
-        jsxAttr('config', { type: 'JSXExpressionContainer', expression: cfgExpr })
+        jsxAttr('props', { type: 'JSXExpressionContainer', expression: propsExpr })
       ];
       // parent 是 JSXElement → 应包裹为 JSXExpressionContainer
       const parent = { type: 'JSXElement' };
@@ -270,7 +275,7 @@ describe('widget-declarative-plugin babel-plugin', () => {
       expect(meta.name).toBe('bi-x');
       expect(meta.js).toBe('https://x.js');
       expect(meta.vueVersion).toBe('3');
-      expect(call.arguments[2]).toBe(cfgExpr); // config
+      expect(call.arguments[2]).toBe(propsExpr); // props
       expect(call.arguments[1].name).toBe('undefined'); // container 未传
     });
 
@@ -288,13 +293,14 @@ describe('widget-declarative-plugin babel-plugin', () => {
       expect(path._replacement.type).toBe('CallExpression');
     });
 
-    it('<Widget name="bi-x" config={cfg} container={el} /> container 透传', () => {
+    it('<Widget name="bi-x" props={p} container={el} /> container 透传', () => {
       const plugin = widgetDeclarativeBabelPlugin({ types: t });
-      const cfgExpr = { type: 'Identifier', name: 'cfg' };
+      const propsExpr = { type: 'Identifier', name: 'p' };
       const elExpr = { type: 'Identifier', name: 'myEl' };
+      // 扁平化 props 协议：JSX 属性名为 'props'
       const attrs = [
         jsxAttr('name', { type: 'StringLiteral', value: 'bi-x' }),
-        jsxAttr('config', { type: 'JSXExpressionContainer', expression: cfgExpr }),
+        jsxAttr('props', { type: 'JSXExpressionContainer', expression: propsExpr }),
         jsxAttr('container', { type: 'JSXExpressionContainer', expression: elExpr })
       ];
       const node = makeJsxNode(attrs);
@@ -303,7 +309,7 @@ describe('widget-declarative-plugin babel-plugin', () => {
 
       const call = path._replacement;
       expect(call.arguments[1]).toBe(elExpr); // container
-      expect(call.arguments[2]).toBe(cfgExpr); // config
+      expect(call.arguments[2]).toBe(propsExpr); // props
     });
 
     it('<Widget name={"bi-x"} /> JSXExpressionContainer 包裹字符串字面量 → 正常解析', () => {
@@ -388,10 +394,10 @@ describe('widget-declarative-plugin babel-plugin', () => {
       // 这里模拟 .vue script 中常见的 export default { mounted() { $widget(...) } }
       const registry = { 'bi-vue-widget': { js: 'https://vw.js', vueVersion: '2' } };
       const plugin = widgetDeclarativeBabelPlugin({ types: t });
-      const configArg = { type: 'ObjectExpression', properties: [] };
+      const propsArg = { type: 'ObjectExpression', properties: [] };
       const node = makeCallNode('$widget', [
         { type: 'StringLiteral', value: 'bi-vue-widget' },
-        configArg
+        propsArg
       ]);
       const path = createMockPath(node);
       plugin.visitor.CallExpression(path, { opts: { registry } });

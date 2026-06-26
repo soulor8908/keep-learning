@@ -111,16 +111,16 @@ npm run build
 
 然后修改环境变量 `WIDGET_NAME` / `WIDGET_COMPONENT`（Vue2）或 `VITE_WIDGET_NAME` / `VITE_WIDGET_COMPONENT`（Vue3）。
 
-### 1.3 通讯协议：config 与 props 双模兼容（推荐 props 模式）
+### 1.3 通讯协议：扁平化 props
 
-包装层同时支持两种宿主↔物料通讯方式，业务组件改造时**无需额外添加 config 属性**：
+包装层采用扁平化 props 协议：宿主通过独立的 HTML 属性（kebab-case）把每个 prop 传入，包装层按声明类型自动解析并注入，业务组件改造时**无需额外添加任何属性**。
 
-#### props 模式（推荐，零改造复用原有 props）
+#### props 模式（零改造复用原有 props）
 
 保留组件原有的 `props` 不变。宿主通过独立的 HTML 属性（kebab-case）把每个 prop 传入，包装层按声明类型自动解析并注入。
 
 ```vue
-<!-- 业务组件：保留原有 props，无需新增 config -->
+<!-- 业务组件：保留原有 props -->
 <script>
 export default {
   props: {
@@ -154,44 +154,13 @@ await mountWidget(container, {
 - `string` → 原样写入
 - `number` / `object` / `array` → JSON.stringify
 
-#### config 模式（向后兼容，需要聚合配置时）
-
-宿主通过 `config='{"title":"a"}'` 传入聚合配置对象，包装层解析为 Object 传给 `props.config`（组件需声明 `config: Object`）。
-
-```vue
-<script>
-export default {
-  props: {
-    config: { type: Object, default: () => ({}) }
-  }
-};
-</script>
-```
-
-> 如果旧组件本来就有 `config` Object prop，**完全不需要改代码**，只改打包配置即可。
-
-#### 混用模式
-
-组件可同时声明 `config`（聚合配置）和其它独立 props，宿主可同时传 `config` attribute 和独立 prop 属性，同名时独立 prop 覆盖 `config` 中的同名键。
-
-```js
-await mountWidget(container, {
-  name: 'bi-xxx',
-  js: '/widgets/bi-xxx.js',
-  config: { host: 'demo', lang: 'zh' },   // 聚合配置
-  props: { title: '标题', maxCount: 5 }    // 独立 prop
-});
-```
-
 #### 三种包装层的差异
 
-| 包装层 | 独立 props 注入方式 | 说明 |
+| 包装层 | props 注入方式 | 说明 |
 |---|---|---|
 | `vue2-widget-template` | 作为独立 Vue prop 传入 | Vue 组件原生支持多 props |
 | `vue3-widget-template` | 作为独立 Vue prop 传入 | 同上，`createWidgetWrapper` 已导出供复用 |
-| `h5-widget-template` | 合并进 `render(config, scope)` 的 config 对象 | 原生物料 `render` 签名固定为 `(config, scope)`，独立 prop 同名键覆盖 config |
-
-三种包装层都向后兼容：仅传 `config` 的老基座代码无需改动，仍可加载 props 模式物料（`config` 被解析但因组件未声明 `config` prop 不注入，独立 props 取默认值）。
+| `h5-widget-template` | 通过 `render(props, scope)` 传入 | 原生物料 `render` 签名固定为 `(props, scope)`，物料需声明 `props` 数组 |
 
 ### 1.4 schema.json 自动生成
 
@@ -268,7 +237,7 @@ const SUPPORTED_DEPS = {
   name: 'bi-finance-panel',
   vueVersion: '3',          // 声明依赖的 Vue 主版本
   js: '/widgets/bi-finance-panel.js',
-  config: { title: '财务看板' }
+  props: { title: '财务看板' }
 }
 ```
 
@@ -337,7 +306,7 @@ await mountWidget(document.getElementById('container'), {
   name: 'bi-sales-panel',
   js: 'https://cdn.xxx/bi-sales-panel.js',
   css: 'https://cdn.xxx/bi-sales-panel.css',
-  config: { title: '本月销售', period: 'month' }
+  props: { title: '本月销售', period: 'month' }
 });
 ```
 
@@ -454,30 +423,27 @@ export default {
 `wc/migration-skill` 基于规则**一次性**把旧 Vue2/Vue3 组件改造成 wc 物料，确定性高：
 
 ```bash
-# Vue2 组件（默认 props 模式，保留原有 props，不新增 config）
+# Vue2 组件（始终 props 模式，保留原有 props）
 node wc/migration-skill/index.js bi-sales-panel ./src/components/SalesPanel.vue 2
 
 # Vue3 组件（props 模式）
 node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3
-
-# 显式 config 模式（需要聚合通讯配置时，会补充 config prop）
-node wc/migration-skill/index.js bi-finance-panel ./src/components/FinancePanel.vue 3 --mode config
 ```
 
-CLI 自动完成：按 `--mode` 处理 config prop、给根元素加 `bi-xxx` 命名空间类名、调用 css-namespace-checker / js-risk-scanner 扫描风险、输出推荐打包配置。产物为 `*.migrated.vue`。完整演示见 [`demo/ai-migration-demo/README.md`](../demo/ai-migration-demo/README.md)。
+CLI 自动完成：保留组件原有 props、给根元素加 `bi-xxx` 命名空间类名、调用 css-namespace-checker / js-risk-scanner 扫描风险、输出推荐打包配置。产物为 `*.migrated.vue`。完整演示见 [`demo/ai-migration-demo/README.md`](../demo/ai-migration-demo/README.md)。
 
 ### 3.2 提供的提示词模板（ai-assistant）
 
 | 模板 | 用途 |
 |---|---|
-| `prompts/migrate-component.txt` | 把旧 Vue 组件迁移为物料组件（含 config↔props 双模兼容说明） |
+| `prompts/migrate-component.txt` | 把旧 Vue 组件迁移为物料组件（含扁平化 props 协议说明） |
 | `prompts/generate-schema.txt` | 根据组件代码生成带业务语义的 schema |
 | `prompts/generate-readme.txt` | 根据组件代码生成使用文档 |
 
 ### 3.3 ai-assistant CLI 用法
 
 ```bash
-# 让 AI 辅助迁移旧组件（结合双模兼容提示词，优先建议保留原有 props）
+# 让 AI 辅助迁移旧组件（结合扁平化 props 协议提示词，保留原有 props）
 node wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.vue
 
 # 让 AI 生成更丰富的 schema
@@ -491,9 +457,9 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 
 ### 3.4 哪些工作适合交给 AI
 
-- **迁移旧组件**：保持业务逻辑，自动加命名空间、按通讯模式处理 config/props。
+- **迁移旧组件**：保持业务逻辑，自动加命名空间、保留原有 props。
 - **schema 语义补充**：自动填写中文标题、描述、枚举值、尺寸建议。
-- **文档生成**：根据代码生成 README、config/props 说明表格。
+- **文档生成**：根据代码生成 README、props 说明表格。
 - **样式冲突检查**：扫描组件 CSS，提示未加命名空间的选择器。
 
 ---
@@ -506,7 +472,7 @@ node wc/ai-assistant/cli.js readme bi-sales-panel ./src/components/SalesPanel.vu
 |---|---|---|
 | 安装/引入包装插件 | 0.5 天 | npm install + 改一行配置 |
 | 调整打包脚本 | 0.5 天 | 输出 UMD，external vue/element-ui |
-| 业务组件适配 config | **0 天** | 插件自动解析 Object，组件无需改代码 |
+| 业务组件适配 props | **0 天** | 插件按声明类型自动解析独立 props，组件无需改代码 |
 | 生成 schema.json | **0 天** | 插件自动生成 |
 | 发布到 CDN | 1 天 | 接入现有 CI/CD |
 | 联调测试 | 1 天 | 在基座里验证 |
@@ -640,7 +606,7 @@ node wc/ai-assistant/cli.js migrate bi-sales-panel ./src/components/SalesPanel.v
   mountWidget(document.getElementById('dashboard'), {
     name: 'bi-sales-panel',
     js: './bi-sales-panel.js',
-    config: { title: '销售看板' }
+    props: { title: '销售看板' }
   });
 </script>
 ```

@@ -1,4 +1,7 @@
 // @vitest-environment happy-dom
+// 扁平化 props 协议测试：widgetMount(meta, container, props) 第三参为 props，
+// 合并进 widgetObj（{ ...fullMeta, props }）传给 loadWidget/mountWidget；
+// 不再 setAttribute('config')，由 renderWidget 按声明类型序列化为独立 attribute。
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /**
@@ -38,7 +41,7 @@ describe('widget-declarative-plugin runtime widgetMount', () => {
   });
 
   describe('T3.4a 构建期内联 meta（meta.js 存在）', () => {
-    it('widgetMount 调用 loader.loadWidget + mountWidget', async () => {
+    it('widgetMount 调用 loader.loadWidget + mountWidget，props 合并进 widgetObj', async () => {
       const meta = { name: 'bi-x', js: 'https://cdn/x.js', css: 'https://cdn/x.css', vueVersion: '2' };
       const container = document.createElement('div');
       const element = document.createElement('bi-x');
@@ -46,8 +49,10 @@ describe('widget-declarative-plugin runtime widgetMount', () => {
 
       await widgetMount(meta, container, { title: 'hello' });
 
-      expect(mocks.mockLoader.loadWidget).toHaveBeenCalledWith(meta);
-      expect(mocks.mockLoader.mountWidget).toHaveBeenCalledWith(container, meta);
+      // 扁平化 props 协议：props 合并进 widgetObj 传给 loadWidget/mountWidget
+      const expectedWidgetObj = { ...meta, props: { title: 'hello' } };
+      expect(mocks.mockLoader.loadWidget).toHaveBeenCalledWith(expectedWidgetObj);
+      expect(mocks.mockLoader.mountWidget).toHaveBeenCalledWith(container, expectedWidgetObj);
     });
 
     it('不触发 registry 远程解析（meta.js 已内联）', async () => {
@@ -103,70 +108,62 @@ describe('widget-declarative-plugin runtime widgetMount', () => {
     });
   });
 
-  describe('T3.4c config 写入 element', () => {
-    it('config 为对象 → JSON.stringify 后写入 element.setAttribute("config", ...)', async () => {
+  describe('T3.4c props 合并进 widgetObj（扁平化 props 协议）', () => {
+    it('props 为对象 → 合并进 widgetObj，loadWidget 收到含 props 字段的对象', async () => {
       const meta = { name: 'bi-x', js: 'https://cdn/x.js' };
       const container = document.createElement('div');
-      const element = document.createElement('bi-x');
-      const setAttrSpy = vi.spyOn(element, 'setAttribute');
-      mocks.mockLoader.mountWidget.mockResolvedValue(element);
+      mocks.mockLoader.mountWidget.mockResolvedValue(document.createElement('bi-x'));
 
       await widgetMount(meta, container, { title: '销售面板', count: 42 });
 
-      expect(setAttrSpy).toHaveBeenCalledWith('config', JSON.stringify({ title: '销售面板', count: 42 }));
+      // 扁平化 props 协议：props 作为字段合并进 widgetObj，由 renderWidget
+      // 按声明类型序列化为独立 kebab-case attribute（不再 setAttribute('config')）
+      expect(mocks.mockLoader.loadWidget).toHaveBeenCalledWith({
+        ...meta,
+        props: { title: '销售面板', count: 42 }
+      });
     });
 
-    it('config 为字符串 → 直接写入（不 JSON.stringify）', async () => {
+    it('props 为 null → widgetObj 不含 props 字段', async () => {
       const meta = { name: 'bi-x', js: 'https://cdn/x.js' };
       const container = document.createElement('div');
-      const element = document.createElement('bi-x');
-      const setAttrSpy = vi.spyOn(element, 'setAttribute');
-      mocks.mockLoader.mountWidget.mockResolvedValue(element);
-
-      await widgetMount(meta, container, '{"title":"raw"}');
-
-      expect(setAttrSpy).toHaveBeenCalledWith('config', '{"title":"raw"}');
-    });
-
-    it('config 为 null → 不调用 setAttribute', async () => {
-      const meta = { name: 'bi-x', js: 'https://cdn/x.js' };
-      const container = document.createElement('div');
-      const element = document.createElement('bi-x');
-      const setAttrSpy = vi.spyOn(element, 'setAttribute');
-      mocks.mockLoader.mountWidget.mockResolvedValue(element);
+      mocks.mockLoader.mountWidget.mockResolvedValue(document.createElement('bi-x'));
 
       await widgetMount(meta, container, null);
-      expect(setAttrSpy).not.toHaveBeenCalled();
+
+      expect(mocks.mockLoader.loadWidget).toHaveBeenCalledWith(meta);
+      // widgetObj 不含 props 字段
+      const widgetObjArg = mocks.mockLoader.loadWidget.mock.calls[0][0];
+      expect(widgetObjArg).not.toHaveProperty('props');
     });
 
-    it('config 为 undefined → 不调用 setAttribute', async () => {
+    it('props 为 undefined → widgetObj 不含 props 字段', async () => {
       const meta = { name: 'bi-x', js: 'https://cdn/x.js' };
       const container = document.createElement('div');
-      const element = document.createElement('bi-x');
-      const setAttrSpy = vi.spyOn(element, 'setAttribute');
-      mocks.mockLoader.mountWidget.mockResolvedValue(element);
+      mocks.mockLoader.mountWidget.mockResolvedValue(document.createElement('bi-x'));
 
       await widgetMount(meta, container, undefined);
-      expect(setAttrSpy).not.toHaveBeenCalled();
+
+      const widgetObjArg = mocks.mockLoader.loadWidget.mock.calls[0][0];
+      expect(widgetObjArg).not.toHaveProperty('props');
     });
 
-    it('config 序列化失败（循环引用）→ 告警但不抛错', async () => {
+    it('props 含循环引用 → 不在 runtime 序列化（由 renderWidget 抛 PROPS_ERROR）', async () => {
+      // 扁平化 props 协议：runtime 仅合并 props 引用进 widgetObj，不做 JSON.stringify；
+      // 序列化发生在 renderWidget 内部，循环引用由其抛 PROPS_ERROR。
+      // 这里验证 runtime 不抛错（透传 props 引用）。
       const meta = { name: 'bi-x', js: 'https://cdn/x.js' };
       const container = document.createElement('div');
-      const element = document.createElement('bi-x');
-      mocks.mockLoader.mountWidget.mockResolvedValue(element);
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mocks.mockLoader.mountWidget.mockResolvedValue(document.createElement('bi-x'));
 
-      // 构造循环引用对象
       const cyclic = { a: 1 };
       cyclic.self = cyclic;
 
-      // 不应抛错
-      await expect(widgetMount(meta, container, cyclic)).resolves.toBe(element);
-      expect(warnSpy).toHaveBeenCalled();
-      const warnMsg = warnSpy.mock.calls.map(c => c.join(' ')).join('\n');
-      expect(warnMsg).toContain('config 序列化失败');
-      warnSpy.mockRestore();
+      // runtime 不序列化，不应抛错
+      await expect(widgetMount(meta, container, cyclic)).resolves.toBeTruthy();
+      // widgetObj 的 props 字段直接持有循环引用对象
+      const widgetObjArg = mocks.mockLoader.loadWidget.mock.calls[0][0];
+      expect(widgetObjArg.props).toBe(cyclic);
     });
   });
 
@@ -216,7 +213,7 @@ describe('widget-declarative-plugin runtime widgetMount', () => {
       expect(defaultExport).toBe(widgetMount);
     });
 
-    it('通过 default 导出调用 widgetMount 也能正常工作', async () => {
+    it('通过 default 导出调用 widgetMount 也能正常工作，props 合并进 widgetObj', async () => {
       const meta = { name: 'bi-x', js: 'https://cdn/x.js' };
       const container = document.createElement('div');
       const element = document.createElement('bi-x');
@@ -224,7 +221,8 @@ describe('widget-declarative-plugin runtime widgetMount', () => {
 
       const result = await defaultExport(meta, container, { ok: true });
       expect(result).toBe(element);
-      expect(element.getAttribute('config')).toBe(JSON.stringify({ ok: true }));
+      // 扁平化 props 协议：props 合并进 widgetObj（不再 setAttribute('config')）
+      expect(mocks.mockLoader.loadWidget).toHaveBeenCalledWith({ ...meta, props: { ok: true } });
     });
   });
 

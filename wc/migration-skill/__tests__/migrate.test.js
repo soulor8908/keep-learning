@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+// 扁平化 props 协议测试：migration-skill 仅保留组件原有 props（无需新增聚合 prop），
+// 给根元素加命名空间类名。migrate(widgetName, filePath, vueVersion) 三参数，
+// report 无 mode 字段；changes 含"保留原有 props（扁平化 props 协议，无需新增聚合 prop）"。
+// 不再导出 addConfigProp / hasConfigProp，无 config 模式分支。
+import { describe, it, expect } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -8,7 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(__dirname, 'fixtures');
 
 // migration-skill/index.js 为 CommonJS（require），vitest 通过 CJS interop 桥接
-const { migrate, addConfigProp, addRootClass, hasConfigProp } = await import('../index.js');
+// 扁平化 props 协议：仅导出 { migrate, addRootClass }
+const { migrate, addRootClass } = await import('../index.js');
 
 const PROPS_VUE = path.join(FIXTURES, 'props-component.vue');
 const NO_PROPS_VUE = path.join(FIXTURES, 'no-props-component.vue');
@@ -17,17 +22,6 @@ const HAS_CONFIG_VUE = path.join(FIXTURES, 'has-config-component.vue');
 function readSource(file) {
   return fs.readFileSync(file, 'utf-8');
 }
-
-describe('migration-skill hasConfigProp', () => {
-  it('检测对象式 props 中的 config', () => {
-    expect(hasConfigProp(readSource(HAS_CONFIG_VUE))).toBe(true);
-  });
-
-  it('无 config prop 时返回 false', () => {
-    expect(hasConfigProp(readSource(PROPS_VUE))).toBe(false);
-    expect(hasConfigProp(readSource(NO_PROPS_VUE))).toBe(false);
-  });
-});
 
 describe('migration-skill addRootClass', () => {
   it('给根元素添加 bi-xxx 类名', () => {
@@ -52,87 +46,47 @@ describe('migration-skill addRootClass', () => {
   });
 });
 
-describe('migration-skill addConfigProp', () => {
-  it('给无 props 的组件添加 config prop', () => {
-    const result = addConfigProp(readSource(NO_PROPS_VUE));
-    expect(result).toMatch(/config:\s*\{\s*type:\s*Object/);
-  });
-
-  it('给已有 props 的组件在 props 对象中插入 config', () => {
-    const result = addConfigProp(readSource(PROPS_VUE));
-    expect(result).toMatch(/config:\s*\{\s*type:\s*Object/);
-    // 原 props 保留
-    expect(result).toContain('title');
-    expect(result).toContain('isVisible');
-  });
-});
-
-describe('migration-skill migrate - props 模式（默认）', () => {
-  it('有独立 props 的组件：不新增 config prop，仅加根类名', () => {
-    const { migrated, report } = migrate('bi-sales-panel', PROPS_VUE, '2', 'props');
-    // 不应新增 config prop
+describe('migration-skill migrate - 扁平化 props 协议（单一模式）', () => {
+  it('有独立 props 的组件：保留原有 props，不新增 config prop，仅加根类名', () => {
+    const { migrated, report } = migrate('bi-sales-panel', PROPS_VUE, '2');
+    // 扁平化 props 协议：不应新增 config prop
     expect(migrated).not.toMatch(/config:\s*\{\s*type:\s*Object\s*,\s*default/);
     // 原有 props 保留
     expect(migrated).toContain('title');
     expect(migrated).toContain('isVisible');
     // 根类名已加
     expect(migrated).toContain('bi-sales-panel');
-    expect(report.mode).toBe('props');
-    expect(report.changes).toContain('props 模式：保留原有 props，未新增 config prop');
+    // 扁平化 props 协议：report 无 mode 字段（单一模式）
+    expect(report).not.toHaveProperty('mode');
+    expect(report.changes).toContain('保留原有 props（扁平化 props 协议，无需新增聚合 prop）');
     expect(report.changes).toContain('给根元素添加 class="bi-sales-panel"');
   });
 
   it('无 props 的组件：同样不新增 config prop', () => {
-    const { migrated, report } = migrate('bi-info-card', NO_PROPS_VUE, '3', 'props');
+    const { migrated, report } = migrate('bi-info-card', NO_PROPS_VUE, '3');
     expect(migrated).not.toMatch(/config:\s*\{\s*type:\s*Object/);
     expect(migrated).toContain('bi-info-card');
-    expect(report.mode).toBe('props');
-    expect(report.changes).toContain('props 模式：保留原有 props，未新增 config prop');
+    expect(report).not.toHaveProperty('mode');
+    expect(report.changes).toContain('保留原有 props（扁平化 props 协议，无需新增聚合 prop）');
   });
 
-  it('已有 config prop 的组件：保留 config，不重复添加', () => {
-    const { migrated, report } = migrate('bi-config-panel', HAS_CONFIG_VUE, '2', 'props');
-    // config prop 应保留（原有一个），不重复添加
+  it('已有 config prop 的组件：保留原 config，不重复添加', () => {
+    const { migrated, report } = migrate('bi-config-panel', HAS_CONFIG_VUE, '2');
+    // 扁平化 props 协议：migrate 不改动 props，原 config prop 保留（原有一个）
     const configMatches = migrated.match(/config:\s*\{\s*type:\s*Object/g) || [];
     expect(configMatches.length).toBe(1);
-    expect(report.changes).toContain('已存在 config prop，与 props 模式兼容，保留');
-  });
-
-  it('默认 mode 为 props（不传第四参数）', () => {
-    const { report } = migrate('bi-sales-panel', PROPS_VUE, '2');
-    expect(report.mode).toBe('props');
-  });
-});
-
-describe('migration-skill migrate - config 模式', () => {
-  it('无 config prop 的组件：补充 config prop', () => {
-    const { migrated, report } = migrate('bi-sales-panel', PROPS_VUE, '2', 'config');
-    expect(migrated).toMatch(/config:\s*\{\s*type:\s*Object/);
-    expect(report.mode).toBe('config');
-    expect(report.changes).toContain('补充 config prop（config 模式）');
-  });
-
-  it('无 props 的组件：补充 config prop', () => {
-    const { migrated, report } = migrate('bi-info-card', NO_PROPS_VUE, '3', 'config');
-    expect(migrated).toMatch(/config:\s*\{\s*type:\s*Object/);
-    expect(report.changes).toContain('补充 config prop（config 模式）');
-  });
-
-  it('已有 config prop 的组件：不重复添加', () => {
-    const { migrated, report } = migrate('bi-config-panel', HAS_CONFIG_VUE, '2', 'config');
-    const configMatches = migrated.match(/config:\s*\{\s*type:\s*Object/g) || [];
-    expect(configMatches.length).toBe(1);
-    expect(report.changes).toContain('已存在 config prop，无需补充');
+    expect(report.changes).toContain('保留原有 props（扁平化 props 协议，无需新增聚合 prop）');
   });
 });
 
 describe('migration-skill migrate - 报告完整性', () => {
-  it('report 含 widgetName / filePath / vueVersion / mode / changes / warnings', () => {
-    const { report } = migrate('bi-x', PROPS_VUE, '2', 'props');
+  it('report 含 widgetName / filePath / vueVersion / changes / warnings（无 mode）', () => {
+    const { report } = migrate('bi-x', PROPS_VUE, '2');
     expect(report).toHaveProperty('widgetName', 'bi-x');
     expect(report).toHaveProperty('filePath', PROPS_VUE);
     expect(report).toHaveProperty('vueVersion', '2');
-    expect(report).toHaveProperty('mode', 'props');
+    // 扁平化 props 协议：单一模式，report 无 mode 字段
+    expect(report).not.toHaveProperty('mode');
     expect(Array.isArray(report.changes)).toBe(true);
     expect(report.changes.length).toBeGreaterThan(0);
     expect(Array.isArray(report.warnings)).toBe(true);
