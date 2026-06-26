@@ -60,7 +60,7 @@ function Vue(options) {
   this.$options = options || {};
   this._mounted = false;
   this._destroyed = false;
-  // 把 data 字段挂到实例（wrapper 通过 data 传 widgetConfig/widgetScope）
+  // 把 data 字段挂到实例（wrapper 通过 data 传 widgetProps/widgetScope）
   const data = typeof options.data === 'function' ? options.data() : (options.data || {});
   Object.assign(this, data);
   // render 函数存档（测试可检视）
