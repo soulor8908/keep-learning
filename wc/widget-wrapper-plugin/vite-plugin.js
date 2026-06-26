@@ -80,6 +80,13 @@ class WidgetElement extends HTMLElement {
     this.app = null;
     this._propsRef = null;
     this._offLocale = null;
+    // 物料组件实例（public proxy）：locale 变化时对其 $forceUpdate 触发重渲染。
+    // 注意：必须 forceUpdate 物料组件本身，而非外壳 root——Vue3 的 shouldUpdateComponent
+    // 在 props 未变时会跳过子组件重渲染，仅替换 _propsRef.value 无法让物料重渲染。
+    this._widgetInstance = null;
+    // 稳定的 ref 回调（同一函数引用，避免每次渲染都触发 ref 重设），
+    // 首次挂载时拿到物料组件实例，卸载时置 null。
+    this._captureWidget = (el) => { this._widgetInstance = el; };
     // 每个物料实例创建独立的 widgetScope 软隔离对象，
     // 物料组件通过 props.scope 接收，而非直接访问 window。
     // scope 含 context/bus/log/t/request/loader（嵌套加载带循环检测）
@@ -112,7 +119,11 @@ class WidgetElement extends HTMLElement {
     // 任一 prop 变化时整体替换 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
     this._propsRef = ref(this._collectProps());
     this.app = createApp({
-      render: () => h(Component, { ...this._propsRef.value, scope: this._scope })
+      render: () => h(Component, {
+        ref: this._captureWidget,
+        ...this._propsRef.value,
+        scope: this._scope
+      })
     });
     // 注册基座提供的 element-plus 组件到物料 app（Vue3 app 隔离，基座注册的组件对物料 app 不可见）
     // window.ElementPlus 由基座 setupElementPlus 挂载，含物料用到的 ElCard/ElButton 等
@@ -126,10 +137,14 @@ class WidgetElement extends HTMLElement {
       });
     }
     this.app.mount(this);
-    // locale 变化时整体替换 _propsRef.value 触发 Vue3 reactivity 重渲染，
-    // 组件内 t() 自然返回新语言文案（物料组件无需自建 localeTick/onLocaleChange）
+    // locale 变化时对物料组件实例本身调用 $forceUpdate 触发重渲染，
+    // 组件内 t() 自然返回新语言文案（物料组件无需自建 localeTick/onLocaleChange）。
+    // 不能只重赋值 _propsRef.value：props 值未变时 Vue3 的 shouldUpdateComponent 会跳过
+    // 子组件重渲染，物料模板里的 t() 不会被重新求值（已用真实 Vue3 验证）。
     this._offLocale = onLocaleChange(() => {
-      if (this._propsRef) this._propsRef.value = { ...this._propsRef.value };
+      if (this._widgetInstance && this._widgetInstance.$forceUpdate) {
+        this._widgetInstance.$forceUpdate();
+      }
     });
   }
 
@@ -161,6 +176,7 @@ class WidgetElement extends HTMLElement {
       this.app.unmount();
       this.app = null;
       this._propsRef = null;
+      this._widgetInstance = null;
       this._scope = null;
       this._widgetScope = null;
     }

@@ -114,10 +114,13 @@ class WidgetElement extends HTMLElement {
     });
     this.vm.$mount();
     this.appendChild(this.vm.$el);
-    // locale 变化时强制重渲染，组件内 t() 自然返回新语言文案
-    // （物料组件无需自建 localeTick/onLocaleChange，由 wrapper 基础设施层统一处理）
+    // locale 变化时对物料组件实例本身调用 $forceUpdate 触发重渲染，
+    // 组件内 t() 自然返回新语言文案（物料组件无需自建 localeTick/onLocaleChange）。
+    // 注意：必须 forceUpdate 物料组件（this.vm.$children[0]），而非外壳 this.vm——
+    // Vue2 在子组件 props 未变时不会重渲染子组件，仅 $forceUpdate 外壳无效（已用真实 Vue2 验证）。
     this._offLocale = onLocaleChange(() => {
-      if (this.vm) this.vm.$forceUpdate();
+      const widget = this.vm && this.vm.$children && this.vm.$children[0];
+      if (widget) widget.$forceUpdate();
     });
   }
 

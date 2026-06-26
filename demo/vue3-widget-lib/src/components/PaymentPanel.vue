@@ -23,10 +23,12 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { t, onLocaleChange, addMessages } from 'wc-i18n';
+import { ref, computed } from 'vue';
+import { t, addMessages } from 'wc-i18n';
 
-// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key
+// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key。
+// 语言切换的响应式由 wrapper 基础设施层统一处理（对物料实例 $forceUpdate），
+// 组件只需在模板里直接调用 t()，无需自建 localeTick / onLocaleChange。
 addMessages('zh', {
   payment: {
     title: '支付区域',
@@ -62,19 +64,9 @@ export default {
     }
   },
   setup(props) {
-    // 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
-    const localeTick = ref(0);
-    let offLocale = null;
-
     const selected = ref(null);
     const methods = computed(() => props.methods || []);
     const amount = computed(() => Number(props.amount || 0));
-
-    // 包装 t：引用 localeTick 使模板渲染依赖 locale 变化，切换语言时重新求值
-    const tt = (key, params) => {
-      void localeTick.value;
-      return t(key, params);
-    };
 
     function select(m) {
       selected.value = m.id;
@@ -88,16 +80,9 @@ export default {
       }
     }
 
-    onMounted(() => {
-      // 监听语言切换，触发重渲染
-      offLocale = onLocaleChange(() => { localeTick.value++; });
-    });
-
-    onBeforeUnmount(() => {
-      if (offLocale) offLocale();
-    });
-
-    return { selected, methods, amount, select, pay, t: tt };
+    // 直接暴露 t：wrapper 在 locale 变化时 $forceUpdate 物料实例，
+    // 模板重新求值 t('xxx') 即可拿到新语言文案
+    return { selected, methods, amount, select, pay, t };
   }
 };
 </script>

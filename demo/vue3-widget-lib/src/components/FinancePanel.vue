@@ -6,7 +6,7 @@
     </el-row>
     <template v-if="showBreakdown">
       <div
-        v-for="(item, idx) in breakdown"
+        v-for="(item, idx) in breakdown()"
         :key="idx"
         class="finance-list-item"
       >
@@ -14,13 +14,13 @@
         <span class="finance-list-value">{{ `${symbol}${item.value.toLocaleString()}` }}</span>
       </div>
     </template>
-    <div class="finance-footer">{{ t('finance.currency_label') }}：{{ currencyText }}</div>
+    <div class="finance-footer">{{ t('finance.currency_label') }}：{{ currencyText() }}</div>
   </el-card>
 </template>
 
 <script>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { t, onLocaleChange } from 'wc-i18n';
+import { ref, onMounted } from 'vue';
+import { t } from 'wc-i18n';
 
 export default {
   name: 'FinancePanel',
@@ -40,23 +40,18 @@ export default {
     }
   },
   setup() {
-    // 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
-    const localeTick = ref(0);
-    let offLocale = null;
-
     const summary = ref({
       income: 256000,
       expense: 98000
     });
 
-    const breakdown = computed(() => {
-      void localeTick.value;
-      return [
-        { label: t('finance.labor'), value: 42000 },
-        { label: t('finance.marketing'), value: 31000 },
-        { label: t('finance.infrastructure'), value: 25000 }
-      ];
-    });
+    // 用函数而非 computed：computed 会缓存 t() 返回值，$forceUpdate 不会使其失效。
+    // wrapper 在 locale 变化时 $forceUpdate 物料实例，模板重新调用 breakdown() 拿到新语言文案
+    const breakdown = () => [
+      { label: t('finance.labor'), value: 42000 },
+      { label: t('finance.marketing'), value: 31000 },
+      { label: t('finance.infrastructure'), value: 25000 }
+    ];
 
     onMounted(() => {
       if (window.widgetBus) {
@@ -67,22 +62,18 @@ export default {
           summary.value.expense += Math.floor(Math.random() * 2000);
         });
       }
-      // 监听语言切换，触发重渲染
-      offLocale = onLocaleChange(() => { localeTick.value++; });
     });
 
-    onBeforeUnmount(() => {
-      if (offLocale) offLocale();
-    });
-
-    return { localeTick, summary, breakdown, t };
+    return { summary, breakdown, t };
   },
   computed: {
     symbol() {
       return this.currency === 'USD' ? '$' : '¥';
-    },
+    }
+  },
+  methods: {
+    // 用方法而非 computed：computed 会缓存 t() 返回值，$forceUpdate 不会使其失效
     currencyText() {
-      void this.localeTick;
       return this.currency === 'USD' ? t('finance.usd') : t('finance.cny');
     }
   }

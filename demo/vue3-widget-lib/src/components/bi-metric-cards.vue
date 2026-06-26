@@ -19,10 +19,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { t as rawT, onLocaleChange, addMessages } from 'wc-i18n';
+import { t, addMessages } from 'wc-i18n';
 
-// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key
+// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key。
+// 语言切换的响应式由 wrapper 基础设施层统一处理（对物料实例 $forceUpdate），
+// 组件只需在模板里直接调用 t()，无需自建 localeTick / onLocaleChange。
 addMessages('zh', { metricCards: { title: '指标卡组' } });
 addMessages('en', { metricCards: { title: 'Metric Cards' } });
 
@@ -39,25 +40,6 @@ defineProps({
     type: Array,
     default: () => []
   }
-});
-
-// 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
-const localeTick = ref(0);
-let offLocale = null;
-
-// 包装 t：引用 localeTick 使模板渲染依赖 locale 变化，切换语言时重新求值
-const t = (key, params) => {
-  void localeTick.value;
-  return rawT(key, params);
-};
-
-onMounted(() => {
-  // 监听语言切换，触发重渲染
-  offLocale = onLocaleChange(() => { localeTick.value++; });
-});
-
-onBeforeUnmount(() => {
-  if (offLocale) offLocale();
 });
 </script>
 

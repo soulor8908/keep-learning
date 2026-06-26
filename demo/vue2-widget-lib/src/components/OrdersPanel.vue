@@ -16,9 +16,11 @@
 </template>
 
 <script>
-import { t, onLocaleChange, addMessages } from 'wc-i18n';
+import { t, addMessages } from 'wc-i18n';
 
-// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key
+// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key。
+// 语言切换的响应式由 wrapper 基础设施层统一处理（对物料实例 $forceUpdate），
+// 组件只需在模板/方法里直接调用 t()，无需自建 localeTick / onLocaleChange。
 addMessages('zh', {
   orders: {
     title: '订单区域',
@@ -53,18 +55,10 @@ export default {
       default: () => []
     }
   },
-  data() {
-    return {
-      // 触发器：locale 变化时自增，驱动 computed 重新计算翻译文案
-      localeTick: 0,
-      _offLocale: null
-    };
-  },
   computed: {
-    // 暴露 t 给模板使用
+    // 暴露 t 给模板使用；wrapper 在 locale 变化时 $forceUpdate 物料实例，
+    // 模板重新求值 t('xxx') 即可拿到新语言文案
     t() {
-      // 引用 localeTick 使其成为依赖，locale 变化时重新求值
-      void this.localeTick;
       return t;
     }
   },
@@ -80,11 +74,6 @@ export default {
     if (window.widgetBus) {
       window.widgetBus.emit('widget:loaded', { widget: 'bi-orders-panel' });
     }
-    // 监听语言切换，触发重渲染
-    this._offLocale = onLocaleChange(() => { this.localeTick++; });
-  },
-  beforeDestroy() {
-    if (this._offLocale) this._offLocale();
   }
 };
 </script>
