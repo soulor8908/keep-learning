@@ -203,4 +203,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { migrate, addRootClass };
+module.exports = { migrate, addRootClass, generateBuildConfig, toKebab, inferWidgetName };

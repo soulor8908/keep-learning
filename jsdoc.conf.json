@@ -1,0 +1,18 @@
+{
+  "source": {
+    "include": ["wc"],
+    "includePattern": ".+\\.js$",
+    "excludePattern": "(node_modules/|__tests__|__stubs__|examples|dist)"
+  },
+  "plugins": ["plugins/markdown"],
+  "opts": {
+    "destination": "./docs/api",
+    "recurse": true,
+    "readme": "./docs/api-readme.md",
+    "encoding": "utf8"
+  },
+  "templates": {
+    "cleverLinks": false,
+    "monospaceLinks": false
+  }
+}

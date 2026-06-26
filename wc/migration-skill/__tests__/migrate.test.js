@@ -3,16 +3,17 @@
 // 给根元素加命名空间类名。migrate(widgetName, filePath, vueVersion) 三参数，
 // report 无 mode 字段；changes 含"保留原有 props（扁平化 props 协议，无需新增聚合 prop）"。
 // 不再导出 addConfigProp / hasConfigProp，无 config 模式分支。
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import os from 'os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(__dirname, 'fixtures');
 
 // migration-skill/index.js 为 CommonJS（require），vitest 通过 CJS interop 桥接
-// 扁平化 props 协议：仅导出 { migrate, addRootClass }
+// 扁平化 props 协议：导出 { migrate, addRootClass, generateBuildConfig, toKebab, inferWidgetName }
 const { migrate, addRootClass } = await import('../index.js');
 
 const PROPS_VUE = path.join(FIXTURES, 'props-component.vue');
@@ -43,6 +44,16 @@ describe('migration-skill addRootClass', () => {
     // 不应出现两次 bi-x
     const matches = result.match(/bi-x/g) || [];
     expect(matches.length).toBe(1);
+  });
+
+  it('A3：根元素没有 class 时直接添加 class="${widgetName}"', () => {
+    // 现有 fixture 根元素都已有 class，这里用内联 source 覆盖无 class 分支
+    const source = '<template><div><span>hi</span></div></template>';
+    const result = addRootClass(source, 'bi-a3');
+    // 直接添加 class="bi-a3"
+    expect(result).toContain('class="bi-a3"');
+    // 不应破坏原有结构
+    expect(result).toContain('<span>hi</span>');
   });
 });
 
@@ -90,5 +101,79 @@ describe('migration-skill migrate - 报告完整性', () => {
     expect(Array.isArray(report.changes)).toBe(true);
     expect(report.changes.length).toBeGreaterThan(0);
     expect(Array.isArray(report.warnings)).toBe(true);
+  });
+});
+
+// 用内联 source 写入临时 .vue 文件，覆盖 migrate 的命名空间与风险扫描分支
+const tmpFiles = [];
+function writeTmpVue(content) {
+  const file = path.join(
+    os.tmpdir(),
+    `migrate-test-${Date.now()}-${Math.random().toString(36).slice(2)}.vue`
+  );
+  fs.writeFileSync(file, content, 'utf-8');
+  tmpFiles.push(file);
+  return file;
+}
+
+afterEach(() => {
+  // 清理本批次创建的临时文件
+  while (tmpFiles.length) {
+    const f = tmpFiles.pop();
+    try { fs.unlinkSync(f); } catch (_) { /* 忽略清理失败 */ }
+  }
+});
+
+describe('migration-skill migrate - 命名空间与风险扫描分支', () => {
+  it('M2：根元素已包含命名空间类名时 push 提示且不改写源码', () => {
+    const source = [
+      '<template><div class="bi-test-panel"><span>x</span></div></template>',
+      '<script>export default { name: "T" };</script>'
+    ].join('\n');
+    const file = writeTmpVue(source);
+    const { migrated, report } = migrate('bi-test-panel', file, '3');
+    // 走"已包含命名空间类名"分支
+    expect(report.changes).toContain('根元素已包含命名空间类名');
+    // 源码未被改写：class="bi-test-panel" 仅出现一次（未追加、未重复）
+    const matches = migrated.match(/class="bi-test-panel"/g) || [];
+    expect(matches.length).toBe(1);
+  });
+
+  it('M3：CSS 选择器未加命名空间时给出 warning', () => {
+    // 裸 h3 选择器不以 .bi-css-test 开头，触发 checkCssNamespace 命名空间问题
+    const source = [
+      '<template>',
+      '  <div class="root"><h3>title</h3></div>',
+      '</template>',
+      '<script>export default { name: "X" };</script>',
+      '<style>',
+      'h3 { color: red; }',
+      '</style>'
+    ].join('\n');
+    const file = writeTmpVue(source);
+    const { report } = migrate('bi-css-test', file, '3');
+    // 命名空间已加到根元素
+    expect(report.changes).toContain('给根元素添加 class="bi-css-test"');
+    // warning 分支：发现 1 个 CSS 选择器未加命名空间
+    expect(report.warnings).toContain('发现 1 个 CSS 选择器未加命名空间');
+  });
+
+  it('M4：JS 风险扫描发现问题时给出 warning（含高危计数）', () => {
+    // window.foo = 1 触发 scanJsRisk 的"window 全局变量赋值"高危规则
+    const source = [
+      '<template>',
+      '  <div class="root"><span>x</span></div>',
+      '</template>',
+      '<script>',
+      'export default {',
+      '  mounted() { window.foo = 1; }',
+      '};',
+      '</script>'
+    ].join('\n');
+    const file = writeTmpVue(source);
+    const { report } = migrate('bi-js-test', file, '3');
+    // warning 分支：发现 N 个 JS 风险（其中 1 个高危）
+    expect(report.warnings.some(w => /发现 \d+ 个 JS 风险/.test(w))).toBe(true);
+    expect(report.warnings.some(w => /其中 1 个高危/.test(w))).toBe(true);
   });
 });
