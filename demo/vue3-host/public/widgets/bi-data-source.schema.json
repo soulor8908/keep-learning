@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "bi-data-source",
+  "title": "bi-data-source",
+  "description": "Auto-generated schema for bi-data-source",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "default": ""
+    },
+    "metrics": {
+      "type": "array",
+      "default": []
+    },
+    "refreshInterval": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [],
+  "layout": {
+    "defaultSize": {
+      "w": 6,
+      "h": 4
+    },
+    "minSize": {
+      "w": 3,
+      "h": 2
+    }
+  },
+  "uiDependencies": {
+    "lib": "element-plus",
+    "version": "^2.7.0",
+    "components": [
+      "card",
+      "row",
+      "col",
+      "statistic",
+      "button"
+    ],
+    "styles": [
+      "base"
+    ]
+  }
+}

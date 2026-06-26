@@ -174,7 +174,7 @@ customElements.define('${widgetName}', WidgetElement);
 }
 
 export default function widgetVitePlugin(options = {}) {
-  const { name, component, vueGlobal = 'Vue', cssFileName = name, autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
+  const { name, component, vueGlobal = 'Vue', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
   if (!name || !component) {
     throw new Error('[widget-vite-plugin] 请配置 name 和 component');
   }
@@ -197,8 +197,9 @@ export default function widgetVitePlugin(options = {}) {
           entry: tmpFile,
           name,
           fileName: () => `${name}.js`,
-          formats: ['umd'],
-          cssFileName
+          formats: ['umd']
+          // 注意：lib.cssFileName 是 Vite 6+ 才支持的选项，Vite 5.4 会静默忽略，
+          // CSS 默认输出为 style.css。此处不配置，改由下方 closeBundle 钩子重命名为 ${name}.css。
         },
         rollupOptions: {
           // 高频第三方库（lodash/axios）external 化，基座统一加载一份，
@@ -236,8 +237,24 @@ export default function widgetVitePlugin(options = {}) {
     }),
     // 构建完成后自动生成 schema.json
     closeBundle() {
+      const outputDir = path.resolve(process.cwd(), 'dist');
+
+      // ─── CSS 文件重命名（Vite 5.4 兼容）───
+      // Vite 5.4 的 LibraryOptions 不支持 cssFileName（Vite 6+ 才支持），
+      // lib 模式下 CSS 默认输出为 style.css。多个物料构建到同一 dist 会互相覆盖，
+      // 且与 widget registry 约定的 ${name}.css 命名不一致。
+      // 此处在产物写入后重命名为 ${name}.css。
       try {
-        const outputDir = path.resolve(process.cwd(), 'dist');
+        const defaultCssPath = path.join(outputDir, 'style.css');
+        const targetCssPath = path.join(outputDir, `${name}.css`);
+        if (fs.existsSync(defaultCssPath)) {
+          fs.renameSync(defaultCssPath, targetCssPath);
+        }
+      } catch (e) {
+        console.warn('[widget-vite-plugin] CSS 重命名失败:', e.message);
+      }
+
+      try {
         if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
         writeSchema(name, componentPath, path.join(outputDir, `${name}.schema.json`));
       } catch (e) {

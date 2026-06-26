@@ -35,6 +35,7 @@ const FALLBACK_WIDGETS = [
     name: 'bi-data-source',
     vueVersion: '3',
     js: '/widgets/bi-data-source.js',
+    css: '/widgets/bi-data-source.css',
     props: {
       title: 'Vue3 基座 · 数据源面板',
       metrics: [
@@ -49,6 +50,7 @@ const FALLBACK_WIDGETS = [
     name: 'bi-metric-cards',
     vueVersion: '3',
     js: '/widgets/bi-metric-cards.js',
+    css: '/widgets/bi-metric-cards.css',
     props: {
       title: 'Vue3 基座 · 指标卡组',
       cards: [
@@ -78,6 +80,7 @@ const FALLBACK_WIDGETS = [
     name: 'bi-crash-tester',
     vueVersion: '3',
     js: '/widgets/bi-crash-tester.js',
+    css: '/widgets/bi-crash-tester.css',
     props: { title: 'Vue3 基座 · 崩溃测试器' }
   },
   // ===== 交叉页面演示：三业务域物料同页（Vue2 + Vue3 + 原生 H5）=====
@@ -100,6 +103,7 @@ const FALLBACK_WIDGETS = [
     name: 'bi-payment-panel',
     vueVersion: '3',
     js: '/widgets/bi-payment-panel.js',
+    css: '/widgets/bi-payment-panel.css',
     props: {
       title: '支付区',
       amount: 4385.00,

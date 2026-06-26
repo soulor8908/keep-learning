@@ -5,7 +5,7 @@
   "scripts": {
     "build": "vue-cli-service build",
     "serve": "vue-cli-service serve",
-    "setup:vendors": "mkdir -p public/vendor && cp ../vue3-widget-lib/node_modules/vue/dist/vue.global.prod.js public/vendor/vue@3.js"
+    "setup:vendors": "mkdir -p public/vendor && cp ../vue3-widget-lib/node_modules/vue/dist/vue.global.prod.js public/vendor/vue@3.js && cp ../vue3-host/node_modules/element-plus/dist/index.full.min.js public/vendor/element-plus.js && cp ../vue3-host/node_modules/element-plus/dist/index.css public/vendor/element-plus.css"
   },
   "dependencies": {
     "element-ui": "^2.15.14",

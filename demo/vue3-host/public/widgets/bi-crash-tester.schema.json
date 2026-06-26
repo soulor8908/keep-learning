@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "bi-crash-tester",
+  "title": "bi-crash-tester",
+  "description": "Auto-generated schema for bi-crash-tester",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "default": ""
+    }
+  },
+  "required": [],
+  "layout": {
+    "defaultSize": {
+      "w": 6,
+      "h": 4
+    },
+    "minSize": {
+      "w": 3,
+      "h": 2
+    }
+  },
+  "uiDependencies": {
+    "lib": "element-plus",
+    "version": "^2.7.0",
+    "components": [
+      "card",
+      "button"
+    ],
+    "styles": [
+      "base"
+    ]
+  }
+}
