@@ -126,6 +126,17 @@ export function createWidgetWrapper(Component, widgetName) {
         // 注入 scope（必传）+ 各独立 prop
         render: () => h(Component, { ...this._propsRef.value, scope: this._scope })
       });
+      // 注册基座提供的 element-plus 组件到物料 app（Vue3 app 隔离，基座注册的组件对物料 app 不可见）
+      // window.ElementPlus 由基座 setupElementPlus 挂载，含物料用到的 ElCard/ElButton 等
+      if (typeof window !== 'undefined' && window.ElementPlus) {
+        Object.keys(window.ElementPlus).forEach(name => {
+          const comp = window.ElementPlus[name];
+          if (comp && (comp.name || comp.install)) {
+            // 优先用组件自身的 name（如 'ElCard'），也注册 kebab 别名（如 'el-card'）兼容
+            this.app.component(comp.name || name, comp);
+          }
+        });
+      }
       this.app.mount(this);
     }
 

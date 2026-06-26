@@ -13,17 +13,20 @@ import {
   ElRow,
   ElProgress,
   ElButton,
-  ElCol
+  ElCol,
+  ElTag
 } from 'element-plus';
 
+import 'element-plus/theme-chalk/base.css';
 import 'element-plus/es/components/card/style/css';
 import 'element-plus/es/components/statistic/style/css';
 import 'element-plus/es/components/row/style/css';
 import 'element-plus/es/components/progress/style/css';
 import 'element-plus/es/components/button/style/css';
 import 'element-plus/es/components/col/style/css';
+import 'element-plus/es/components/tag/style/css';
 
-const components = [ElCard, ElStatistic, ElRow, ElProgress, ElButton, ElCol];
+const components = [ElCard, ElStatistic, ElRow, ElProgress, ElButton, ElCol, ElTag];
 
 // 挂载到全局，供物料 UMD external 'element-plus' 后引用
 window.ElementPlus = {
@@ -32,7 +35,8 @@ window.ElementPlus = {
   ElRow,
   ElProgress,
   ElButton,
-  ElCol
+  ElCol,
+  ElTag
 };
 
 /**

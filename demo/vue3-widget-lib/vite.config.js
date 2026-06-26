@@ -19,14 +19,7 @@ export default defineConfig(({ command }) => {
 
   return {
     plugins: [
-      vue({
-        template: {
-          compilerOptions: {
-            // 告诉 Vue3 编译器 el-* 是自定义元素，不要当 Vue 组件解析
-            isCustomElement: (tag) => tag.startsWith('el-')
-          }
-        }
-      }),
+      vue(),
       // 仅在 build 模式且指定了有效 WIDGET_NAME 时启用物料包装插件
       // serve 模式（vite / vite dev）走标准 SPA，不打包物料
       ...(isBuild && component ? [widgetVitePlugin({

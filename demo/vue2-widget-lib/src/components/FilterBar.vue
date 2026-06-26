@@ -24,6 +24,10 @@
 <script>
 import { t, onLocaleChange, addMessages } from 'wc-i18n';
 
+// 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key
+addMessages('zh', { filter: { title: '筛选栏', refresh: '刷新' } });
+addMessages('en', { filter: { title: 'Filter Bar', refresh: 'Refresh' } });
+
 export default {
   name: 'FilterBar',
   props: {
@@ -55,9 +59,6 @@ export default {
     this.filters.forEach(f => {
       this.$set(this.selectedValues, f.field, f.default);
     });
-    // 注册自己的 i18n 文案
-    addMessages('zh', { filter: { title: '筛选栏', refresh: '刷新' } });
-    addMessages('en', { filter: { title: 'Filter Bar', refresh: 'Refresh' } });
     // 监听语言切换，触发重渲染
     this._offLocale = onLocaleChange(() => { this.localeTick++; });
   },

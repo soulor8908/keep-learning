@@ -361,3 +361,13 @@ export function isWidgetScope(obj) {
 }
 
 export default createWidgetScope;
+
+// 挂载到全局，供物料 external 'wc-widget-scope' 引用
+// 必须是含 createWidgetScope 属性的对象（模块命名空间形态），
+// 与 wrapper 的 named import `import { createWidgetScope } from 'wc-widget-scope'` 匹配
+// 幂等：多次求值（多 bundle 引入）不覆盖已有实例，避免状态分裂
+if (typeof window !== 'undefined') {
+  if (!window.__wcWidgetScope__) {
+    window.__wcWidgetScope__ = { createWidgetScope, isWidgetScope };
+  }
+}

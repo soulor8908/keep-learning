@@ -65,7 +65,7 @@ function lookupInLocale(locale, key) {
  * @param {Object} [params] 插值参数，替换 {name} 等
  * @returns {string}
  */
-function t(key, params) {
+let t = function t(key, params) {
   // 按 locale 回退链查找：currentLocale -> 基础语言 -> en -> zh
   const chain = getLocaleFallbackChain(currentLocale);
   let str;
@@ -84,7 +84,7 @@ function t(key, params) {
  * 获取当前语言
  * @returns {'zh'|'en'}
  */
-function getLocale() {
+let getLocale = function getLocale() {
   return currentLocale;
 }
 
@@ -96,7 +96,7 @@ function getLocale() {
  *   默认 false：locale 与当前相同时跳过，避免重复通知。
  *   true：即使 locale 未变也重新派发事件，用于热更新语言包后强制刷新物料文案。
  */
-function setLocale(locale, force = false) {
+let setLocale = function setLocale(locale, force = false) {
   // 允许设置未在 messages 中注册的 locale（如 zh-CN、zh-TW、en-GB），
   // t() 会按回退链查找；但若回退链中无任何已知 locale 则忽略
   const chain = getLocaleFallbackChain(locale);
@@ -119,7 +119,7 @@ function setLocale(locale, force = false) {
  * @param {Function} cb (locale) => void
  * @returns {Function} 取消订阅
  */
-function onLocaleChange(cb) {
+let onLocaleChange = function onLocaleChange(cb) {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
@@ -152,7 +152,7 @@ function deepMerge(target, source) {
  * @param {string} locale 目标语言，如 'zh' / 'en'
  * @param {Object} msgs 待合并的字典，会深合并到现有字典
  */
-function addMessages(locale, msgs) {
+let addMessages = function addMessages(locale, msgs) {
   if (!messages[locale]) messages[locale] = {};
   // 深合并：递归合并嵌套对象，避免部门注入文案时意外覆盖基座已有的其他 key
   // 例如 msgs.loader.dep_missing 不会覆盖基座的 loader.dep_version
@@ -161,9 +161,22 @@ function addMessages(locale, msgs) {
 
 const i18n = { t, getLocale, setLocale, onLocaleChange, addMessages };
 
-// 挂载到全局，供物料 external 引用
+// 挂载到全局，供物料 external 'wc-i18n' 引用
+// 幂等：多 bundle 引入时复用首个实例，避免 messages/listeners/currentLocale 分裂
+// 导致 locale 切换只通知到首个实例的订阅者
 if (typeof window !== 'undefined') {
-  window.__wcI18n__ = i18n;
+  if (window.__wcI18n__) {
+    // 复用已有全局实例：本 bundle 的函数代理到全局，确保 t/setLocale/onLocaleChange
+    // 操作同一份 messages/listeners/currentLocale
+    const g = window.__wcI18n__;
+    t = g.t.bind(g);
+    getLocale = g.getLocale.bind(g);
+    setLocale = g.setLocale.bind(g);
+    onLocaleChange = g.onLocaleChange.bind(g);
+    addMessages = g.addMessages.bind(g);
+  } else {
+    window.__wcI18n__ = i18n;
+  }
 }
 
 export { t, getLocale, setLocale, onLocaleChange, addMessages };

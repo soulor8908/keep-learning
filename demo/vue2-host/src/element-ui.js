@@ -1,5 +1,5 @@
 import Vue from 'vue';
-import { Card, Row, Progress, Button, Col, Tag } from 'element-ui';
+import { Card, Row, Progress, Button, Col, Tag, Select, Option } from 'element-ui';
 import 'element-ui/lib/theme-chalk/base.css';
 import 'element-ui/lib/theme-chalk/card.css';
 import 'element-ui/lib/theme-chalk/row.css';
@@ -7,6 +7,8 @@ import 'element-ui/lib/theme-chalk/progress.css';
 import 'element-ui/lib/theme-chalk/button.css';
 import 'element-ui/lib/theme-chalk/col.css';
 import 'element-ui/lib/theme-chalk/tag.css';
+import 'element-ui/lib/theme-chalk/select.css';
+import 'element-ui/lib/theme-chalk/option.css';
 
 Vue.use(Card);
 Vue.use(Row);
@@ -14,6 +16,8 @@ Vue.use(Progress);
 Vue.use(Button);
 Vue.use(Col);
 Vue.use(Tag);
+Vue.use(Select);
+Vue.use(Option);
 
 // element-ui 没有 Statistic 组件，注册一个全局自定义统计组件
 Vue.component('el-statistic', {
