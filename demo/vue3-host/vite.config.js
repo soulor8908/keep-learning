@@ -11,8 +11,9 @@ export default defineConfig({
   },
   server: {
     watch: {
-      // 监听物料源码和 wc/ 目录变化
-      ignored: ['!**/node_modules/@wc/**', '!**/wc/**']
+      // 监听 public/widgets 目录变化，触发 full reload
+      usePolling: true,
+      interval: 500
     }
   }
 });

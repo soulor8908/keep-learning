@@ -176,7 +176,7 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     // ─── Dev-Preview 模式：自动生成预览入口，不打包 UMD ───
     if (isDev) {
       const devEntryCode = generateDevPreviewEntryVue2(name, componentPath);
-      const devEntryFile = path.join(os.tmpdir(), `widget-dev-entry-${name}-${Date.now()}.js`);
+      const devEntryFile = path.join(os.tmpdir(), `widget-dev-entry-${name}.js`);
       fs.writeFileSync(devEntryFile, devEntryCode);
 
       // ─── 异常退出时清理临时文件（Ctrl+C / kill）───
@@ -238,7 +238,7 @@ module.exports = function widgetVueCliPlugin(options = {}) {
 
     // ─── Build 模式：UMD 打包 ───
     const wrapperCode = generateVue2Wrapper(name, vueGlobal);
-    const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
+    const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}.js`);
     fs.writeFileSync(tmpFile, wrapperCode);
 
     // ─── 异常退出时清理临时文件（Ctrl+C / kill）───

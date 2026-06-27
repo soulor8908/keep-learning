@@ -13,6 +13,7 @@
     "build:payment": "cross-env WIDGET_NAME=bi-payment-panel vite build",
     "serve": "vite",
     "serve:widget": "vite build --watch",
+    "serve:dev": "cross-env WIDGET_NAME=bi-finance-panel vite build --watch --outDir ../vue3-host/public/widgets",
     "serve:dist": "npx serve dist -l 8082 --cors"
   },
   "dependencies": {

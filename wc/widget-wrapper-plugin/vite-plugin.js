@@ -598,7 +598,7 @@ export default function widgetVitePlugin(options = {}) {
     ? generateH5Wrapper(name)
     : generateVue3Wrapper(name, vueGlobal, uiDeps);
 
-  const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
+  const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}.js`);
   fs.writeFileSync(tmpFile, wrapperCode);
 
   // dev-preview 模式标志，在 config hook 中根据 command 判定
@@ -679,7 +679,7 @@ export default function widgetVitePlugin(options = {}) {
       if (isDevPreview) {
         // ─── Dev-Preview 模式：生成预览入口，跳过 lib 构建配置 ───
         const devEntryCode = generateDevPreviewEntry(name, entryPath, mode, uiDeps);
-        devEntryFile = path.join(os.tmpdir(), `widget-dev-entry-${name}-${Date.now()}.js`);
+        devEntryFile = path.join(os.tmpdir(), `widget-dev-entry-${name}.js`);
         fs.writeFileSync(devEntryFile, devEntryCode);
 
         // 生成 dev-preview index.html（如果项目根目录不存在）

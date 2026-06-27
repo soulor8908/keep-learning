@@ -65,8 +65,8 @@ export default defineConfig({
   server: {
     port: 5001,
     watch: {
-      // 监听物料构建产物和 wc/ 目录变化
-      ignored: ['!**/widgets/**', '!**/node_modules/@wc/**', '!**/wc/**']
+      usePolling: true,
+      interval: 500
     }
   }
 });
