@@ -118,7 +118,7 @@ bash scripts/deploy_run.sh
 |---------|--------|------|
 | `window.Vue2` | vue2-host 基座 | Vue2 物料运行时 |
 | `window.Vue3` | vue3-host 基座 | Vue3 物料运行时 |
-| `window.ELEMENT` | vue2-host（element-ui.js） | ElementUI 组件库 |
+| `window.ELEMENT` | vue2-host（element-ui.js）、vue3-host（vendor/element-ui.js） | ElementUI 组件库 |
 | `window.ElementPlus` | vue3-host（element-plus.js） | ElementPlus 组件库 |
 | `window.__wcI18n__` | 基座 | i18n 运行时（物料共享 locale） |
 | `window.__wcWidgetScope__` | 基座 | widgetScope 工厂（createWidgetScope） |

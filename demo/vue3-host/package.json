@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "serve": "vite",
-    "setup:vendors": "mkdir -p public/vendor && cp ../vue2-widget-lib/node_modules/vue/dist/vue.js public/vendor/vue@2.js"
+    "setup:vendors": "mkdir -p public/vendor && cp ../vue2-widget-lib/node_modules/vue/dist/vue.js public/vendor/vue@2.js && cp ../vue2-host/node_modules/element-ui/lib/index.js public/vendor/element-ui.js && cp ../vue2-host/node_modules/element-ui/lib/theme-chalk/index.css public/vendor/element-ui.css"
   },
   "dependencies": {
     "@wc/i18n": "workspace:*",

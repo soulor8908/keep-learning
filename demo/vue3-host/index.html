@@ -7,10 +7,15 @@
   <!-- Vue3 基座自身通过 Vite 引入 Vue3，这里额外加载 Vue2 运行时供 Vue2 物料使用。
        Vue2 运行时已本地化为 /vendor/vue@2.js（来源 vue2-widget-lib node_modules），离线/内网环境可用。 -->
   <script src="/vendor/vue@2.js"></script>
+  <!-- ElementUI UMD 供 Vue2 物料使用（依赖 window.Vue，必须在 vue@2.js 之后、清除 window.Vue 之前加载）。
+       来源 vue2-host node_modules/element-ui，离线/内网环境可用。 -->
+  <link rel="stylesheet" href="/vendor/element-ui.css">
+  <script src="/vendor/element-ui.js"></script>
   <script>
     // vue@2.js 的 UMD 全局构建会污染 window.Vue（指向 Vue2）。
     // 清除 window.Vue，避免与基座通过 Vite ESM 引入的 Vue3 产生歧义；
     // 物料通过 window.Vue2 取 Vue2 运行时。
+    // window.ELEMENT 已由 element-ui.js UMD 自动挂载，保留供 Vue2 物料使用。
     // 注意：var 声明产生的 window 属性是不可配置（non-configurable）的，
     // delete 操作会静默失败，window.Vue 仍指向 Vue2。必须直接赋值 undefined 才能清除。
     window.Vue2 = window.Vue;

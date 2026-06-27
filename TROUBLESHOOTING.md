@@ -126,7 +126,38 @@
 - Vue3 基座：检查 `import.meta.env.DEV` 判断是否生效。
 - 确认 `widgetRegistry.js` 的开发/生产分支 URL 配置正确。
 
-### 2.6 现象：`npm install` 报 peer 依赖冲突或脚本失败
+### 2.6 现象：修改 `wc/` 模块导出后 Vite 仍报旧错误（如 `No matching export`）
+
+**原因**：Vite 的 esbuild 依赖预构建结果缓存在 `node_modules/.vite` **和进程内存**中。普通重启（`Ctrl+C` 再 `vite`）不会重新扫描依赖，即使源文件已变更。删除 `node_modules/.vite` 目录也不够，因为 esbuild 的依赖扫描结果还缓存在进程内存中。
+
+**解决**：加 `--force` 参数强制重新预构建依赖：
+
+```bash
+pnpm exec vite --port 5000 --force
+```
+
+`--force` 会强制 esbuild 重新扫描所有模块的导出并重建依赖图，适用于以下场景：
+
+- 修改了 `wc/` 下模块的 `export`（如新增/删除/重命名导出函数）
+- 修改了 `package.json` 的 `exports` 字段
+- 切换分支后 `wc/` 模块结构发生变化
+
+> 日常修改 `wc/` 模块的**实现逻辑**（不改变导出签名）不需要 `--force`，普通 HMR 即可。
+
+### 2.7 现象：`pnpm install` 报 `ERR_PNPM_FETCH_404`（element-plus 等包在镜像源不存在）
+
+**原因**：`pnpm-lock.yaml` 锁定了某个精确版本（如 `element-plus@2.14.2`），但该版本尚未同步到企业内网镜像（如 `cmc.centralrepo.rnd.huawei.com`）。
+
+**解决**：
+
+- **临时方案**：删除 `pnpm-lock.yaml` 后重新 `pnpm install`，包管理器会解析到镜像中可用的最近版本（如 `element-plus@2.13.7`）。
+- **长期方案**：
+  - CI 环境配置 `.npmrc` 添加 npmjs.org 作为 fallback registry。
+  - 或在 `.npmrc` 中锁定 `element-plus` 等更新频繁的包到镜像已同步的版本。
+
+> 注意：删除 lock 文件后可能引起其他包版本变动，需在 CI 上回归验证。
+
+### 2.8 现象：`npm install` 报 peer 依赖冲突或脚本失败
 
 **原因**：各子项目（`demo/*`、`wc/*`）独立维护依赖，需在对应目录单独安装。
 
@@ -340,7 +371,7 @@ loader.onWidgetLifecycle('error', ({ name, error, hostId }) => {
 **解决**：
 
 - Vue2 基座：`import 'element-ui/lib/theme-chalk/xxx.css'` 并 `window.ELEMENT = ELEMENT`（见 `demo/vue2-host/src/element-ui.js`）。
-- Vue3 基座：`setupElementPlus(app)` 注册组件并挂 `window.ElementPlus`。
+- Vue3 基座：`setupElementPlus(app)` 注册组件并挂 `window.ElementPlus`；同时通过 `vendor/element-ui.js` + `vendor/element-ui.css` 提供 `window.ELEMENT` 供 Vue2 物料使用（见 `demo/vue3-host/index.html` 加载顺序：vue@2.js → element-ui.js → 清除 window.Vue）。
 - 物料按需使用 `el-xxx` 组件，构建时 external，**不要**在物料内 import ElementUI CSS。
 
 ### 6.2 现象：控制台报错 `Shadow DOM detected`
