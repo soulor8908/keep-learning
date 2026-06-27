@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+import { describe, it, expect } from 'vitest';
 import { mountWidget } from '../loader.js';
 import fixture from './fixtures/test-widget.js';
 

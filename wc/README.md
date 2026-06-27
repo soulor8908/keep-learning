@@ -15,27 +15,31 @@
 
 ```
 wc/
-├── vue2-widget-template/          # Vue2 物料零改造模板
+├── vue3-esm/                       # 轻量方案：纯 ES Module import（Vue3 物料推荐）
+│   ├── loader.js                   # 轻量加载器（~57 行）
+│   ├── WidgetHost.js               # 基座组件
+│   └── h5-wrapper.js               # H5 物料包装器
+├── vue2-widget-template/          # Vue2 物料零改造模板（widget-loader 方案）
 │   ├── widget-wrapper.js          # Custom Element 包装入口
 │   ├── vue.config.js              # UMD 打包配置示例
 │   └── example/SalesPanel.vue     # 业务组件示例
-├── vue3-widget-template/          # Vue3 物料零改造模板
+├── vue3-widget-template/          # Vue3 物料零改造模板（widget-loader 方案）
 │   ├── widget-wrapper.js          # Custom Element 包装入口
 │   ├── vite.config.js             # UMD 打包配置示例
 │   └── example/FinancePanel.vue   # 业务组件示例
-├── widget-wrapper-plugin/         # 自动包装插件
+├── widget-wrapper-plugin/         # 自动包装插件（widget-loader 方案）
 │   ├── vue-cli-plugin.js          # Vue CLI 插件
 │   └── vite-plugin.js             # Vite 插件
-├── widget-loader/                 # 基座物料加载器
+├── widget-loader/                 # 基座物料加载器（widget-loader 方案）
 │   └── index.js
-├── widget-bus/                    # 跨技术栈消息总线
+├── widget-bus/                    # 跨技术栈消息总线（widget-loader 方案）
 │   └── index.js
-├── i18n/                          # 跨技术栈轻量国际化运行时（loader/物料共用）
+├── i18n/                          # 跨技术栈轻量国际化运行时（widget-loader 方案）
 │   ├── index.js
 │   └── locales/                   # 中英语言包
-├── schema-generator/              # schema.json 自动生成器
+├── schema-generator/              # schema.json 自动生成器（widget-loader 方案）
 │   └── index.js
-├── ai-assistant/                  # AI 辅助工具
+├── ai-assistant/                  # AI 辅助工具（widget-loader 方案）
 │   ├── prompts/                   # AI 提示词模板
 │   └── cli.js                     # CLI 入口
 └── README.md                      # 本文档
@@ -617,12 +621,92 @@ demo 项目已配置完整的本地热调试流程：watch 构建 + 本地静态
 
 ---
 
-## 七、总结
+## 七、方案选择
 
-本方案通过 Web Components 把跨技术栈的物料组件封装成统一的 Custom Element，基座按需加载、统一渲染。相比微前端框架，它更轻量、改造成本更低，特别适合：
+本项目提供两套并行方案，用户可根据实际场景选择：
 
-- 多部门独立维护不同模块。
-- 技术栈不统一（Vue2 / Vue3 / 原生）。
-- 只需要"板块级"集成，不需要完整应用级隔离。
+### 方案对比
+
+| 特性 | vue3-esm（轻量方案） | widget-loader（完整方案） |
+|------|----------------------|--------------------------|
+| 代码量 | ~57 行 | ~792 行 |
+| Vue2 支持 | 不支持 | 支持 |
+| Vue3 支持 | 支持 | 支持 |
+| H5 支持 | 支持 | 支持 |
+| 加载方式 | ES Module import() | Custom Elements |
+| 物料自带 Vue | 是（通过 import map） | 否（基座提供） |
+| scope 软隔离 | 无 | 有 |
+| i18n 集成 | 通过 props | 内置 |
+| 样式隔离 | Vue scoped style | postcss-namespace |
+| 学习成本 | 低 | 中 |
+
+### 选择建议
+
+**选择 vue3-esm 的场景：**
+- 纯 Vue3 物料，不需要 Vue2 兼容
+- 追求极致轻量和性能
+- 不需要 CE 样式隔离
+- 团队熟悉 ES Module
+- 快速原型开发
+
+**选择 widget-loader 的场景：**
+- 需要支持 Vue2 物料
+- 需要 CE 样式隔离
+- 需要 scope 软隔离
+- 需要内置 i18n 集成
+- 企业级复杂看板
+
+### 快速开始
+
+**vue3-esm 方案：**
+
+```vue
+<!-- 基座 App.vue -->
+<script setup>
+import WidgetHost from 'wc/vue3-esm/WidgetHost.js';
+</script>
+<template>
+  <WidgetHost url="/widgets/vue3-sales.js" :widgetProps="{ title: '销售' }" />
+</template>
+```
+
+**widget-loader 方案：**
+
+```vue
+<!-- 基座 App.vue -->
+<script setup>
+import { mountWidget } from 'wc/widget-loader/index.js';
+</script>
+<template>
+  <div ref="el"></div>
+</template>
+<script setup>
+import { ref, onMounted } from 'vue';
+const el = ref();
+onMounted(() => {
+  mountWidget(el.value, {
+    name: 'bi-sales-panel',
+    js: '/widgets/bi-sales-panel.js',
+    props: { title: '销售' }
+  });
+});
+</script>
+```
+
+---
+
+## 八、总结
+
+本项目提供两套并行的物料集成方案：
+
+1. **vue3-esm（轻量方案）**：基于 ES Module import()，适合纯 Vue3 场景，追求极致轻量和性能。
+2. **widget-loader（完整方案）**：基于 Web Components / Custom Elements，适合需要支持 Vue2 或需要 CE 样式隔离的复杂场景。
+
+两套方案各有优势，用户可根据实际需求选择：
+
+- **多部门独立维护不同模块** → 两套方案都支持
+- **技术栈不统一（Vue2 / Vue3 / 原生）** → widget-loader 方案
+- **只需要"板块级"集成，不需要完整应用级隔离** → 两套方案都支持
+- **追求极致性能和轻量** → vue3-esm 方案
 
 主要代价是放弃了 Shadow DOM 的强样式隔离，需要依靠规范和 CSS 命名空间来避免冲突。

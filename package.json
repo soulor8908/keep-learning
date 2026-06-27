@@ -13,6 +13,7 @@
   "scripts": {
     "test": "vitest",
     "test:run": "vitest run",
+    "test:vue3-esm": "vitest run --config wc/vue3-esm/vitest.config.js",
     "test:ci": "vitest run --reporter=verbose",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium",

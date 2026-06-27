@@ -1,5 +1,5 @@
 /**
- * @deprecated 本模块是早期实验性方案，请使用主 widget-loader + vue3-widget-template。
+ * 轻量基座组件 - 配合 loader.js 使用
  */
 import { h, ref, onMounted, onUnmounted, watch } from 'vue';
 import { mountWidget } from './loader.js';

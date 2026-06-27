@@ -1,8 +1,22 @@
 # wc/vue3-esm
 
-> **DEPRECATED** -- 本模块是早期实验性方案，与主 `widget-loader` 体系脱节（不走 checkDependencies 版本校验、
-> widget-scope 软隔离、widget-context 上下文注入、i18n 国际化、错误边界/降级占位）。
-> 新物料请使用主 `widget-loader` + `vue3-widget-template` 方案。本模块保留仅供历史参考，后续可能移除。
+> **轻量方案** -- 基于 ES Module import() 的 Vue3 物料加载方案，无 Custom Elements、无版本契约、无 scope 软隔离。
+> 适用于纯 Vue3 场景，追求极致轻量和性能。如需支持 Vue2 或需要 CE 样式隔离，请使用 `widget-loader` 方案。
+
+## 方案对比
+
+| 特性 | vue3-esm (本方案) | widget-loader |
+|------|-------------------|---------------|
+| 代码量 | ~57 行 | ~792 行 |
+| Vue2 支持 | 不支持 | 支持 |
+| Vue3 支持 | 支持 | 支持 |
+| H5 支持 | 支持 | 支持 |
+| 加载方式 | ES Module import() | Custom Elements |
+| 物料自带 Vue | 是（通过 import map） | 否（基座提供） |
+| scope 软隔离 | 无 | 有 |
+| i18n 集成 | 通过 props | 内置 |
+| 样式隔离 | Vue scoped style | postcss-namespace |
+| 学习成本 | 低 | 中 |
 
 ## 核心文件
 

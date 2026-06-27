@@ -1,6 +1,10 @@
 /**
- * @deprecated 本模块是早期实验性方案，与主 widget-loader 体系脱节。
- * 新物料请使用主 widget-loader + vue3-widget-template 方案。
+ * 轻量物料加载器 - 基于 ES Module import()
+ *
+ * 特点：
+ * - 无 Custom Elements 开销
+ * - 物料通过 import map 共享 Vue 运行时
+ * - 支持 Vue 组件和 { mount } 对象两种格式
  */
 
 import { h, render, ref, onMounted, onUnmounted } from 'vue';
@@ -39,13 +43,7 @@ async function load(url, importer) {
 
 const defaultImporter = (url) => import(/* @vite-ignore */ url);
 
-let _deprecationWarned = false;
-
 export async function mountWidget(container, url, props = {}, importer) {
-  if (!_deprecationWarned) {
-    _deprecationWarned = true;
-    console.warn('[wc/vue3-esm] DEPRECATED: 本模块已废弃，请使用主 widget-loader + vue3-widget-template 方案');
-  }
   const doImport = importer || defaultImporter;
   const comp = await load(url, doImport).catch((err) => {
     console.error('[vue3-esm] load failed:', url, err);
