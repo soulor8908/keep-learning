@@ -26,3 +26,7 @@ demo/vue3-esm-host/widgets/*.css
 demo/vue3-host/public/widgets/*.js
 demo/vue3-host/public/widgets/*.css
 demo/vue3-host/public/widgets/*.map
+
+# vue2-widget-lib watch 构建产物
+demo/vue2-host/public/widgets/*.js
+demo/vue2-host/public/widgets/*.css
