@@ -12,6 +12,7 @@
     "serve:dist": "npx serve dist -l 8083 --cors"
   },
   "devDependencies": {
+    "@wc/widget-wrapper-plugin": "workspace:*",
     "cross-env": "^7.0.3",
     "vite": "^5.2.0"
   }

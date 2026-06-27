@@ -6,7 +6,7 @@ import fs from 'fs';
 
 const require = createRequire(import.meta.url);
 // vue-cli-plugin 是 CJS（module.exports = function），用 require 拿到最稳
-const widgetVueCliPlugin = require('../vue-cli-plugin.js');
+const widgetVueCliPlugin = require('../vue-cli-plugin.cjs');
 // vite-plugin 是 ESM（export default），用静态 import
 import widgetVitePlugin from '../vite-plugin.js';
 
@@ -131,7 +131,7 @@ describe('widget-wrapper-plugin external 映射', () => {
 
   describe('T1.3b vite-plugin (Vue3) external', () => {
     // 用真实存在文件作为 entry（插件会检查 fs.existsSync）
-    const dummyComponent = path.resolve(process.cwd(), 'wc/widget-wrapper-plugin/postcss-namespace.js');
+    const dummyComponent = path.resolve(process.cwd(), 'wc/widget-wrapper-plugin/postcss-namespace.cjs');
 
     it('external 函数对 vue/element-plus/wc-i18n/wc-widget-scope/lodash/axios 返回 true，globals 映射到 Vue/ElementPlus/全局变量', () => {
       const plugin = widgetVitePlugin({
@@ -199,7 +199,7 @@ describe('widget-wrapper-plugin external 映射', () => {
 
   describe('T1.3c vite-plugin mode=h5 (无框架) external', () => {
     // 用真实存在文件作为 entry（h5 插件会检查 fs.existsSync）
-    const dummyEntry = path.resolve(process.cwd(), 'wc/widget-wrapper-plugin/postcss-namespace.js');
+    const dummyEntry = path.resolve(process.cwd(), 'wc/widget-wrapper-plugin/postcss-namespace.cjs');
 
     it('不 external 任何 vue，仅 external wc-widget-scope + wc-i18n + 高频库 lodash/axios', () => {
       const plugin = widgetVitePlugin({

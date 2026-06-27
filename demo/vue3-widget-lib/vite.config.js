@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import widgetVitePlugin from '../../wc/widget-wrapper-plugin/vite-plugin.js';
+import widgetVitePlugin from '@wc/widget-wrapper-plugin';
 
 const widgetName = process.env.WIDGET_NAME;
 

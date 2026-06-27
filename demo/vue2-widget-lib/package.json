@@ -20,6 +20,7 @@
     "@vue/cli-plugin-babel": "~5.0.8",
     "@vue/cli-service": "~5.0.8",
     "@vue/web-component-wrapper": "^1.3.0",
+    "@wc/widget-wrapper-plugin": "workspace:*",
     "vue-template-compiler": "^2.6.14"
   }
 }

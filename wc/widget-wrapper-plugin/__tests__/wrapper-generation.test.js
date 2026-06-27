@@ -5,7 +5,8 @@
 // ['config'] / _configRef / _updateConfig / onConfigChange / getConfig。
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'module';
-import widgetVueCliPlugin from '../vue-cli-plugin.js';
+const require = createRequire(import.meta.url);
+const widgetVueCliPlugin = require('../vue-cli-plugin.cjs');
 import { generateVue3Wrapper, generateH5Wrapper } from '../vite-plugin.js';
 
 const { generateVue2Wrapper } = widgetVueCliPlugin;

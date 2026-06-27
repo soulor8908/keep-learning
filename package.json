@@ -18,6 +18,9 @@
     "e2e:install": "playwright install chromium",
     "e2e:report": "playwright show-report",
     "docs:api": "jsdoc -c jsdoc.conf.json",
-    "docs:api:serve": "jsdoc -c jsdoc.conf.json && npx http-server docs/api -p 4000"
+    "docs:api:serve": "jsdoc -c jsdoc.conf.json && npx http-server docs/api -p 4000",
+    "build": "pnpm -r --filter './demo/*' run build",
+    "dev:vue3-host": "pnpm --filter vue3-host serve",
+    "dev:h5-lib": "pnpm --filter h5-widget-lib serve"
   }
 }

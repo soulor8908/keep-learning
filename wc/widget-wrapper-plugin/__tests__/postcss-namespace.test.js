@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { createNamespacePlugin, prefixSelector, isGlobalSelector, hasNamespace, GLOBAL_SELECTOR_PATTERNS } from '../postcss-namespace.js';
+import { createNamespacePlugin, prefixSelector, isGlobalSelector, hasNamespace, GLOBAL_SELECTOR_PATTERNS } from '../postcss-namespace.cjs';
 
 describe('postcss-namespace 命名空间前缀注入', () => {
   describe('T1.5a 普通选择器加前缀 (prefixSelector)', () => {

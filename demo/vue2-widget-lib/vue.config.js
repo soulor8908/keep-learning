@@ -1,4 +1,4 @@
-const widgetPlugin = require('../../wc/widget-wrapper-plugin/vue-cli-plugin');
+const widgetPlugin = require('@wc/widget-wrapper-plugin/vue-cli-plugin');
 const fs = require('fs');
 const path = require('path');
 

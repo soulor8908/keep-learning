@@ -3,7 +3,7 @@
 // 远程失败时回退到本地 FALLBACK_WIDGETS。
 // 统一使用 /widgets/ 相对路径，无需额外启动 widget-lib dev server。
 
-import { createRegistry } from '../../../wc/widget-registry';
+import { createRegistry } from '@wc/widget-registry';
 
 // 本地兜底清单：远程注册表不可用时使用。
 // 统一使用 /widgets/ 相对路径（public/widgets 下的预构建产物）。

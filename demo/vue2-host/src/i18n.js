@@ -2,7 +2,7 @@
 // 基座自身 Vue UI 文案用 vue-i18n；语言切换时同步 wc/i18n 全局 locale（loader/物料共用）
 import Vue from 'vue';
 import VueI18n from 'vue-i18n';
-import { setLocale } from '../../../wc/i18n/index.js';
+import { setLocale } from '@wc/i18n';
 
 Vue.use(VueI18n);
 

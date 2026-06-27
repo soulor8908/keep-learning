@@ -45,7 +45,7 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { createNamespacePlugin } from './postcss-namespace.js';
+import { createNamespacePlugin } from './postcss-namespace.cjs';
 
 /**
  * 读取 shared/props.js 源码并去除 export 关键字，
@@ -383,6 +383,23 @@ function generateDevPreviewHtml(widgetName, props = []) {
     <p style="font-size:12px;color:#888">${widgetName}</p>
     ${propInputs}
   </div>
+  <script>
+    // CSS HMR 客户端：监听服务端推送的样式更新，只替换 <style> 内容，不重新注册 Custom Element
+    try {
+      var __wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      var __ws = new WebSocket(__wsProto + '//' + location.host);
+      __ws.onmessage = function(e) {
+        try {
+          var msg = JSON.parse(e.data);
+          if (msg.type === 'custom' && msg.event === 'widget-css-update') {
+            var tag = document.querySelector('style[data-widget-hmr]');
+            if (!tag) { tag = document.createElement('style'); tag.setAttribute('data-widget-hmr', '${widgetName}'); document.head.appendChild(tag); }
+            tag.textContent = msg.css;
+          }
+        } catch(_) {}
+      };
+    } catch(_) {}
+  </script>
   <script type="module" src="/src/__dev_preview_entry__.js"></script>
 </body>
 </html>`;
@@ -712,6 +729,27 @@ export default function widgetVitePlugin(options = {}) {
           }
           next();
         });
+
+        // ─── CSS HMR：监听样式文件变化，推送更新到 dev-preview 页面 ───
+        // Custom Element 注册后无法重复注册，但 CSS 只需替换 <style> 内容即可热更新。
+        // 监听 src/ 下的 .css 文件变化，读取内容后通过 WS 推送到浏览器。
+        const cssWatcher = server.watcher;
+        cssWatcher.on('change', (file) => {
+          if (!/\.(css|scss|sass|less|styl)$/.test(file)) return;
+          try {
+            const css = fs.readFileSync(file, 'utf-8');
+            server.ws.send({ type: 'custom', event: 'widget-css-update', css });
+          } catch (_) {}
+        });
+      }
+    },
+    async handleHotUpdate({ file, server }) {
+      // dev-preview 模式下，CSS 文件变化时推送更新（补充 configureServer 中的 watcher）
+      if (isDevPreview && /\.(css|scss|sass|less|styl)$/.test(file)) {
+        try {
+          const css = fs.readFileSync(file, 'utf-8');
+          server.ws.send({ type: 'custom', event: 'widget-css-update', css });
+        } catch (_) {}
       }
     },
     closeBundle() {

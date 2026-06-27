@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import widgetVitePlugin from '../../wc/widget-wrapper-plugin/vite-plugin.js';
+import widgetVitePlugin from '@wc/widget-wrapper-plugin';
 
 // 通过 WIDGET_NAME 环境变量指定要构建的物料
 const widgetName = process.env.WIDGET_NAME;

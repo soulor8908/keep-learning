@@ -8,6 +8,11 @@
     "setup:vendors": "mkdir -p public/vendor && cp ../vue3-widget-lib/node_modules/vue/dist/vue.global.prod.js public/vendor/vue@3.js && cp ../vue3-host/node_modules/element-plus/dist/index.full.min.js public/vendor/element-plus.js && cp ../vue3-host/node_modules/element-plus/dist/index.css public/vendor/element-plus.css"
   },
   "dependencies": {
+    "@wc/i18n": "workspace:*",
+    "@wc/widget-bus": "workspace:*",
+    "@wc/widget-loader": "workspace:*",
+    "@wc/widget-registry": "workspace:*",
+    "@wc/widget-scope": "workspace:*",
     "element-ui": "^2.15.14",
     "vue": "^2.6.14",
     "vue-i18n": "^8.28.2"

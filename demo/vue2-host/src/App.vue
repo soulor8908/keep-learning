@@ -82,8 +82,8 @@
 </template>
 
 <script>
-import { mountWidget, unmountWidget, onWidgetLifecycle } from '../../../wc/widget-loader';
-import { createBus } from '../../../wc/widget-bus';
+import { mountWidget, unmountWidget, onWidgetLifecycle } from '@wc/widget-loader';
+import { createBus } from '@wc/widget-bus';
 
 const bus = createBus();
 const { on, emit } = bus;

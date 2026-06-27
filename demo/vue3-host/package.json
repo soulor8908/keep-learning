@@ -9,6 +9,11 @@
     "setup:vendors": "mkdir -p public/vendor && cp ../vue2-widget-lib/node_modules/vue/dist/vue.js public/vendor/vue@2.js"
   },
   "dependencies": {
+    "@wc/i18n": "workspace:*",
+    "@wc/widget-bus": "workspace:*",
+    "@wc/widget-loader": "workspace:*",
+    "@wc/widget-registry": "workspace:*",
+    "@wc/widget-scope": "workspace:*",
     "element-plus": "^2.7.0",
     "vue": "3.5.35",
     "vue-i18n": "^9.14.5"
