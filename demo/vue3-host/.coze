@@ -1,0 +1,12 @@
+[project]
+sub_id = "e5f6g7h8"
+name = "vue3-host"
+requires = ["nodejs-24"]
+project_type = "web"
+
+[preview]
+preview_enable = "enabled"
+
+[dev]
+build = ["bash", "../../../scripts/coze-preview-build.sh"]
+run = ["bash", "../../../scripts/coze-preview-run.sh"]

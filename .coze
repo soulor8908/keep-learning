@@ -1,0 +1,22 @@
+[project]
+entrypoint = "demo/vue3-host/index.html"
+requires = ["nodejs-24"]
+project_type = "web"
+
+[preview]
+preview_enable = "enabled"
+
+[dev]
+build = ["bash", "scripts/coze-preview-build.sh"]
+run = ["bash", "scripts/coze-preview-run.sh"]
+
+[deploy]
+build = ["bash", "scripts/deploy_build.sh"]
+run = ["bash", "scripts/deploy_run.sh"]
+
+[deploy.profile]
+kind = "service"
+flavor = "web"
+
+[subprojects]
+path = ["demo/h5-widget-lib", "demo/vue3-host"]
