@@ -23,6 +23,6 @@ demo/vue3-esm-host/widgets/*.js
 demo/vue3-esm-host/widgets/*.css
 
 # vue3-widget-lib watch 构建产物
-demo/vue3-host/public/widgets/bi-finance-panel.js
-demo/vue3-host/public/widgets/bi-finance-panel.js.map
-demo/vue3-host/public/widgets/style.css
+demo/vue3-host/public/widgets/*.js
+demo/vue3-host/public/widgets/*.css
+demo/vue3-host/public/widgets/*.map
