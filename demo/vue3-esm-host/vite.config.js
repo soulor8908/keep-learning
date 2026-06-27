@@ -1,9 +1,46 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'path';
+import fs from 'fs';
+
+/**
+ * 物料中间件插件
+ * - 拦截 /widgets/*.js 请求，从项目 widgets/ 目录读取文件
+ * - 将 bare specifier（如 from "vue"）替换为实际 ESM 路径
+ *   因为浏览器动态 import() 不走 importmap
+ */
+function widgetServePlugin() {
+  return {
+    name: 'widget-serve',
+    configureServer(server) {
+      const widgetsDir = path.resolve(__dirname, 'widgets');
+      const vueEsmPath = '/node_modules/vue/dist/vue.esm-browser.js';
+
+      server.middlewares.use((req, res, next) => {
+        if (!req.url || !req.url.startsWith('/widgets/') || !req.url.endsWith('.js')) {
+          return next();
+        }
+
+        const fileName = path.basename(req.url);
+        const filePath = path.join(widgetsDir, fileName);
+
+        if (!fs.existsSync(filePath)) {
+          return next();
+        }
+
+        let code = fs.readFileSync(filePath, 'utf-8');
+        // 将 bare specifier "vue" 替换为实际 ESM 路径
+        code = code.replace(/from\s+["']vue["']/g, `from "${vueEsmPath}"`);
+
+        res.setHeader('Content-Type', 'application/javascript');
+        res.end(code);
+      });
+    }
+  };
+}
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), widgetServePlugin()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -11,6 +48,6 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5000
+    port: 5001
   }
 });
