@@ -5,12 +5,12 @@
   "scripts": {
     "build": "vue-cli-service build",
     "build:all": "rm -rf dist && npm run build:sales && npm run build:chart && npm run build:filter && npm run build:orders",
-    "build:sales": "WIDGET_NAME=bi-sales-panel vue-cli-service build --no-clean",
-    "build:chart": "WIDGET_NAME=bi-chart-panel vue-cli-service build --no-clean",
-    "build:filter": "WIDGET_NAME=bi-filter-bar vue-cli-service build --no-clean",
-    "build:orders": "WIDGET_NAME=bi-orders-panel vue-cli-service build --no-clean",
+    "build:sales": "cross-env WIDGET_NAME=bi-sales-panel vue-cli-service build --no-clean",
+    "build:chart": "cross-env WIDGET_NAME=bi-chart-panel vue-cli-service build --no-clean",
+    "build:filter": "cross-env WIDGET_NAME=bi-filter-bar vue-cli-service build --no-clean",
+    "build:orders": "cross-env WIDGET_NAME=bi-orders-panel vue-cli-service build --no-clean",
     "serve": "vue-cli-service serve",
-    "serve:widget": "WIDGET_BUILD=true vue-cli-service build --watch --mode development",
+    "serve:widget": "cross-env WIDGET_BUILD=true vue-cli-service build --watch --mode development",
     "serve:dist": "npx serve dist -l 8081 --cors"
   },
   "dependencies": {

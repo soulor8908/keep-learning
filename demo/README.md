@@ -477,7 +477,27 @@ cp demo/vue3-widget-lib/dist/bi-finance-panel.css demo/vue2-host/public/widgets/
 
 ### 6.2 启动本地热调试
 
-需要同时跑 4 个服务，建议开 4 个终端：
+**方式一：一键启动（推荐）**
+
+```bash
+# 项目根目录
+pnpm dev
+```
+
+同时启动三个 host：
+- Vue3 基座：http://localhost:5173/
+- Vue2 基座：http://localhost:8080/
+- Vue3 ESM 基座：http://localhost:5001/
+
+**方式二：单独启动某个 host**
+
+```bash
+pnpm dev:vue3-host
+pnpm dev:vue2-host
+pnpm dev:vue3-esm-host
+```
+
+**方式三：手动启动（需要同时跑多个服务）**
 
 ```bash
 # 终端 1：Vue2 物料热构建（监听源码变化并写入 dist）

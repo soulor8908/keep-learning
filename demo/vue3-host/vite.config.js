@@ -8,5 +8,11 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, 'src')
     }
+  },
+  server: {
+    watch: {
+      // 监听物料源码和 wc/ 目录变化
+      ignored: ['!**/node_modules/@wc/**', '!**/wc/**']
+    }
   }
 });

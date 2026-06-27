@@ -6,11 +6,11 @@
   "scripts": {
     "build": "vite build",
     "build:all": "rm -rf dist && npm run build:finance && npm run build:data-source && npm run build:metric-cards && npm run build:crash-tester && npm run build:payment",
-    "build:finance": "WIDGET_NAME=bi-finance-panel vite build",
-    "build:data-source": "WIDGET_NAME=bi-data-source vite build",
-    "build:metric-cards": "WIDGET_NAME=bi-metric-cards vite build",
-    "build:crash-tester": "WIDGET_NAME=bi-crash-tester vite build",
-    "build:payment": "WIDGET_NAME=bi-payment-panel vite build",
+    "build:finance": "cross-env WIDGET_NAME=bi-finance-panel vite build",
+    "build:data-source": "cross-env WIDGET_NAME=bi-data-source vite build",
+    "build:metric-cards": "cross-env WIDGET_NAME=bi-metric-cards vite build",
+    "build:crash-tester": "cross-env WIDGET_NAME=bi-crash-tester vite build",
+    "build:payment": "cross-env WIDGET_NAME=bi-payment-panel vite build",
     "serve": "vite",
     "serve:widget": "vite build --watch",
     "serve:dist": "npx serve dist -l 8082 --cors"

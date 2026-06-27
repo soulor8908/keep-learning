@@ -45,7 +45,11 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { fileURLToPath } from 'url';
 import { createNamespacePlugin } from './postcss-namespace.cjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * 读取 shared/props.js 源码并去除 export 关键字，

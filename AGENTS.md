@@ -12,7 +12,7 @@
 ```
 /workspace/projects/
 ├── .coze                    # Coze 项目配置
-├── package.json              # 根依赖（测试工具）
+├── package.json              # 根依赖（测试工具 + concurrently/cross-env）
 ├── scripts/                  # Coze 脚本
 │   ├── coze-preview-build.sh # 预览构建
 │   ├── coze-preview-run.sh   # 预览运行
@@ -22,11 +22,18 @@
 │   └── deploy_run.sh         # 部署运行
 ├── demo/                     # 子项目
 │   ├── h5-widget-lib/        # H5 原生物料库
-│   ├── vue2-host/            # Vue2 基座
-│   ├── vue3-host/            # Vue3 基座（主预览入口）
+│   ├── vue2-host/            # Vue2 基座（Custom Elements 方案）
 │   ├── vue2-widget-lib/      # Vue2 物料库
-│   └── vue3-widget-lib/      # Vue3 物料库
+│   ├── vue3-host/            # Vue3 基座（Custom Elements 方案，主预览入口）
+│   ├── vue3-widget-lib/      # Vue3 物料库
+│   ├── vue3-esm-host/        # Vue3 基座（ESM 轻量方案）
+│   ├── vue3-esm-widget/      # Vue3 ESM 物料
+│   └── vue3-esm-h5/          # H5 ESM 物料
 └── wc/                       # Web Components 运行时核心
+    ├── vue3-esm/             # ESM 轻量方案（Vue3 物料推荐）
+    │   ├── loader.js         # import() + 缓存 + locale 自动注册
+    │   ├── WidgetHost.js     # 基座组件
+    │   └── h5-wrapper.js     # H5 物料包装器
     ├── widget-bus/            # 全局消息总线（createBus 工厂）
     ├── widget-context/        # 上下文管理
     ├── widget-scope/          # 物料软隔离 scope（createWidgetScope）
@@ -54,11 +61,14 @@
 | demo/vue2-host | - | Vue CLI | Vue2 基座 |
 | demo/vue2-widget-lib | - | Vue CLI | Vue2 物料构建 |
 | demo/vue3-widget-lib | - | Vite | Vue3 物料构建 |
+| demo/vue3-esm-host | 5001 | index.html | Vue3 ESM 轻量基座 |
+| demo/vue3-esm-widget | - | Vite | Vue3 ESM 物料构建 |
 
 ## 核心 API（精简后）
 
 | 模块 | 导出 | 说明 |
 |------|------|------|
+| vue3-esm/loader | `mountWidget(container, url, props)` | 轻量加载器，自动注册物料 locale |
 | widget-bus | `createBus(namespace?)` | 创建消息总线实例 |
 | widget-scope | `createWidgetScope({name, busInstance?})` | 创建物料 scope |
 | widget-loader | `WidgetLoader`, `createWidgetLoader()` | 物料加载器 |
@@ -70,11 +80,21 @@
 # 安装根依赖
 pnpm install
 
-# 预览 vue3-host
-bash scripts/coze-preview-run.sh
+# 一键启动三个 host（vue3:5173, vue2:8080, vue3-esm:5001）
+pnpm dev
 
-# 预览 h5-widget-lib
-bash scripts/h5-preview-run.sh
+# 单独启动某个 host
+pnpm dev:vue3-host
+pnpm dev:vue2-host
+pnpm dev:vue3-esm-host
+
+# 按需启动物料构建 watch（修改物料代码后自动重编译）
+pnpm dev:vue3-widget
+pnpm dev:vue2-widget
+pnpm dev:vue3-esm-widget
+
+# 预览 vue3-host（旧方式，保留兼容）
+bash scripts/coze-preview-run.sh
 
 # 构建部署产物
 bash scripts/deploy_build.sh
@@ -111,6 +131,8 @@ bash scripts/deploy_run.sh
 - **declarative-plugin 只保留 vite-plugin**：babel-plugin.js 作为 vite-plugin 内部实现细节（@private），不对用户导出
 - **scope emit/on/off 快捷方法**：scope 上直接提供 emit/on/off 委托到 scope.bus，与 Vue3 emit 心智模型一致
 - **vite-plugin/vue-cli-plugin dev-preview 模式**：serve 时自动生成预览入口和页面，无需手写 main.js
+- **vue3-esm 方案与 widget-loader 并行存在**：两套方案平等并存，用户根据场景自选；vue3-esm 适合纯 Vue3 轻量场景，widget-loader 适合 Vue2/复杂场景
+- **vue3-esm 物料 locale 自动注册**：物料导出 `locale` 对象后，loader 加载时自动调用 `addMessages`，无需手动调用
 
 ## 关键运行时全局变量
 

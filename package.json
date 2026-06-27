@@ -4,6 +4,8 @@
     "@vue/compiler-sfc": "^3.5.39",
     "acorn": "^8.17.0",
     "acorn-walk": "^8.3.5",
+    "concurrently": "^10.0.3",
+    "cross-env": "^7.0.3",
     "happy-dom": "^14.0.0",
     "jsdoc": "^4.0.5",
     "postcss": "^8.5.15",
@@ -21,7 +23,13 @@
     "docs:api": "jsdoc -c jsdoc.conf.json",
     "docs:api:serve": "jsdoc -c jsdoc.conf.json && npx http-server docs/api -p 4000",
     "build": "pnpm -r --filter './demo/*' run build",
+    "dev": "concurrently \"pnpm --filter vue3-host serve\" \"pnpm --filter vue2-host serve\" \"pnpm --filter vue3-esm-host serve\"",
     "dev:vue3-host": "pnpm --filter vue3-host serve",
+    "dev:vue2-host": "pnpm --filter vue2-host serve",
+    "dev:vue3-esm-host": "pnpm --filter vue3-esm-host serve",
+    "dev:vue3-widget": "pnpm --filter vue3-widget-lib serve:widget",
+    "dev:vue2-widget": "pnpm --filter vue2-widget-lib serve:widget",
+    "dev:vue3-esm-widget": "pnpm --filter vue3-esm-widget serve:widget",
     "dev:h5-lib": "pnpm --filter h5-widget-lib serve"
   }
 }
