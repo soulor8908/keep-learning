@@ -65,52 +65,13 @@ export interface Bus {
  */
 export function createBus(namespace?: string): Bus;
 
-// ─── 默认全局总线实例（向后兼容现有 emit/on/once/off 导出）───
-
-/** 发送全局消息（默认总线） */
-export const emit: Bus['emit'];
-/** 监听全局消息（默认总线），返回取消监听函数 */
-export const on: Bus['on'];
-/** 监听一次全局消息（默认总线），返回取消监听函数 */
-export const once: Bus['once'];
-/** 按类型与原 handler 取消订阅（默认总线） */
-export const off: Bus['off'];
-
-/** Vue2 运行时类型约束（最小契约：具备 prototype 以挂载 $widgetBus） */
-export type Vue2Like = { prototype: Record<string, any> } & Record<string, any>;
-
-/** Vue3 应用类型约束（最小契约：具备 config.globalProperties） */
-export type Vue3AppLike = {
-  config: { globalProperties: Record<string, any> };
-};
-
 /**
- * Vue2 插件形式安装。
- * 安装后组件内可通过 this.$widgetBus.emit / this.$widgetBus.on 调用。
+ * 创建内部广播 bus（无命名空间，全局通道）
+ *
+ * 用途：widget-context / i18n 等内部模块通过此 bus 广播变化事件（如 context-change、
+ * locale-change），替代依赖 window.widgetBus 全局变量。不暴露到 window，不依赖全局变量。
+ *
+ * 每次调用返回新的 bus 实例，各实例通过 DOM CustomEvent 共享全局通道（bi-widget-bus:<type>），
+ * 因此任何 createBus()（无命名空间）创建的监听器都能接收到广播事件。
  */
-export const Vue2BusPlugin: {
-  install(Vue: Vue2Like): void;
-  uninstall(Vue: Vue2Like): void;
-};
-
-/**
- * Vue3 插件形式安装。
- * 安装后可通过 app.config.globalProperties.$widgetBus 调用。
- */
-export const Vue3BusPlugin: {
-  install(app: Vue3AppLike): void;
-  uninstall(app: Vue3AppLike): void;
-};
-
-/** 默认导出：聚合 emit/on/once/off + createBus + Vue2/Vue3 插件 */
-declare const _default: {
-  emit: Bus['emit'];
-  on: Bus['on'];
-  once: Bus['once'];
-  off: Bus['off'];
-  createBus: typeof createBus;
-  Vue2BusPlugin: typeof Vue2BusPlugin;
-  Vue3BusPlugin: typeof Vue3BusPlugin;
-};
-
-export default _default;
+export function createBroadcastBus(): Bus;

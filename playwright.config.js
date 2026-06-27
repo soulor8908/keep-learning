@@ -1,5 +1,60 @@
 // @ts-check
 const { defineConfig, devices } = require('@playwright/test');
+const path = require('path');
+
+/**
+ * Playwright E2E 配置
+ *
+ * 覆盖 demo 基座的物料加载链路（vue3-host / vue2-host）。
+ *
+ * webServer 自动拉起 vue3-host（CI 友好）：
+ *   - CI=true 时强制启动，确保测试不静默跳过
+ *   - 本地开发时若已有服务运行在目标端口，reuseExistingServer 避免重复启动
+ *   - vue2-host 链路较复杂（需 vue-cli-service），暂不自动拉起，保留可达性检查 + skip
+ */
+module.exports = defineConfig({
+  testDir: './e2e',
+  timeout: 60_000,
+  expect: {
+    timeout: 10_000,
+  },
+  fullyParallel: true,
+  workers: process.env.CI ? 1 : undefined,
+  retries: process.env.CI ? 2 : 0,
+  reporter: process.env.CI ? 'github' : 'list',
+
+  use: {
+    // 默认指向 vue3-host 的 vite preview 产物；可用 E2E_BASE_URL 覆盖
+    baseURL: process.env.E2E_BASE_URL || 'http://localhost:4173',
+    trace: 'on-first-retry',
+    ignoreHTTPSErrors: true,
+    // CI 与无显示环境一律 headless；本地可用 `npx playwright test --headed` 覆盖
+    launchOptions: {
+      headless: true,
+    },
+  },
+
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+
+  // ─── webServer：CI 自动拉起 vue3-host ──────────────────────────────
+  // CI 环境强制启动 vue3-host preview，避免 skipIfUnreachable 导致测试永远不跑。
+  // 本地开发时复用已有服务（reuseExistingServer: true），不重复启动。
+  // 注意：物料产物需预构建并放置到 demo/vue3-host/public/widgets/。
+  webServer: {
+    command: 'npx vite preview --port 4173 --strictPort',
+    url: 'http://localhost:4173',
+    cwd: path.resolve(__dirname, 'demo/vue3-host'),
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+});
+// @ts-check
+const { defineConfig, devices } = require('@playwright/test');
 
 /**
  * Playwright E2E 配置

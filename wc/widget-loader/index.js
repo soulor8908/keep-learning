@@ -767,7 +767,7 @@ export function createWidgetLoader(opts = {}) {
   return new WidgetLoader(opts);
 }
 
-// 便捷导出：基于默认 loader 实例的 renderWidget / mountWidget / unloadWidget
+// 便捷导出：基于默认 loader 实例的 renderWidget / mountWidget / unloadWidget / unmountWidget
 // 适用于单基座场景（多基座应自行 createWidgetLoader）
 const _defaultLoader = new WidgetLoader();
 
@@ -779,8 +779,8 @@ export function mountWidget(container, widget) {
   return _defaultLoader.mountWidget(container, widget);
 }
 
-export function unloadWidget(container, name) {
-  return _defaultLoader.unloadWidget(container, name);
+export function unloadWidget(name) {
+  return _defaultLoader.unloadWidget(name);
 }
 
 export function unmountWidget(element) {

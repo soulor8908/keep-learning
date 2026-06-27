@@ -74,7 +74,7 @@ function lookupInLocale(locale, key) {
  * @param {Object} [params] 插值参数，替换 {name} 等
  * @returns {string}
  */
-let t = function t(key, params) {
+function _tImpl(key, params) {
   // 按 locale 回退链查找：currentLocale -> 基础语言 -> en -> zh
   const chain = getLocaleFallbackChain(currentLocale);
   let str;
@@ -93,7 +93,7 @@ let t = function t(key, params) {
  * 获取当前语言
  * @returns {'zh'|'en'}
  */
-let getLocale = function getLocale() {
+function _getLocaleImpl() {
   return currentLocale;
 }
 
@@ -105,7 +105,7 @@ let getLocale = function getLocale() {
  *   默认 false：locale 与当前相同时跳过，避免重复通知。
  *   true：即使 locale 未变也重新派发事件，用于热更新语言包后强制刷新物料文案。
  */
-let setLocale = function setLocale(locale, force = false) {
+function _setLocaleImpl(locale, force = false) {
   // 允许设置未在 messages 中注册的 locale（如 zh-CN、zh-TW、en-GB），
   // t() 会按回退链查找；但若回退链中无任何已知 locale 则忽略
   const chain = getLocaleFallbackChain(locale);
@@ -128,7 +128,7 @@ let setLocale = function setLocale(locale, force = false) {
  * @param {Function} cb (locale) => void
  * @returns {Function} 取消订阅
  */
-let onLocaleChange = function onLocaleChange(cb) {
+function _onLocaleChangeImpl(cb) {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
@@ -161,7 +161,7 @@ function deepMerge(target, source) {
  * @param {string} locale 目标语言，如 'zh' / 'en'
  * @param {Object} msgs 待合并的字典，会深合并到现有字典
  */
-let addMessages = function addMessages(locale, msgs) {
+function _addMessagesImpl(locale, msgs) {
   // 归一化到 base locale，使 addMessages('zh-CN', ...) 与 addMessages('zh', ...)
   // 写入同一个 messages 桶，避免重复桶 / 查找遗漏
   const normalizedLocale = String(locale).split('-')[0];
@@ -171,21 +171,45 @@ let addMessages = function addMessages(locale, msgs) {
   deepMerge(messages[normalizedLocale], msgs);
 }
 
-const i18n = { t, getLocale, setLocale, onLocaleChange, addMessages };
+// ─── 代理层：通过 _impl 对象委托，避免 let 重赋值 ───
+// 当全局实例已存在时，只需替换 _impl 的引用，不重绑定独立变量。
+// 静态分析工具和 IDE 跳转不会困惑。
+const _impl = {
+  t: _tImpl,
+  getLocale: _getLocaleImpl,
+  setLocale: _setLocaleImpl,
+  onLocaleChange: _onLocaleChangeImpl,
+  addMessages: _addMessagesImpl,
+};
+
+// 稳定导出函数：内部委托到 _impl，全局实例存在时 _impl 被替换
+function t(key, params) { return _impl.t(key, params); }
+function getLocale() { return _impl.getLocale(); }
+function setLocale(locale, force) { _impl.setLocale(locale, force); }
+function onLocaleChange(cb) { return _impl.onLocaleChange(cb); }
+function addMessages(locale, msgs) { _impl.addMessages(locale, msgs); }
+
+const i18n = { t: _impl.t, getLocale: _impl.getLocale, setLocale: _impl.setLocale, onLocaleChange: _impl.onLocaleChange, addMessages: _impl.addMessages };
 
 // 挂载到全局，供物料 external 'wc-i18n' 引用
 // 幂等：多 bundle 引入时复用首个实例，避免 messages/listeners/currentLocale 分裂
 // 导致 locale 切换只通知到首个实例的订阅者
 if (typeof window !== 'undefined') {
   if (window.__wcI18n__) {
-    // 复用已有全局实例：本 bundle 的函数代理到全局，确保 t/setLocale/onLocaleChange
+    // 复用已有全局实例：将 _impl 代理到全局，确保 t/setLocale/onLocaleChange
     // 操作同一份 messages/listeners/currentLocale
     const g = window.__wcI18n__;
-    t = g.t.bind(g);
-    getLocale = g.getLocale.bind(g);
-    setLocale = g.setLocale.bind(g);
-    onLocaleChange = g.onLocaleChange.bind(g);
-    addMessages = g.addMessages.bind(g);
+    _impl.t = g.t.bind(g);
+    _impl.getLocale = g.getLocale.bind(g);
+    _impl.setLocale = g.setLocale.bind(g);
+    _impl.onLocaleChange = g.onLocaleChange.bind(g);
+    _impl.addMessages = g.addMessages.bind(g);
+    // 同步 i18n 聚合对象的引用
+    i18n.t = _impl.t;
+    i18n.getLocale = _impl.getLocale;
+    i18n.setLocale = _impl.setLocale;
+    i18n.onLocaleChange = _impl.onLocaleChange;
+    i18n.addMessages = _impl.addMessages;
   } else {
     window.__wcI18n__ = i18n;
   }

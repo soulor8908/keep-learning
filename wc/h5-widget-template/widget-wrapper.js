@@ -248,12 +248,5 @@ if (widgetName) {
   // 或直接在入口文件中调用 createH5Widget 并注册，不依赖环境变量
 }
 
-// 导出工厂函数供物料项目使用
-// CommonJS + ESM 双格式导出，兼容不同打包工具
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { createH5Widget };
-}
-// ESM 导出（打包工具支持时生效）
-if (typeof exports !== 'undefined') {
-  exports.createH5Widget = createH5Widget;
-}
+// 导出工厂函数供物料项目使用（ESM）
+export { createH5Widget };
