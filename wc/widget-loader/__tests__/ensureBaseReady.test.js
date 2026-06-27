@@ -46,7 +46,7 @@ describe('ensureBaseReady（U2 基座运行时自检）', () => {
     const allWarnArgs = warnSpy.mock.calls.map(c => c.join(' ')).join('\n');
     expect(allWarnArgs).toContain('__wcI18n__');
     expect(allWarnArgs).toContain('__wcWidgetScope__');
-    expect(allWarnArgs).toContain('基座核心运行时未就绪');
+    expect(allWarnArgs).toContain('Core runtime not ready');
   });
 
   it('必需全局变量齐全时不再告警必需项（仅可能告警可选项）', async () => {
@@ -54,10 +54,10 @@ describe('ensureBaseReady（U2 基座运行时自检）', () => {
     window.__wcWidgetScope__ = { createWidgetScope: () => ({}) };
     const { ensureBaseReady } = await importFresh();
     ensureBaseReady();
-    // 必需项齐全，不应出现"基座核心运行时未就绪"
+    // 必需项齐全，不应出现"Core runtime not ready"
     const requiredWarn = warnSpy.mock.calls
       .map(c => c.join(' '))
-      .find(s => s.includes('基座核心运行时未就绪'));
+      .find(s => s.includes('Core runtime not ready'));
     expect(requiredWarn).toBeUndefined();
   });
 
@@ -68,7 +68,7 @@ describe('ensureBaseReady（U2 基座运行时自检）', () => {
     ensureBaseReady();
     const optionalWarn = warnSpy.mock.calls
       .map(c => c.join(' '))
-      .find(s => s.includes('可选全局变量未检测到'));
+      .find(s => s.includes('optional global variables are not detected'));
     expect(optionalWarn).toBeDefined();
     expect(optionalWarn).toContain('Vue2');
     expect(optionalWarn).toContain('Vue3');
@@ -105,7 +105,7 @@ describe('ensureBaseReady（U2 基座运行时自检）', () => {
     ensureBaseReady();
     const requiredWarn = warnSpy.mock.calls
       .map(c => c.join(' '))
-      .find(s => s.includes('基座核心运行时未就绪'));
+      .find(s => s.includes('Core runtime not ready'));
     expect(requiredWarn).toContain('wc-i18n');
     expect(requiredWarn).toContain('wc-widget-scope');
   });

@@ -104,7 +104,7 @@ describe('checkDependencies', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       expect(() => checkDependencies({ name: 'no-vv' })).not.toThrow();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('未声明 vueVersion'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('does not declare vueVersion'));
       warnSpy.mockClear();
       checkDependencies({ name: 'has-vv', vueVersion: '2' });
       expect(warnSpy).not.toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe('checkDependencies', () => {
         throw new Error('should have thrown for ' + JSON.stringify(w));
       } catch (err) {
         expect(err.code).toBe('DEP_VERSION_MISMATCH');
-        expect(err.message).toContain('不合法');
+        expect(err.message).toContain('invalid vueVersion');
       }
     }
   });

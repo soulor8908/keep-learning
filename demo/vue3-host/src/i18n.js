@@ -15,7 +15,30 @@ const messages = {
     log_done: '物料加载完成',
     log_fail: '物料加载失败: {msg}',
     log_refresh: '发送 refresh-data 指令',
-    lang_switch: 'English'
+    lang_switch: 'English',
+    // App.vue 新增
+    log_panel_title: '事件日志（{count}）',
+    clear: '清空',
+    unmount_event_tester: '卸载事件测试器',
+    remount_event_tester: '重新挂载事件测试器',
+    slot_filter: '筛选栏 (Vue2)',
+    slot_data_source: '数据源面板 (Vue3)',
+    slot_metric_cards: '指标卡组 (Vue3)',
+    slot_chart: '图表面板 (Vue3)',
+    slot_event_tester: '事件测试器 (原生)',
+    slot_crash_tester: '崩溃测试器 (Vue3)',
+    slot_load_fail: '加载失败测试 (错误边界)',
+    cross_page_title: '交叉页面演示',
+    cross_page_desc: '同一页面承载订单（A 团队 · Vue2）、支付（B 团队 · Vue3）、推荐（C 团队 · 原生 H5）三个业务域，通过 widget-bus 跨技术栈通信。',
+    slot_orders: '订单区',
+    slot_payment: '支付区',
+    slot_recommend: '推荐区',
+    team_vue2: 'Vue2 · A 团队',
+    team_vue3: 'Vue3 · B 团队',
+    team_h5: '原生 H5 · C 团队',
+    action_refresh_all: '刷新所有物料',
+    action_unmount_event: '已卸载事件测试器',
+    action_remount_event: '已重新挂载事件测试器'
   },
   en: {
     title: 'BI Dashboard · Framework Capability Verification',
@@ -28,7 +51,30 @@ const messages = {
     log_done: 'Widgets loaded',
     log_fail: 'Widget load failed: {msg}',
     log_refresh: 'Sent refresh-data',
-    lang_switch: '中文'
+    lang_switch: '中文',
+    // App.vue 新增
+    log_panel_title: 'Event Log ({count})',
+    clear: 'Clear',
+    unmount_event_tester: 'Unmount Event Tester',
+    remount_event_tester: 'Remount Event Tester',
+    slot_filter: 'Filter Bar (Vue2)',
+    slot_data_source: 'Data Source (Vue3)',
+    slot_metric_cards: 'Metric Cards (Vue3)',
+    slot_chart: 'Chart Panel (Vue3)',
+    slot_event_tester: 'Event Tester (Native)',
+    slot_crash_tester: 'Crash Tester (Vue3)',
+    slot_load_fail: 'Load Failure Test (Error Boundary)',
+    cross_page_title: 'Cross-Page Demo',
+    cross_page_desc: 'This page hosts three business domains: Orders (Team A · Vue2), Payment (Team B · Vue3), and Recommendations (Team C · Native H5), communicating across tech stacks via widget-bus.',
+    slot_orders: 'Orders',
+    slot_payment: 'Payment',
+    slot_recommend: 'Recommendations',
+    team_vue2: 'Vue2 · Team A',
+    team_vue3: 'Vue3 · Team B',
+    team_h5: 'Native H5 · Team C',
+    action_refresh_all: 'Refresh all widgets',
+    action_unmount_event: 'Event tester unmounted',
+    action_remount_event: 'Event tester remounted'
   }
 };
 

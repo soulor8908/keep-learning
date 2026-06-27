@@ -8,20 +8,20 @@
     </div>
 
     <div class="logs">
-      <h3>事件日志（{{ logs.length }}）</h3>
-      <button @click="logs = []">清空</button>
+      <h3>{{ t('log_panel_title', { count: logs.length }) }}</h3>
+      <button @click="logs = []">{{ t('clear') }}</button>
       <ul>
         <li v-for="(log, idx) in logs" :key="idx">{{ log }}</li>
       </ul>
     </div>
-
+    
     <div class="dashboard">
       <div class="widget-slot">
-        <h3>Vue3 物料</h3>
+        <h3>{{ t('slot_vue3_widget') }}</h3>
         <WidgetHost url="/widgets/vue-widget.js" :widgetProps="widgetProps" />
       </div>
       <div class="widget-slot">
-        <h3>H5 物料</h3>
+        <h3>{{ t('slot_h5_widget') }}</h3>
         <WidgetHost url="/widgets/h5-widget.js" :widgetProps="widgetProps" />
       </div>
     </div>

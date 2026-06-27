@@ -31,14 +31,14 @@ export function ensureBaseReady() {
   if (typeof window === 'undefined') return;
 
   const required = [
-    { key: '__wcI18n__', desc: '国际化运行时（物料 t() 依赖，由 wc-i18n 模块自动挂载）' },
-    { key: '__wcWidgetScope__', desc: '软隔离 scope 工厂（物料 scope 依赖，由 wc-widget-scope 模块自动挂载）' },
+    { key: '__wcI18n__', desc: 'i18n runtime (required for widget t() function, auto-mounted by wc-i18n module)' },
+    { key: '__wcWidgetScope__', desc: 'soft isolation scope factory (required for widget scope, auto-mounted by wc-widget-scope module)' },
   ];
   const optional = [
-    { key: 'Vue2', desc: 'Vue2 运行时（Vue2 物料依赖）' },
-    { key: 'Vue3', desc: 'Vue3 运行时（Vue3 物料依赖）' },
-    { key: 'ElementPlus', desc: 'ElementPlus 组件库（Vue3 物料的 el-* 组件依赖）' },
-    { key: 'ELEMENT', desc: 'ElementUI 组件库（Vue2 物料的 el-* 组件依赖）' },
+    { key: 'Vue2', desc: 'Vue2 runtime (required by Vue2 widgets)' },
+    { key: 'Vue3', desc: 'Vue3 runtime (required by Vue3 widgets)' },
+    { key: 'ElementPlus', desc: 'ElementPlus component library (required for el-* components in Vue3 widgets)' },
+    { key: 'ELEMENT', desc: 'ElementUI component library (required for el-* components in Vue2 widgets)' },
   ];
 
   const missing = required.filter(g => !window[g.key]);
@@ -46,14 +46,14 @@ export function ensureBaseReady() {
 
   if (missing.length > 0) {
     console.warn(
-      '[widget-loader] 基座核心运行时未就绪，以下必需全局变量缺失:\n' +
+      '[widget-loader] Core runtime not ready, the following required global variables are missing:\n' +
       missing.map(g => `  - window.${g.key}: ${g.desc}`).join('\n') +
-      '\n请确保基座已加载 wc-i18n 和 wc-widget-scope 模块。'
+      '\nPlease ensure wc-i18n and wc-widget-scope modules are loaded.'
     );
   }
   if (optionalMissing.length > 0) {
     console.warn(
-      '[widget-loader] 以下可选全局变量未检测到（对应类型物料加载时会失败）:\n' +
+      '[widget-loader] The following optional global variables are not detected (widgets of corresponding type will fail to load):\n' +
       optionalMissing.map(g => `  - window.${g.key}: ${g.desc}`).join('\n')
     );
   }
@@ -139,13 +139,13 @@ export function checkDependencies(widget) {
 
   if (widget.vueVersion === undefined) {
     console.warn(
-      `[widget-loader] 物料 ${name} 未声明 vueVersion，默认按 Vue2 校验。` +
-      `Vue3 物料请显式声明 vueVersion:'3'，H5 物料请声明 vueVersion:'none'。`
+      `[widget-loader] Widget ${name} does not declare vueVersion, defaulting to Vue2 validation. ` +
+      `For Vue3 widgets, please explicitly declare vueVersion:'3'; for H5 widgets, declare vueVersion:'none'.`
     );
   }
 
   if (!['2', '3', 'none'].includes(vueVersion)) {
-    errors.push(`物料 ${name} 的 vueVersion="${vueVersion}" 不合法，必须为 '2'、'3' 或 'none'`);
+    errors.push(`Widget ${name} has invalid vueVersion="${vueVersion}", must be '2', '3' or 'none'`);
   }
 
   if (vueVersion !== 'none' && ['2', '3'].includes(vueVersion)) {
@@ -561,7 +561,7 @@ class WidgetLoader {
       this.mountWithFallback(container, widget);
     };
     renderFallback(container, message, widget, onRetry);
-    console.error(`[widget-loader] 物料 "${name}" 运行时崩溃:`, error);
+    console.error(`[widget-loader] Widget "${name}" crashed at runtime:`, error);
     setTimeout(() => {
       const e = this.mountedWidgets.get(element);
       if (e && e.failed) this.mountedWidgets.delete(element);
@@ -696,7 +696,7 @@ class WidgetLoader {
         this.emitLifecycle('error', { name: widget.name, error, container });
         const message = `[widget-loader] ${t('loader.load_failed', { name: widget.name })}\n${error.message || error}`;
         renderFallback(container, message, widget, () => this.mountWithFallback(container, widget));
-        console.error(`[widget-loader] 物料 "${widget.name}" 加载失败:`, error);
+        console.error(`[widget-loader] Widget "${widget.name}" load failed:`, error);
       });
   }
 
@@ -712,7 +712,7 @@ class WidgetLoader {
         : `[widget-loader] ${t('loader.mount_failed', { name: widget.name })}\n${error.message || error}`;
       const onRetry = isVersionMismatch ? null : () => this.mountWithFallback(container, widget);
       renderFallback(container, message, widget, onRetry);
-      console.error(`[widget-loader] 物料 "${widget.name}" 挂载失败，已渲染降级占位:`, error);
+      console.error(`[widget-loader] Widget "${widget.name}" mount failed, rendered degraded placeholder:`, error);
       return null;
     }
   }

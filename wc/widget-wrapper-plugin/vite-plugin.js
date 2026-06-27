@@ -293,8 +293,8 @@ class H5WidgetElement extends HTMLElement {
   connectedCallback() {
     if (this.shadowRoot) {
       console.error(
-        '[h5-widget-wrapper] 物料 ${widgetName} 检测到 shadowRoot，' +
-        '基座全局样式将无法穿透。请勿使用 attachShadow。'
+        '[h5-widget-wrapper] Widget ${widgetName} detected shadowRoot, ' +
+        'host global styles will not be able to penetrate. Please do not use attachShadow.'
       );
     }
     this._props = this._collectProps();
@@ -768,7 +768,7 @@ export default function widgetVitePlugin(options = {}) {
             fs.renameSync(defaultCssPath, targetCssPath);
           }
         } catch (e) {
-          console.warn(`[widget-vite-plugin] 物料 ${name} CSS 重命名失败:`, e.message);
+          console.warn(`[widget-vite-plugin] Widget ${name} CSS rename failed:`, e.message);
         }
       }
 

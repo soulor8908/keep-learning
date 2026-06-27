@@ -12,10 +12,10 @@
     <!-- 日志区 -->
     <div class="log-panel">
       <div class="log-header">
-        <span class="log-title">事件日志（{{ logs.length }}）</span>
+        <span class="log-title">{{ t('log_panel_title', { count: logs.length }) }}</span>
         <div class="log-actions">
-          <button class="log-btn" @click="logs = []">清空</button>
-          <button class="log-btn" @click="toggleEventTester">{{ eventTesterMounted ? '卸载事件测试器' : '重新挂载事件测试器' }}</button>
+          <button class="log-btn" @click="logs = []">{{ t('clear') }}</button>
+          <button class="log-btn" @click="toggleEventTester">{{ eventTesterMounted ? t('unmount_event_tester') : t('remount_event_tester') }}</button>
         </div>
       </div>
       <div class="log-list">
@@ -30,50 +30,50 @@
     <!-- 看板区 -->
     <div class="dashboard">
       <div class="widget-slot">
-        <h3>筛选栏 (Vue2)</h3>
+        <h3>{{ t('slot_filter') }}</h3>
         <div ref="filterBar" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>数据源面板 (Vue3)</h3>
+        <h3>{{ t('slot_data_source') }}</h3>
         <div ref="dataSource" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>指标卡组 (Vue3)</h3>
+        <h3>{{ t('slot_metric_cards') }}</h3>
         <div ref="metricCards" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>图表面板 (Vue3)</h3>
+        <h3>{{ t('slot_chart') }}</h3>
         <div ref="chartPanel" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>事件测试器 (原生)</h3>
+        <h3>{{ t('slot_event_tester') }}</h3>
         <div ref="eventTester" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>崩溃测试器 (Vue3)</h3>
+        <h3>{{ t('slot_crash_tester') }}</h3>
         <div ref="crashTester" class="widget-container"></div>
       </div>
       <div class="widget-slot">
-        <h3>加载失败测试 (错误边界)</h3>
+        <h3>{{ t('slot_load_fail') }}</h3>
         <div ref="loadFailTest" class="widget-container"></div>
       </div>
     </div>
 
     <!-- 交叉页面演示：三业务域物料同页（Vue2 + Vue3 + 原生 H5）-->
     <section class="cross-page">
-      <h2 class="section-title">交叉页面演示</h2>
-      <p class="section-desc">同一页面承载订单（A 团队 · Vue2）、支付（B 团队 · Vue3）、推荐（C 团队 · 原生 H5）三个业务域，通过 widget-bus 跨技术栈通信。</p>
+      <h2 class="section-title">{{ t('cross_page_title') }}</h2>
+      <p class="section-desc">{{ t('cross_page_desc') }}</p>
       <div class="dashboard dashboard--three">
         <div class="widget-slot">
-          <h3>订单区 <span class="tech-tag tech-tag--vue2">Vue2 · A 团队</span></h3>
+          <h3>{{ t('slot_orders') }} <span class="tech-tag tech-tag--vue2">{{ t('team_vue2') }}</span></h3>
           <div ref="ordersPanel" class="widget-container"></div>
         </div>
         <div class="widget-slot">
-          <h3>支付区 <span class="tech-tag tech-tag--vue3">Vue3 · B 团队</span></h3>
+          <h3>{{ t('slot_payment') }} <span class="tech-tag tech-tag--vue3">{{ t('team_vue3') }}</span></h3>
           <div ref="paymentPanel" class="widget-container"></div>
         </div>
         <div class="widget-slot">
-          <h3>推荐区 <span class="tech-tag tech-tag--h5">原生 H5 · C 团队</span></h3>
+          <h3>{{ t('slot_recommend') }} <span class="tech-tag tech-tag--h5">{{ t('team_h5') }}</span></h3>
           <div ref="recommendPanel" class="widget-container"></div>
         </div>
       </div>
@@ -169,7 +169,7 @@ async function mountCrossPage() {
 }
 
 function refreshWidgets() {
-  addLog('action', '刷新所有物料');
+  addLog('action', t('action_refresh_all'));
   emit('refresh-data', { source: 'host', timestamp: Date.now() });
 }
 
@@ -182,14 +182,14 @@ function toggleEventTester() {
     unmountWidget(eventTesterElement);
     eventTesterElement = null;
     eventTesterMounted.value = false;
-    addLog('action', '已卸载事件测试器');
+    addLog('action', t('action_unmount_event'));
   } else {
     const widget = widgets.find(w => w.name === 'bi-event-tester');
     if (widget) {
       mountWidget(eventTester.value, widget).then(el => {
         eventTesterElement = el;
         eventTesterMounted.value = true;
-        addLog('action', '已重新挂载事件测试器');
+        addLog('action', t('action_remount_event'));
       }).catch(err => {
         addLog('error', `[remount-fail] bi-event-tester: ${(err.message || '').split('\n')[0]}`);
       });
