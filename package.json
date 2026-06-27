@@ -34,6 +34,7 @@
     "dev:vue2-widget": "pnpm --filter vue2-widget-lib serve:widget",
     "dev:vue3-esm-widget": "pnpm --filter vue3-esm-widget serve:widget",
     "dev:h5-lib": "pnpm --filter h5-widget-lib serve",
-    "dev:vue3-with-service": "concurrently \"pnpm --filter vue3-widget-lib serve:dev-server\" \"pnpm --filter vue3-host serve\""
+    "dev:vue3-with-service": "concurrently \"pnpm --filter vue3-widget-lib serve:dev-server\" \"pnpm --filter vue3-host serve\"",
+    "dev:all-with-service": "concurrently \"pnpm --filter vue3-widget-lib serve:dev-server\" \"pnpm --filter vue3-host serve\" \"pnpm --filter vue2-widget-lib serve:widget\" \"pnpm --filter vue2-host serve\" \"pnpm --filter vue3-esm-widget serve:widget\" \"pnpm --filter vue3-esm-h5 serve:widget\" \"pnpm --filter vue3-esm-host serve\""
   }
 }

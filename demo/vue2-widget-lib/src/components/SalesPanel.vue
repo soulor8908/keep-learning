@@ -47,11 +47,6 @@ export default {
     };
   },
   computed: {
-    // 暴露 t 给模板使用；wrapper 在 locale 变化时 $forceUpdate 物料实例，
-    // 模板重新求值 t('xxx') 即可拿到新语言文案
-    t() {
-      return t;
-    },
     symbol() {
       return this.currency === 'USD' ? '$' : '¥';
     },
@@ -60,7 +55,9 @@ export default {
     }
   },
   methods: {
-    // 用方法而非 computed：computed 会缓存 t() 返回值，$forceUpdate 不会使其失效
+    t(key, params) {
+      return t(key, params);
+    },
     periodText() {
       const map = {
         day: t('sales.period_day'),

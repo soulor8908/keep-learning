@@ -33,12 +33,29 @@ module.exports = {
   },
   // 构建物料：通过 WIDGET_NAME 选择对应组件，用插件输出 UMD
   // 多物料共存于同一 dist/：build:all 脚本用 --no-clean 避免后构建覆盖前者
-  chainWebpack: isWidgetBuild && widgetName && WIDGET_MAP[widgetName] ? widgetPlugin({
-    name: widgetName,
-    component: WIDGET_MAP[widgetName],
-    // 使用独立全局名，避免与 Vue3 物料冲突
-    vueGlobal: 'Vue2'
-  }) : undefined,
+  chainWebpack: (config) => {
+    if (isWidgetBuild) {
+      // 物料构建模式下始终配置 externals，无论是否指定了 WIDGET_NAME
+      // （serve:widget 不指定 WIDGET_NAME，但物料源码仍 import wc-i18n）
+      config.externals({
+        vue: 'Vue2',
+        'element-ui': 'ELEMENT',
+        'wc-i18n': '__wcI18n__',
+        'wc-widget-scope': '__wcWidgetScope__',
+        'lodash': '_',
+        'axios': 'axios'
+      });
+      // 如果指定了具体物料，应用 widget 包装插件
+      if (widgetName && WIDGET_MAP[widgetName]) {
+        const pluginChain = widgetPlugin({
+          name: widgetName,
+          component: WIDGET_MAP[widgetName],
+          vueGlobal: 'Vue2'
+        });
+        pluginChain(config);
+      }
+    }
+  },
   // 本地开发：用 pages 预览组件
   pages: isWidgetBuild ? undefined : {
     index: {

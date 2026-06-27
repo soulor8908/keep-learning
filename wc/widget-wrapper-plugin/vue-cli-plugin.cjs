@@ -83,17 +83,18 @@ class WidgetElement extends HTMLElement {
         'ElementUI 全局样式将无法穿透。请勿使用 attachShadow。'
       );
     }
+    const self = this;
     this.vm = new Vue({
-      data: { widgetProps: this._collectProps(), widgetScope: this._scope },
+      data: { widgetProps: this._collectProps(), widgetScope: this._scope, localeTick: 0 },
       render(h) {
+        void this.localeTick;
         return h(Component, { props: { ...this.widgetProps, scope: this.widgetScope } });
       }
     });
     this.vm.$mount();
     this.appendChild(this.vm.$el);
     this._offLocale = onLocaleChange(() => {
-      const widget = this.vm && this.vm.$children && this.vm.$children[0];
-      if (widget) widget.$forceUpdate();
+      self.vm.localeTick++;
     });
   }
 
@@ -173,6 +174,17 @@ module.exports = function widgetVueCliPlugin(options = {}) {
   return function chainWebpack(config) {
     const componentPath = path.resolve(process.cwd(), component);
 
+    // externals 在 dev 和 build 模式都需要配置，
+    // 物料源码 import { t } from 'wc-i18n' 依赖此映射
+    config.externals({
+      vue: vueGlobal,
+      'element-ui': 'ELEMENT',
+      'wc-i18n': '__wcI18n__',
+      'wc-widget-scope': '__wcWidgetScope__',
+      'lodash': '_',
+      'axios': 'axios'
+    });
+
     // ─── Dev-Preview 模式：自动生成预览入口，不打包 UMD ───
     if (isDev) {
       const devEntryCode = generateDevPreviewEntryVue2(name, componentPath);
@@ -198,7 +210,7 @@ module.exports = function widgetVueCliPlugin(options = {}) {
         config.entry(keep).clear().add(devEntryFile);
       }
 
-      // dev 模式保留 html 插件（由 vue-cli-service 默认提供），不设置 UMD/externals
+      // dev 模式保留 html 插件（由 vue-cli-service 默认提供）
       // PostCSS 命名空间仍启用
       if (autoNamespace) {
         const namespacePlugin = createNamespacePlugin(name);
@@ -263,16 +275,6 @@ module.exports = function widgetVueCliPlugin(options = {}) {
       .filename(`${name}.js`)
       .library(name)
       .libraryTarget('umd');
-
-    // external 公共依赖
-    config.externals({
-      vue: vueGlobal,
-      'element-ui': 'ELEMENT',
-      'wc-i18n': '__wcI18n__',
-      'wc-widget-scope': '__wcWidgetScope__',
-      'lodash': '_',
-      'axios': 'axios'
-    });
 
     config.resolve.alias.set('__WIDGET_COMPONENT__', componentPath);
     config.devtool('source-map');

@@ -132,13 +132,16 @@ class WidgetElement extends HTMLElement {
   _mount() {
     if (this.app) return;
     this._propsRef = ref(this._collectProps());
+    this._localeTick = ref(0);
     const hasScopeProp = getDeclaredPropNames(Component).includes('scope');
+    const self = this;
     this.app = createApp({
       render: () => {
-        const props = { ...this._propsRef.value };
-        if (hasScopeProp) props.scope = this._scope;
+        void self._localeTick.value;
+        const props = { ...self._propsRef.value };
+        if (hasScopeProp) props.scope = self._scope;
         return h(Component, {
-          ref: this._captureWidget,
+          ref: self._captureWidget,
           ...props
         });
       }
@@ -158,9 +161,7 @@ class WidgetElement extends HTMLElement {
     }
     this.app.mount(this);
     this._offLocale = onLocaleChange(() => {
-      if (this._widgetInstance && this._widgetInstance.$forceUpdate) {
-        this._widgetInstance.$forceUpdate();
-      }
+      self._localeTick.value++;
     });
   }
 

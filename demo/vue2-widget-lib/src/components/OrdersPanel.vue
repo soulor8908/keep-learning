@@ -78,14 +78,11 @@ export default {
       default: null
     }
   },
-  computed: {
-    // 暴露 t 给模板使用；wrapper 在 locale 变化时 $forceUpdate 物料实例，
-    // 模板重新求值 t('xxx') 即可拿到新语言文案
-    t() {
-      return t;
-    }
-  },
+  computed: {},
   methods: {
+    t(key, params) {
+      return t(key, params);
+    },
     onRowClick(row) {
       // 通过 widget-bus 发出业务事件，基座与其他物料可监听
       if (this.scope && this.scope.bus) {

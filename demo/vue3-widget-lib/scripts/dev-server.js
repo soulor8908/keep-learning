@@ -8,7 +8,7 @@
  */
 
 import { createServer } from 'http';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, watch } from 'fs';
 import { join, extname } from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -31,20 +31,73 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2'
 };
 
-// 启动 Vite 构建监听
+// 物料列表（与 vite.config.js WIDGET_MAP 一致）
+const WIDGETS = [
+  'bi-finance-panel',
+  'bi-data-source',
+  'bi-metric-cards',
+  'bi-crash-tester',
+  'bi-payment-panel'
+];
+
+// 首次构建全部物料（顺序执行，每个物料独立 build）
+async function buildAllWidgets() {
+  console.log('[dev-server] 首次构建全部物料...');
+  for (const name of WIDGETS) {
+    console.log(`[dev-server] 构建 ${name}...`);
+    await new Promise((resolve, reject) => {
+      const proc = spawn('npx', ['vite', 'build'], {
+        cwd: ROOT_DIR,
+        stdio: 'inherit',
+        shell: true,
+        env: { ...process.env, WIDGET_NAME: name }
+      });
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`构建 ${name} 失败 (exit ${code})`));
+      });
+      proc.on('error', reject);
+    });
+  }
+  console.log('[dev-server] 全部物料构建完成');
+}
+
+// 启动源码监听，文件变化时重建对应物料
 function startBuildWatch() {
-  console.log('[dev-server] 启动 Vite 构建监听...');
-  const viteProcess = spawn('npx', ['vite', 'build', '--watch'], {
-    cwd: ROOT_DIR,
-    stdio: 'inherit',
-    shell: true
-  });
+  console.log('[dev-server] 启动源码监听...');
+  const srcDir = join(ROOT_DIR, 'src');
+  let debounceTimer = null;
+  let building = false;
 
-  viteProcess.on('error', (err) => {
-    console.error('[dev-server] Vite 启动失败:', err);
-  });
+  const rebuild = (filePath) => {
+    if (building) return;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      building = true;
+      // 根据文件路径判断影响了哪个物料，全部重建以简化逻辑
+      console.log(`[dev-server] 检测到变化: ${filePath}，重新构建全部物料...`);
+      try {
+        await buildAllWidgets();
+      } catch (err) {
+        console.error('[dev-server] 重建失败:', err.message);
+      }
+      building = false;
+    }, 300);
+  };
 
-  return viteProcess;
+  // 使用 fs.watch 递归监听 src 目录
+  try {
+    watch(srcDir, { recursive: true }, (eventType, filename) => {
+      if (filename && (filename.endsWith('.vue') || filename.endsWith('.js') || filename.endsWith('.ts'))) {
+        rebuild(join(srcDir, filename));
+      }
+    });
+    console.log('[dev-server] 源码监听已启动');
+  } catch (err) {
+    console.warn('[dev-server] 源码监听启动失败，自动重编译不可用:', err.message);
+  }
+
+  return { kill: () => clearTimeout(debounceTimer) };
 }
 
 // 静态文件服务（带 CORS）
@@ -63,8 +116,23 @@ function createStaticServer() {
       return;
     }
 
-    // 解析请求路径
+    // registry.json：读取 host 的 public/widgets/registry.json（含 Vue2 物料）
+    if (req.url && req.url.replace(/^\/widgets/, '') === '/registry.json') {
+      const hostRegistry = join(ROOT_DIR, '..', 'vue3-host', 'public', 'widgets', 'registry.json');
+      if (existsSync(hostRegistry)) {
+        const content = readFileSync(hostRegistry);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(content);
+      } else {
+        res.writeHead(404);
+        res.end('Not Found');
+      }
+      return;
+    }
+
+    // 解析请求路径（去掉 /widgets 前缀，与 dist/ 产物路径对齐）
     let filePath = req.url === '/' ? '/index.html' : req.url;
+    filePath = filePath.replace(/^\/widgets/, '') || '/';
     filePath = join(DIST_DIR, filePath);
 
     // 安全检查：防止路径遍历
@@ -100,10 +168,13 @@ function createStaticServer() {
 }
 
 // 主函数
-function main() {
+async function main() {
   console.log(`[dev-server] 物料开发服务器启动中...`);
   console.log(`[dev-server] 静态文件服务: http://localhost:${PORT}`);
   console.log(`[dev-server] 物料目录: ${DIST_DIR}`);
+
+  // 首次构建全部物料，确保 dist/ 有内容
+  await buildAllWidgets();
 
   // 启动构建监听
   const viteProcess = startBuildWatch();

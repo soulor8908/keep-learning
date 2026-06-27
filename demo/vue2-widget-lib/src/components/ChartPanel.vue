@@ -41,13 +41,7 @@ export default {
       _offBus: null
     };
   },
-  computed: {
-    // 暴露 t 给模板使用；wrapper 在 locale 变化时 $forceUpdate 物料实例，
-    // 模板重新求值 t('xxx') 即可拿到新语言文案
-    t() {
-      return t;
-    }
-  },
+  computed: {},
   mounted() {
     if (this.scope && this.scope.bus) {
       this._offBus = this.scope.bus.on('data-updated', (payload) => {
@@ -62,6 +56,9 @@ export default {
     if (this._offBus) this._offBus();
   },
   methods: {
+    t(key, params) {
+      return t(key, params);
+    },
     barHeight(value) {
       const max = Math.max(...this.metrics.map(m => m.value), 1);
       return Math.min(100, (value / max) * 100);

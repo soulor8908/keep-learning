@@ -57,7 +57,6 @@ export default {
     const locale = (typeof window !== 'undefined' && window.__wcI18n__ && window.__wcI18n__.getLocale)
       ? window.__wcI18n__.getLocale()
       : 'zh';
-    // 通过 scope.t() 读取翻译文案，语言切换时 wrapper 触发 _render() 重绘
     const title = props.title || scope.t('recommend.title');
     const dataDict = ITEM_DATA[locale] || ITEM_DATA.zh;
 

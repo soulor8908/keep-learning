@@ -80,13 +80,7 @@ export default {
       _offBus: null
     };
   },
-  computed: {
-    // 暴露 t 给模板使用；wrapper 在 locale 变化时 $forceUpdate 物料实例，
-    // 模板重新求值 t('xxx') 即可拿到新语言文案
-    t() {
-      return t;
-    }
-  },
+  computed: {},
   mounted() {
     // 初始化选中值（用 $set 保证响应式）
     this.filters.forEach(f => {
@@ -97,6 +91,9 @@ export default {
     if (this._offBus) this._offBus();
   },
   methods: {
+    t(key, params) {
+      return t(key, params);
+    },
     // 兼容旧格式（options 为对象数组）和新格式（options 为字符串数组）
     normalizeOptions(f) {
       if (!Array.isArray(f.options)) return [];

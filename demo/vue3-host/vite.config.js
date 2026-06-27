@@ -60,6 +60,7 @@ export default defineConfig({
     }
   },
   server: {
+    port: 5000,
     watch: {
       // 监听 public/widgets 目录变化，触发 full reload
       usePolling: true,
