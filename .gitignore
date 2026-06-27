@@ -17,3 +17,7 @@ package-lock.json
 
 # JSDoc 生成的 API 文档产物
 docs/api/
+
+# vue3-esm-widget watch 构建产物
+demo/vue3-esm-host/widgets/*.js
+demo/vue3-esm-host/widgets/*.css
