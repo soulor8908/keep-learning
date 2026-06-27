@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "name": "bi-orders-panel",
+  "title": "bi-orders-panel",
+  "description": "Auto-generated schema for bi-orders-panel",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "default": ""
+    },
+    "orders": {
+      "type": "array",
+      "default": []
+    }
+  },
+  "required": [],
+  "layout": {
+    "defaultSize": {
+      "w": 6,
+      "h": 4
+    },
+    "minSize": {
+      "w": 3,
+      "h": 2
+    }
+  },
+  "uiDependencies": {
+    "lib": "element-plus",
+    "version": "^2.7.0",
+    "components": [
+      "card",
+      "table",
+      "table-column"
+    ],
+    "styles": [
+      "base"
+    ]
+  }
+}

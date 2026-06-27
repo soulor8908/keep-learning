@@ -131,15 +131,23 @@ describe('widget-wrapper-plugin external 映射', () => {
   });
 
   describe('T1.3b vite-plugin (Vue3) external', () => {
-    it('external 含 vue/element-plus/wc-i18n/wc-widget-scope/lodash/axios，globals 映射到 Vue/ElementPlus/全局变量', () => {
+    it('external 函数对 vue/element-plus/wc-i18n/wc-widget-scope/lodash/axios 返回 true，globals 映射到 Vue/ElementPlus/全局变量', () => {
       const plugin = widgetVitePlugin({
         name: 'bi-finance-panel',
         component: './does-not-exist.vue'
       });
       const cfg = plugin.config();
       const external = cfg.build.rollupOptions.external;
-      expect(Array.isArray(external)).toBe(true);
-      expect(external).toEqual(['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope', 'lodash', 'axios']);
+      // 函数形式 external（lib 模式下数组形式会被自动外部化覆盖，改用函数逐个判定）
+      expect(typeof external).toBe('function');
+      expect(external('vue')).toBe(true);
+      expect(external('element-plus')).toBe(true);
+      expect(external('wc-i18n')).toBe(true);
+      expect(external('wc-widget-scope')).toBe(true);
+      expect(external('lodash')).toBe(true);
+      expect(external('axios')).toBe(true);
+      // 未声明的模块不外部化（会被打包）
+      expect(external('some-internal-util')).toBe(false);
       const globals = cfg.build.rollupOptions.output.globals;
       expect(globals.vue).toBe('Vue3');
       expect(globals['element-plus']).toBe('ElementPlus');
@@ -191,25 +199,30 @@ describe('widget-wrapper-plugin external 映射', () => {
     // 用真实存在文件作为 entry（h5 插件会检查 fs.existsSync）
     const dummyEntry = path.resolve(process.cwd(), 'wc/widget-wrapper-plugin/postcss-namespace.js');
 
-    it('不 external 任何 vue，仅 external wc-widget-scope + 高频库 lodash/axios', () => {
+    it('不 external 任何 vue，仅 external wc-widget-scope + wc-i18n + 高频库 lodash/axios', () => {
       const plugin = h5WidgetVitePlugin({
         name: 'bi-weather-card',
         entry: dummyEntry
       });
       const cfg = plugin.config();
       const external = cfg.build.rollupOptions.external;
+      // 函数形式 external（lib 模式下数组形式会被自动外部化覆盖，改用函数逐个判定）
+      expect(typeof external).toBe('function');
       // R2-2：wc-i18n 加入 external（onLocaleChange 订阅需要）
-      expect(external).toEqual(['wc-widget-scope', 'wc-i18n', 'lodash', 'axios']);
+      expect(external('wc-widget-scope')).toBe(true);
+      expect(external('wc-i18n')).toBe(true);
+      expect(external('lodash')).toBe(true);
+      expect(external('axios')).toBe(true);
       const globals = cfg.build.rollupOptions.output.globals;
       expect(globals['wc-widget-scope']).toBe('__wcWidgetScope__');
       expect(globals['wc-i18n']).toBe('__wcI18n__');
       // 高频第三方库全局变量映射
       expect(globals['lodash']).toBe('_');
       expect(globals['axios']).toBe('axios');
-      // 不含 vue / element-plus / element-ui
-      expect(external).not.toContain('vue');
-      expect(external).not.toContain('element-plus');
-      expect(external).not.toContain('element-ui');
+      // 不含 vue / element-plus / element-ui（H5 物料无 Vue 依赖）
+      expect(external('vue')).toBe(false);
+      expect(external('element-plus')).toBe(false);
+      expect(external('element-ui')).toBe(false);
     });
 
     it('UMD 输出 + 入口别名指向 __WIDGET_ENTRY__', () => {

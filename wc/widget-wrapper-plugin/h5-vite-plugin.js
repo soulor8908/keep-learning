@@ -44,6 +44,13 @@ const require = createRequire(import.meta.url);
 const { scanTarget, formatFindings } = require('../js-risk-scanner');
 const { checkTarget: checkCssNamespace, formatIssues: formatCssIssues } = require('../css-namespace-checker');
 
+// 需 external 化的模块集合（基座统一提供 window 全局变量）。
+// 用 Set + 函数形式 external：lib 模式下数组形式 external 在 config hook 合并阶段
+// 可能被自动外部化覆盖，导致 wc-i18n 等非 npm 包导入无法外部化。函数形式逐个判定更稳健。
+const EXTERNAL_IDS = new Set([
+  'wc-widget-scope', 'wc-i18n', 'lodash', 'axios'
+]);
+
 /**
  * 生成 H5 物料 wrapper 代码
  *
@@ -274,6 +281,15 @@ export default function h5WidgetVitePlugin(options = {}) {
 
   return {
     name: 'h5-widget-wrapper-plugin',
+    // 在 resolution 层面标记框架模块为 external（rollup-native 方式）。
+    // 兜底：即使 vite lib 模式覆盖了 rollupOptions.external，resolveId 仍能让
+    // rollup 把这些 import 视为外部依赖，不打包进 bundle。
+    resolveId(source) {
+      if (EXTERNAL_IDS.has(source)) {
+        return { id: source, external: true };
+      }
+      return null;
+    },
     config: () => ({
       build: {
         sourcemap: true,
@@ -288,7 +304,7 @@ export default function h5WidgetVitePlugin(options = {}) {
         rollupOptions: {
           // H5 物料无 Vue 依赖；wc-widget-scope 由基座提供（window.__wcWidgetScope__）
           // 高频第三方库（lodash/axios）同样 external 化，基座统一加载一份
-          external: ['wc-widget-scope', 'wc-i18n', 'lodash', 'axios'],
+          external: (id) => EXTERNAL_IDS.has(id),
           output: {
             globals: {
               'wc-widget-scope': '__wcWidgetScope__',

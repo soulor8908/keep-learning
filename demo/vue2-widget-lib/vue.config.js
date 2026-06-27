@@ -32,6 +32,7 @@ module.exports = {
     extract: isWidgetBuild ? false : undefined
   },
   // 构建物料：通过 WIDGET_NAME 选择对应组件，用插件输出 UMD
+  // 多物料共存于同一 dist/：build:all 脚本用 --no-clean 避免后构建覆盖前者
   chainWebpack: isWidgetBuild && widgetName && WIDGET_MAP[widgetName] ? widgetPlugin({
     name: widgetName,
     component: WIDGET_MAP[widgetName],

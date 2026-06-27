@@ -26,6 +26,14 @@ const { scanTarget, formatFindings } = require('../js-risk-scanner');
 const { checkScopedDir, formatScopedResults } = require('../scoped-style-checker');
 const { checkTarget: checkCssNamespace, formatIssues: formatCssIssues } = require('../css-namespace-checker');
 
+// 需 external 化的模块集合（基座统一提供 window 全局变量）。
+// 用 Set + 函数形式 external：lib 模式 + @vitejs/plugin-vue 等前置插件时，
+// 数组形式的 external 在 config hook 合并阶段会被 lib 模式自动外部化覆盖，
+// 导致 wc-i18n 等非 npm 包导入无法外部化。函数形式逐个判定，不受合并影响。
+const EXTERNAL_IDS = new Set([
+  'vue', 'element-plus', 'wc-i18n', 'wc-widget-scope', 'lodash', 'axios'
+]);
+
 export function generateVue3Wrapper(widgetName, vueGlobal, uiDeps = []) {
   return `
 import { createApp, h, ref } from 'vue';
@@ -229,6 +237,20 @@ export default function widgetVitePlugin(options = {}) {
 
   return {
     name: 'widget-wrapper-plugin',
+    // 用 enforce: 'pre' 确保我们的 resolveId 在 vite 内置的 vite:resolve 之前运行。
+    // 否则 vite:resolve 会先尝试解析，找不到 wc-i18n（非 npm 包）时返回 null
+    // 并触发"Rollup failed to resolve import"警告，导致构建失败。
+    enforce: 'pre',
+    // 在 resolution 层面标记框架模块为 external（rollup-native 方式）。
+    // 即使 vite lib 模式在 config hook 合并阶段覆盖了 rollupOptions.external，
+    // resolveId 仍能让 rollup 把这些 import 视为外部依赖，不打包进 bundle。
+    // 这是数组/函数形式 external 失效时的兜底方案。
+    resolveId(source) {
+      if (EXTERNAL_IDS.has(source)) {
+        return { id: source, external: true };
+      }
+      return null;
+    },
     config: () => ({
       build: {
         sourcemap: true, // 开启 source map，方便本地调试物料
@@ -244,7 +266,10 @@ export default function widgetVitePlugin(options = {}) {
         rollupOptions: {
           // 高频第三方库（lodash/axios）external 化，基座统一加载一份，
           // 避免 N 个物料各自打包导致体积膨胀与多版本冲突
-          external: ['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope', 'lodash', 'axios'],
+          // 用函数形式而非数组：lib 模式 + @vitejs/plugin-vue 等前置插件时，
+          // 数组形式的 external 在 config hook 合并阶段会被 lib 模式自动外部化覆盖，
+          // 导致 wc-i18n 等非 npm 包导入无法外部化。函数形式逐个判定，不受合并影响。
+          external: (id) => EXTERNAL_IDS.has(id),
           output: {
             globals: {
               vue: vueGlobal,

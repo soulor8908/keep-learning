@@ -28,6 +28,9 @@ export default defineConfig(({ command }) => {
         // 使用独立全局名，避免与 Vue2 物料冲突
         vueGlobal: 'Vue3'
       })] : [])
-    ]
+    ],
+    // 多物料共存于同一 dist/：禁用 vite 默认的 emptyOutDir，避免后构建的物料覆盖前者
+    // build:all 脚本会在开头显式 rm -rf dist 做一次清理
+    build: { emptyOutDir: false }
   };
 });
