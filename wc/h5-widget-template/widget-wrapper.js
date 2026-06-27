@@ -88,10 +88,12 @@ function createMinimalScope(widgetName) {
  * @param {string[]} [opts.props] 物料声明的独立 prop 名列表。提供后包装层会观察这些
  *   prop 对应的 kebab attribute，并把它们收集为扁平 props 对象传给 render。
  *   不传则不观察任何属性（render 收到空对象）。
+ * @param {function} [opts.sanitize] 可选 HTML 净化函数，接收 render 返回的 HTML 字符串，
+ *   返回净化后的字符串。用于防止 XSS（当 render 输出含用户输入时）。
  * @returns {typeof HTMLElement} Custom Element 类
  */
 function createH5Widget(opts) {
-  const { name, render, onMount, onUnmount, onPropsChange } = opts;
+  const { name, render, onMount, onUnmount, onPropsChange, sanitize } = opts;
 
   if (!name || typeof render !== 'function') {
     throw new Error('[h5-widget-template] name 和 render 函数必须提供');
@@ -194,11 +196,17 @@ function createH5Widget(opts) {
      * render 返回 HTML 字符串时用 innerHTML 设置；
      * 返回 undefined/null 时不覆盖（允许 onMount 中手动操作 DOM）
      * 注入 scope 作为第二参数，让物料渲染时可读取上下文/翻译
+     *
+     * 安全提示：若 render 输出可能包含用户输入，请提供 opts.sanitize 函数
+     * 对 HTML 进行净化，避免 XSS 攻击。
      */
     _render() {
       if (typeof render !== 'function') return;
-      const html = render(this._props, this._scope);
+      let html = render(this._props, this._scope);
       if (typeof html === 'string') {
+        if (typeof sanitize === 'function') {
+          html = sanitize(html);
+        }
         this.innerHTML = html;
       }
     }

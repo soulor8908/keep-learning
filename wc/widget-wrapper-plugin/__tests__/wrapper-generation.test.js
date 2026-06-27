@@ -166,7 +166,7 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
     it('_render 把 render(props, scope) 返回的字符串写入 innerHTML', () => {
       expect(code).toContain('_render()');
       // 扁平化 props 协议：render(this._props, this._scope) 而非 render(this._config, ...)
-      expect(code).toContain('const html = render(this._props, this._scope)');
+      expect(code).toContain('let html = render(this._props, this._scope)');
       expect(code).toContain('this.innerHTML = html');
       expect(code).not.toContain('this._config');
     });

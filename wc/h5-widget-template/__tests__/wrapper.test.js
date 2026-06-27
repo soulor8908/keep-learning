@@ -313,4 +313,40 @@ describe('wc/h5-widget-template', () => {
       expect(() => createH5Widget({ name: 'bi-x', render: 'not-fn' })).toThrow(/name.*render.*必须/);
     });
   });
+
+  describe('XSS 安全：sanitize 选项', () => {
+    it('提供 sanitize 函数时 render 结果经 sanitize 处理后写入 innerHTML', () => {
+      const sanitize = (html) => html.replace(/<img[^>]*>/g, '[removed]');
+      const { tag } = defineWidget({
+        render: () => '<div>safe</div><img onerror="alert(1)">',
+        sanitize
+      });
+      const el = mount(tag);
+      expect(el.innerHTML).toContain('<div>safe</div>');
+      expect(el.innerHTML).toContain('[removed]');
+      expect(el.innerHTML).not.toContain('<img');
+      el.remove();
+    });
+
+    it('未提供 sanitize 时 innerHTML 原样写入（保持向后兼容）', () => {
+      const { tag } = defineWidget({
+        render: () => '<div class="ok">content</div>'
+      });
+      const el = mount(tag);
+      expect(el.innerHTML).toBe('<div class="ok">content</div>');
+      el.remove();
+    });
+
+    it('sanitize 收到 render 返回的完整字符串', () => {
+      const received = [];
+      const sanitize = (html) => { received.push(html); return html; };
+      const { tag } = defineWidget({
+        render: () => '<p>test</p>',
+        sanitize
+      });
+      const el = mount(tag);
+      expect(received).toEqual(['<p>test</p>']);
+      el.remove();
+    });
+  });
 });

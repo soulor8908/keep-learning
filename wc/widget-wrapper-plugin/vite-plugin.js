@@ -250,7 +250,7 @@ const widgetOpts = typeof widgetEntry === 'function'
   ? { render: widgetEntry }
   : (widgetEntry && typeof widgetEntry === 'object' ? widgetEntry : {});
 
-const { render, onMount, onUnmount, onPropsChange, props: declaredProps } = widgetOpts;
+const { render, onMount, onUnmount, onPropsChange, props: declaredProps, sanitize } = widgetOpts;
 
 if (typeof render !== 'function') {
   throw new Error('[h5-widget-wrapper] 物料入口必须 default 导出 render 函数或含 render 的配置对象');
@@ -332,8 +332,9 @@ class H5WidgetElement extends HTMLElement {
 
   _render() {
     if (typeof render !== 'function') return;
-    const html = render(this._props, this._scope);
+    let html = render(this._props, this._scope);
     if (typeof html === 'string') {
+      if (typeof sanitize === 'function') html = sanitize(html);
       this.innerHTML = html;
     }
   }

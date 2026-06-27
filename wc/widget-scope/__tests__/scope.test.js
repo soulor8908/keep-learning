@@ -168,6 +168,34 @@ describe('widget-scope 基础', () => {
       const scope = createWidgetScope({ name: 'w' });
       await expect(scope.request('https://example.com')).rejects.toThrow(/fetch is not available/);
     });
+
+    it('request.removeAllInterceptors 是函数', () => {
+      const scope = createWidgetScope({ name: 'w-rm-all' });
+      expect(typeof scope.request.removeAllInterceptors).toBe('function');
+    });
+
+    it('removeAllInterceptors 批量清除所有拦截器', async () => {
+      const scope = createWidgetScope({ name: 'w-rm-all-fire' });
+      const calls = [];
+      scope.request.addInterceptor(() => calls.push('a'));
+      scope.request.addInterceptor(() => calls.push('b'));
+      await scope.request('https://example.com');
+      expect(calls).toEqual(['a', 'b']);
+      scope.request.removeAllInterceptors();
+      await scope.request('https://example.com');
+      // 清除后拦截器不再触发
+      expect(calls).toEqual(['a', 'b']);
+    });
+
+    it('removeAllInterceptors 后仍可重新添加拦截器', async () => {
+      const scope = createWidgetScope({ name: 'w-rm-all-readd' });
+      scope.request.addInterceptor(() => {});
+      scope.request.removeAllInterceptors();
+      const calls = [];
+      scope.request.addInterceptor(() => calls.push('new'));
+      await scope.request('https://example.com');
+      expect(calls).toEqual(['new']);
+    });
   });
 
   describe('bus.on/once 同步返回 unsubscribe', () => {

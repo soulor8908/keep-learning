@@ -201,3 +201,111 @@ describe('attemptMount 与 mountWidget 语义对比（U3）', () => {
     expect(container.querySelector('.widget-error-placeholder')).not.toBeNull();
   });
 });
+
+describe('ensureGlobalErrorListener 清理', () => {
+  let loader;
+  let container;
+  let restoreSpy;
+  let errSpy;
+
+  beforeEach(() => {
+    ensureElementDefined();
+    loader = createWidgetLoader({ hostId: 'listener-test' });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    restoreSpy = installScriptOnloadSpy();
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    restoreSpy();
+    container.remove();
+    errSpy.mockRestore();
+  });
+
+  it('removeGlobalErrorListener 是函数', () => {
+    expect(typeof loader.removeGlobalErrorListener).toBe('function');
+  });
+
+  it('mountWidget 后全局 error 监听器被安装', async () => {
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    await loader.mountWidget(container, {
+      name: TAG,
+      js: 'https://cdn.example.com/listener.js',
+      vueVersion: 'none'
+    });
+    const errorCalls = addSpy.mock.calls.filter(c => c[0] === 'error');
+    expect(errorCalls.length).toBeGreaterThanOrEqual(1);
+    addSpy.mockRestore();
+  });
+
+  it('removeGlobalErrorListener 后全局监听器被移除', async () => {
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+    await loader.mountWidget(container, {
+      name: TAG,
+      js: 'https://cdn.example.com/rm-listener.js',
+      vueVersion: 'none'
+    });
+    loader.removeGlobalErrorListener();
+    const errorRemoves = removeSpy.mock.calls.filter(c => c[0] === 'error');
+    const rejectionRemoves = removeSpy.mock.calls.filter(c => c[0] === 'unhandledrejection');
+    expect(errorRemoves.length).toBe(1);
+    expect(rejectionRemoves.length).toBe(1);
+    removeSpy.mockRestore();
+  });
+
+  it('removeGlobalErrorListener 幂等：多次调用不抛错', () => {
+    expect(() => loader.removeGlobalErrorListener()).not.toThrow();
+    expect(() => loader.removeGlobalErrorListener()).not.toThrow();
+  });
+
+  it('unmountWidget 后无挂载物料时自动移除全局监听器', async () => {
+    const el = await loader.mountWidget(container, {
+      name: TAG,
+      js: 'https://cdn.example.com/auto-rm.js',
+      vueVersion: 'none'
+    });
+    expect(loader.globalErrorListenerInstalled).toBe(true);
+    loader.unmountWidget(el);
+    // 所有物料卸载后，全局监听器自动清理
+    expect(loader.globalErrorListenerInstalled).toBe(false);
+  });
+});
+
+describe('unloadWidget 不使用 DOM 回退查询', () => {
+  let loader;
+  let container;
+  let restoreSpy;
+  let errSpy;
+
+  beforeEach(() => {
+    ensureElementDefined();
+    loader = createWidgetLoader({ hostId: 'dom-fallback-test' });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    restoreSpy = installScriptOnloadSpy();
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    restoreSpy();
+    container.remove();
+    errSpy.mockRestore();
+  });
+
+  it('unloadWidget 不触发 document.querySelectorAll 回退', async () => {
+    await loader.mountWidget(container, {
+      name: TAG,
+      js: 'https://cdn.example.com/no-fallback.js',
+      vueVersion: 'none'
+    });
+    const qsSpy = vi.spyOn(document, 'querySelectorAll');
+    loader.unloadWidget(TAG);
+    // unloadWidget 不应回退到全量 DOM 查询
+    const scriptQueries = qsSpy.mock.calls.filter(
+      c => c[0] === 'script' || c[0] === 'link[rel="stylesheet"]'
+    );
+    expect(scriptQueries.length).toBe(0);
+    qsSpy.mockRestore();
+  });
+});

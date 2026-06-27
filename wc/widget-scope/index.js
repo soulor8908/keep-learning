@@ -253,6 +253,9 @@ export function createWidgetScope(opts = {}) {
       if (idx >= 0) _requestInterceptors.splice(idx, 1);
     };
   };
+  request.removeAllInterceptors = () => {
+    _requestInterceptors = [];
+  };
 
   // ─── 嵌套物料加载器（带循环依赖检测）───
   // 物料可通过 scope.loader.loadWidget(child) / mountWidget(container, child)

@@ -595,15 +595,15 @@ class WidgetLoader {
   ensureGlobalErrorListener() {
     if (this.globalErrorListenerInstalled) return;
     this.globalErrorListenerInstalled = true;
-    window.addEventListener('error', (event) => {
+    this._errorHandler = (event) => {
       const element = this.attributeErrorToWidget(event);
       if (element) {
         const error = event.error || new Error(event.message || 'widget runtime error');
         this.markWidgetFailed(element, error);
         event.preventDefault();
       }
-    }, true);
-    window.addEventListener('unhandledrejection', (event) => {
+    };
+    this._rejectionHandler = (event) => {
       const reason = event.reason;
       const stack = (reason && reason.stack) || String(reason || '');
       for (const [element, entry] of this.mountedWidgets) {
@@ -616,7 +616,26 @@ class WidgetLoader {
           break;
         }
       }
-    });
+    };
+    window.addEventListener('error', this._errorHandler, true);
+    window.addEventListener('unhandledrejection', this._rejectionHandler);
+  }
+
+  /**
+   * 移除全局 error / unhandledrejection 监听器。
+   * 幂等：未安装时调用不抛错。所有物料卸载后自动调用。
+   */
+  removeGlobalErrorListener() {
+    if (!this.globalErrorListenerInstalled) return;
+    if (this._errorHandler) {
+      window.removeEventListener('error', this._errorHandler, true);
+      this._errorHandler = null;
+    }
+    if (this._rejectionHandler) {
+      window.removeEventListener('unhandledrejection', this._rejectionHandler);
+      this._rejectionHandler = null;
+    }
+    this.globalErrorListenerInstalled = false;
   }
 
   renderWidget(container, widget) {
@@ -706,6 +725,10 @@ class WidgetLoader {
       this.mountedWidgets.delete(element);
     }
     if (element.parentNode) element.parentNode.removeChild(element);
+    // 所有物料卸载后自动移除全局错误监听器，避免泄漏
+    if (this.mountedWidgets.size === 0) {
+      this.removeGlobalErrorListener();
+    }
   }
 
   unloadWidget(name) {
@@ -715,26 +738,12 @@ class WidgetLoader {
       if (resources.js) {
         const node = this.resourceNodes.get(resources.js);
         if (node && node.parentNode) node.parentNode.removeChild(node);
-        else {
-          Array.from(document.querySelectorAll('script')).forEach(s => {
-            if (s.src === resources.js || s.getAttribute('src') === resources.js) {
-              if (s.parentNode) s.parentNode.removeChild(s);
-            }
-          });
-        }
         this.resourceNodes.delete(resources.js);
         this.loadedResources.delete(resources.js);
       }
       if (resources.css) {
         const node = this.resourceNodes.get(resources.css);
         if (node && node.parentNode) node.parentNode.removeChild(node);
-        else {
-          Array.from(document.querySelectorAll('link[rel="stylesheet"]')).forEach(l => {
-            if (l.href === resources.css || l.getAttribute('href') === resources.css) {
-              if (l.parentNode) l.parentNode.removeChild(l);
-            }
-          });
-        }
         this.resourceNodes.delete(resources.css);
         this.loadedResources.delete(resources.css);
       }
