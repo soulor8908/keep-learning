@@ -69,7 +69,7 @@ describe('widget-wrapper-plugin external 映射', () => {
       });
       chainWebpack(config);
       expect(captured.externals).toBeTruthy();
-      expect(captured.externals.vue).toBe('Vue');
+      expect(captured.externals.vue).toBe('Vue2');
       expect(captured.externals['element-ui']).toBe('ELEMENT');
       expect(captured.externals['wc-i18n']).toBe('__wcI18n__');
       expect(captured.externals['wc-widget-scope']).toBe('__wcWidgetScope__');
@@ -113,6 +113,21 @@ describe('widget-wrapper-plugin external 映射', () => {
       expect(() => widgetVueCliPlugin({ component: './x.vue' })).toThrow();
       expect(() => widgetVueCliPlugin({ name: 'bi-x' })).toThrow();
     });
+
+    it('默认 vueGlobal 为 Vue2（与基座 window.Vue2 对齐）', () => {
+      // 不传 vueGlobal 时默认为 'Vue2'，而非旧的 'Vue'
+      const { config, captured } = createMockWebpackChainConfig();
+      const chainWebpack = widgetVueCliPlugin({
+        name: 'bi-default-vueglobal',
+        component: './does-not-exist.vue',
+        autoNamespace: false,
+        scanRisks: false,
+        enforceScoped: 'off',
+        enforceCssNamespace: 'off'
+      });
+      chainWebpack(config);
+      expect(captured.externals.vue).toBe('Vue2');
+    });
   });
 
   describe('T1.3b vite-plugin (Vue3) external', () => {
@@ -126,7 +141,7 @@ describe('widget-wrapper-plugin external 映射', () => {
       expect(Array.isArray(external)).toBe(true);
       expect(external).toEqual(['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope', 'lodash', 'axios']);
       const globals = cfg.build.rollupOptions.output.globals;
-      expect(globals.vue).toBe('Vue');
+      expect(globals.vue).toBe('Vue3');
       expect(globals['element-plus']).toBe('ElementPlus');
       expect(globals['wc-i18n']).toBe('__wcI18n__');
       expect(globals['wc-widget-scope']).toBe('__wcWidgetScope__');
@@ -155,6 +170,20 @@ describe('widget-wrapper-plugin external 映射', () => {
       expect(cfg.build.lib.name).toBe('bi-finance-panel');
       expect(typeof cfg.build.lib.fileName).toBe('function');
       expect(cfg.build.lib.fileName()).toBe('bi-finance-panel.js');
+    });
+
+    it('默认 vueGlobal 为 Vue3（与基座 window.Vue3 对齐）', () => {
+      const plugin = widgetVitePlugin({
+        name: 'bi-default-vueglobal-v3',
+        component: './does-not-exist.vue',
+        autoNamespace: false,
+        scanRisks: false,
+        enforceScoped: 'off',
+        enforceCssNamespace: 'off'
+      });
+      const cfg = plugin.config();
+      const globals = cfg.build.rollupOptions.output.globals;
+      expect(globals.vue).toBe('Vue3');
     });
   });
 

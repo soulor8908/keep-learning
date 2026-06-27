@@ -63,13 +63,15 @@ export interface SupportedDep {
   /** 兼容范围（semver） */
   compatibleRange: string;
   /** 物料侧读取运行时的全局变量名 */
-  globalVar: 'Vue2' | 'Vue3';
+  globalVar: 'Vue2' | 'Vue3' | '_' | 'axios';
 }
 
 /** 基座承诺提供的运行时版本与兼容范围；物料按 vueVersion 声明自身依赖 */
 export const SUPPORTED_DEPS: {
   vue2: SupportedDep;
   vue3: SupportedDep;
+  lodash: SupportedDep;
+  axios: SupportedDep;
 };
 
 /** 物料加载器错误码枚举（基座可据此做差异化降级） */
@@ -81,6 +83,7 @@ export const WidgetError: {
   readonly NOT_FOUND: 'NOT_FOUND';
   readonly ELEMENT_TIMEOUT: 'ELEMENT_TIMEOUT';
   readonly PROPS_ERROR: 'PROPS_ERROR';
+  readonly UI_DEP_LIB_MISMATCH: 'UI_DEP_LIB_MISMATCH';
 };
 
 /** 物料加载错误（带 code 字段，便于基座差异化降级） */

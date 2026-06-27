@@ -22,6 +22,7 @@
 14. [声明式插件 Babel AST 转换](#14-声明式插件-babel-ast-转换)
 15. [DevTools 三层桥接架构](#15-devtools-三层桥接架构)
 16. [构建期 AST 风险扫描](#16-构建期-ast-风险扫描)
+17. [性能优化与 API 一致性改进](#17-性能优化与-api-一致性改进)
 
 ---
 
@@ -702,20 +703,33 @@ function extractUiDependencies(source) {
 ### 8.1 locale 回退链
 
 ```js
+// 模块级缓存（K1）：getLocaleFallbackChain 是纯函数（locale → 确定性数组），
+// 同一 locale 仅计算一次，后续命中 Map 缓存直接返回，避免 t() 热路径反复构造链
+const _fallbackChainCache = new Map();
+
 function getLocaleFallbackChain(locale) {
+  // 1. 缓存命中：纯函数结果可复用
+  const cached = _fallbackChainCache.get(locale);
+  if (cached) return cached;
+
+  // 2. 构造回退链
   const chain = [locale];
-  const baseLang = locale.split('-')[0];
+  const baseLang = String(locale).split('-')[0];
   if (baseLang !== locale) chain.push(baseLang);
 
   // 最终回退：先 en 再 zh（保证至少能找到文案）
-  if (locale !== 'en') chain.push('en');
-  if (baseLang !== 'zh') chain.push('zh');
+  if (!chain.includes('en')) chain.push('en');
+  if (!chain.includes('zh')) chain.push('zh');
 
+  // 3. 写入缓存
+  _fallbackChainCache.set(locale, chain);
   return chain;
   // 'zh-CN' → ['zh-CN', 'zh', 'en', 'zh']
   // 'en-GB' → ['en-GB', 'en', 'zh']
 }
 ```
+
+**K1 memoize 收益**：`t(key)` 是物料渲染与 loader 错误提示的热路径，每次都需先 `getLocaleFallbackChain(currentLocale)` 得到链再逐项 `lookupInLocale`。未缓存时回退链每次重新构造数组（含 split / push / includes），缓存后同一 locale 仅计算一次，`t()` 调用从 `O(chain)` 降为 `O(1)` 查找 + `O(chain)` 查字典（字典查找不可省，但数组构造与 split 成本被消除）。缓存 key 为 locale 字符串，命中率高且无失效问题（locale 切换只是查另一个 key）。
 
 ### 8.2 点分键查找
 
@@ -882,14 +896,45 @@ function isDeepEqual(a, b) {
 ### 10.2 injectContext 序列化兜底
 
 ```js
+// ─── injectContext 序列化缓存（K3）───
+// renderWidget 每次挂载物料都调 injectContext，每次都 JSON.stringify 全量上下文。
+// N 个物料 = N 次序列化。这里用三重缓存键（store 引用 + version + keys 指纹）
+// 缓存序列化结果：上下文未变时复用同一字符串，避免重复 stringify。
+let _injectCacheStore = null;        // 缓存时的 store 引用（检测 store 切换/重建）
+let _injectCacheVersion = -1;        // 缓存时的 store.version（检测上下文变更）
+let _injectCacheKeysFp = undefined;  // 缓存时的 keys 指纹（JSON.stringify(keys)，检测 keys 变化）
+let _injectCacheSerialized = null;   // 缓存的序列化结果
+
 function injectContext(element, keys) {
   const context = getContext(keys);
+  const store = getStore();  // window.__wcContext__，含 version 字段
+  const filtered = keys ? pick(context, keys) : context;
+  const keysFp = keys ? JSON.stringify(keys) : null;
+
+  // 三重缓存键命中判定：store 引用 + version + keys 指纹 一致且已缓存过
+  const cacheHit = store
+    && store === _injectCacheStore
+    && store.version === _injectCacheVersion
+    && _injectCacheKeysFp === keysFp
+    && _injectCacheSerialized !== null;
+
   let json;
-  try {
-    json = JSON.stringify(context);  // 优先 JSON.stringify（快）
-  } catch (e) {
-    json = safeStringify(context);  // 失败回退 safeStringify（WeakSet 去环）
-    if (!json) json = '{}';  // 再失败为 '{}'
+  if (cacheHit) {
+    json = _injectCacheSerialized;                 // 命中复用
+  } else {
+    try {
+      json = JSON.stringify(filtered);             // 优先 JSON.stringify（快）
+    } catch (e) {
+      json = safeStringify(filtered);              // 失败回退 safeStringify（WeakSet 去环）
+      if (!json) json = '{}';                       // 再失败为 '{}'
+    }
+    // 只有 store 存在时才写缓存（SSR 无 window 场景 store 为 null，不缓存）
+    if (store) {
+      _injectCacheStore = store;
+      _injectCacheVersion = store.version;
+      _injectCacheKeysFp = keysFp;
+      _injectCacheSerialized = json;
+    }
   }
 
   // 同时写入 attribute 与实例属性
@@ -899,6 +944,18 @@ function injectContext(element, keys) {
   // 序列化失败不阻断挂载
 }
 ```
+
+**K3 三重缓存键说明**：
+
+| 缓存键 | 检测场景 |
+| ------ | ------ |
+| `store === _injectCacheStore` | store 引用变化（基座重建 `window.__wcContext__`，或 iframe/微前端切换 store） |
+| `store.version === _injectCacheVersion` | 上下文内容变更（`setContext` / `clearContext` 时 `store.version++`，缓存自动失效） |
+| `_injectCacheKeysFp === keysFp` | `keys` 参数变化（不同物料传入不同 keys 子集） |
+
+**收益**：N 个物料同页挂载时，序列化从 N 次降为 1 次（首次未命中算 1 次，后续 N-1 次命中缓存）。上下文变更后下一次 inject 自动重算并更新缓存，无需手动失效。
+
+> store.version 字段由 `widget-context` 维护，详见 [design.md §3.5](file:///workspace/docs/design.md)。
 
 ### 10.3 safeStringify
 
@@ -1514,6 +1571,433 @@ const RISK_PATTERNS = {
 
 ---
 
+## 17. 性能优化与 API 一致性改进
+
+**目标**：在保持现有功能与对外 API 兼容的前提下，针对热路径性能、API 语义一致性、内存治理与可观测性做一轮系统化加固。共 20 项优化：K1-K6 为既有热路径与语义对齐（已完成），N1-N14 为新增的健壮性、内存与可观测性改进。
+
+### 17.1 总览
+
+| 编号 | 主题 | 文件 | 收益 |
+| ------ | ------ | ------ | ------ |
+| K1 | i18n t() 回退链 memoize | `wc/i18n/index.js` | t() 热路径 O(chain)→O(1) |
+| K2 | scope.context/t 同步化 | `wc/widget-scope/index.js` | 消除两套异步语义 |
+| K3 | injectContext 序列化缓存 | `wc/widget-context/index.js` | N 次序列化→1 次 |
+| K4 | unloadWidget 节点引用 O(1) 卸载 | `wc/widget-loader/index.js` | O(n) 扫描→O(1) 查找 |
+| K5 | vueVersion 缺失告警 | `wc/widget-loader/index.js` | 快速定位遗漏声明 |
+| K6 | Vue3 wrapper scope 条件注入 | `wc/widget-wrapper-plugin/vite-plugin.js` | 防 $attrs fallthrough 到根元素 |
+| N1 | vueGlobal 默认值对齐基座 | `wc/widget-wrapper-plugin/{vite,vue-cli}-plugin.js` | 物料默认 externals 名与基座一致 |
+| N2 | scope.bus 补 off 方法 | `wc/widget-scope/index.js` | 与 widgetBus API 完全对齐 |
+| N3 | UI_DEP_LIB_MISMATCH 纳入 WidgetError 枚举 | `wc/widget-loader/index.js` | 用户可用枚举捕获 |
+| N4 | vueVersion 非法值白名单校验 | `wc/widget-loader/index.js` | 防 'Vue3'/3 等非法值静默回退 vue2 |
+| N5 | loadScript/loadStyle 错误信息补全物料名 | `wc/widget-loader/index.js` | error.widgetName 便于定位 |
+| N6 | preloadUiDependencies 错误信息加物料名 | `wc/widget-loader/index.js` | UI 依赖失败时定位物料 |
+| N7 | SUPPORTED_DEPS .d.ts 补全 lodash/axios 类型 | `wc/widget-loader/index.d.ts` | TS 用户获得类型提示 |
+| N8 | checkDependencies 移进 try 块 | `wc/widget-loader/index.js` | i18n 失败不冒泡到无意义的重试按钮 |
+| N9 | markWidgetFailed 延迟清理 mountedWidgets | `wc/widget-loader/index.js` | 5 分钟无重试则清理，防内存泄漏 |
+| N10 | unloadWidget 清理 mountedWidgets 同名条目 | `wc/widget-loader/index.js` | 防内存泄漏 |
+| N11 | pendingAncestorsByHost 失败回滚 | `wc/widget-scope/index.js` | 失败时清除预置祖先链，防泄漏+循环误判 |
+| N12 | DevTools registeredWidgets 改用 Map 去重 | `wc/devtools-extension/injected.js` | 防内存+CPU 双泄漏 |
+| N13 | 构建期 warn 含物料名 | `wc/widget-wrapper-plugin/*.js` | CSS重命名/schema生成失败时提示是哪个物料 |
+| N14 | i18n addMessages locale 归一化 | `wc/i18n/index.js` | zh-CN 归一到 zh，与字典 key 一致 |
+
+### 17.2 K1 — i18n t() 回退链 memoize
+
+**问题**：`t(key)` 是物料渲染与 loader 错误提示的热路径，每次调用都先 `getLocaleFallbackChain(currentLocale)` 构造回退链数组（含 `split('-')` / `push` / `includes`）。看板单页物料数十个、每个物料渲染多次 `t()`，重复构造链造成无谓开销。
+
+**方案**：`getLocaleFallbackChain` 是纯函数（locale → 确定性数组），用模块级 `Map<locale, chain>` 缓存结果，同一 locale 仅计算一次。详见 [§8.1](#81-locale-回退链)。
+
+**收益**：`t()` 调用从 `O(chain)` 数组构造降为 `O(1)` Map 查找 + `O(chain)` 字典查找（字典查找不可省，但数组构造与 split 成本被消除）。缓存 key 为 locale 字符串，命中率高且无失效问题。
+
+### 17.3 K2 — scope.context/t 同步化
+
+**问题**：原实现中 `widget-scope` 懒加载 `widget-context` 与 `i18n`，导致 `scope.context.get()` / `scope.t()` 返回 Promise 或需 await，与全局 `getContext` / `t()` 的同步语义不一致——同一上下文两套异步语义，物料开发者心智负担重，且初始化时同步读取数据时机丢失。
+
+**方案**：改为静态 `import` 同步引入 `widget-context`（`getContext` / `onContextChange`）与 `i18n`（`t`），`scope.context.get` / `scope.context.onChange` / `scope.t` 直接同步调用全局 API。`widget-loader` 保持懒加载（`loadWidget` 本身就是异步操作）。
+
+```js
+// wc/widget-scope/index.js
+import { createBus } from '../widget-bus/index.js';        // 已同步（事件总线本就是同步 API）
+import { getContext, onContextChange } from '../widget-context/index.js';  // K2：同步引入
+import { t } from '../i18n/index.js';                       // K2：同步引入
+// widget-loader 仍懒加载：loadWidget/mountWidget 本身是异步操作
+```
+
+**收益**：消除「同一上下文两套异步语义」的心智负担；初始化时同步读取 context 不再丢时机；与全局 API 行为一致。`widget-context` / `i18n` 由基座通过 `external` + 全局变量提供，同步引入不增加物料包首屏体积。
+
+### 17.4 K3 — injectContext 序列化缓存
+
+**问题**：`renderWidget` 每次挂载物料都调 `injectContext(element)`，每次都 `JSON.stringify` 全量上下文。看板 N 个物料同页 = N 次全量序列化，上下文未变也重复算。
+
+**方案**：用三重缓存键（`store` 引用 + `store.version` + `keys` 指纹）缓存序列化字符串。`widget-context` 在 `setContext` / `clearContext` 时 `store.version++`，缓存键自动失效。详见 [§10.2](#102-injectcontext-序列化兜底)。
+
+**收益**：N 个物料同页挂载时序列化从 N 次降为 1 次（首次未命中算 1 次，后续 N-1 次命中）。上下文变更后下一次 inject 自动重算并更新缓存，无需手动失效。
+
+### 17.5 K4 — unloadWidget 节点引用 O(1) 卸载
+
+**问题**：`unloadWidget(name)` 清理 `<script>` / `<link>` 节点时，原实现遍历 `document.head.children` 比对 `src`/`href`，O(n) 扫描 DOM（n 为 head 子节点总数，含其他物料与基座自身的节点）。
+
+**方案**：`WidgetLoader` 新增 `resourceNodes: Map<url, DOMNode>`，`_loadScriptOnce` / `_loadStyleOnce` 创建节点后 `resourceNodes.set(url, node)`。`unloadWidget` 直接 `resourceNodes.get(url)` 拿到节点引用 O(1) 移除。
+
+```js
+// wc/widget-loader/index.js
+class WidgetLoader {
+  constructor(opts) {
+    // ...
+    this.resourceNodes = new Map();  // K4：url → DOM node，供 unloadWidget O(1) 移除
+  }
+  _loadScriptOnce(url, opts) {
+    // ...
+    document.head.appendChild(script);
+    this.resourceNodes.set(url, script);  // 保存引用
+  }
+  unloadWidget(name) {
+    const { js, css } = this.widgetResources.get(name) || {};
+    if (js) {
+      const node = this.resourceNodes.get(js);  // O(1) 查找
+      if (node && node.parentNode) node.parentNode.removeChild(node);
+      this.resourceNodes.delete(js);
+      this.loadedResources.delete(js);
+    }
+    // css 同理
+  }
+}
+```
+
+**收益**：卸载复杂度从 O(n) DOM 扫描降为 O(1) Map 查找。head 子节点越多（看板物料多、基座样式多）收益越显著。
+
+### 17.6 K5 — vueVersion 缺失告警
+
+**问题**：物料未声明 `vueVersion` 时默认按 Vue2 校验。Vue3 物料若漏声明会被静默按 Vue2 校验通过（基座恰好提供 Vue2），但运行时却用 Vue3 渲染，出现难以定位的「校验通过但实际不兼容」假象。
+
+**方案**：`checkDependencies` 检测到 `widget.vueVersion === undefined` 时 `console.warn`（不阻断，仍按默认 '2' 校验），提示开发者显式声明 `'2'` / `'3'` / `'none'`。
+
+```js
+if (widget.vueVersion === undefined) {
+  console.warn(
+    `[widget-loader] 物料 ${name} 未声明 vueVersion，默认按 Vue2 校验。` +
+    `Vue3 物料请显式声明 vueVersion:'3'，H5 物料请声明 vueVersion:'none'。`
+  );
+}
+```
+
+**收益**：快速定位遗漏声明。warn 而非 throw 保证存量物料平滑过渡（不会因告警中断加载）。
+
+### 17.7 K6 — Vue3 wrapper scope 条件注入
+
+**问题**：Vue3 wrapper 无条件把 `scope` 注入到物料组件 props。当业务组件未声明 `scope` prop 时，`scope` 会作为 fallthrough attribute 透传到根元素，污染根元素属性（`<bi-xxx scope="[object Object]">`），并触发 Vue3 的 attribute 继承告警。
+
+**方案**：渲染时检测业务组件是否声明了 `scope` prop，仅在声明时注入：
+
+```js
+// wc/widget-wrapper-plugin/vite-plugin.js（generateVue3Wrapper 生成代码内）
+_mount() {
+  this._propsRef = ref(this._collectProps());
+  const hasScopeProp = getDeclaredPropNames(Component).includes('scope');  // K6
+  this.app = createApp({
+    render: () => {
+      const props = { ...this._propsRef.value };
+      if (hasScopeProp) props.scope = this._scope;  // 仅声明时注入
+      return h(Component, { ref: this._captureWidget, ...props });
+    }
+  });
+  // ...
+}
+```
+
+**收益**：防 `$attrs` fallthrough 到根元素；与 Vue3 默认 attribute 继承行为兼容；不影响已声明 `scope` prop 的物料。
+
+### 17.8 N1 — vueGlobal 默认值对齐基座
+
+**问题**：原 `widget-wrapper-plugin` 的 `vueGlobal` 默认值 `'Vue'`，但基座 Vue2 / Vue3 全局变量实际是 `window.Vue2` / `window.Vue3`。物料未显式配置 `vueGlobal` 时，UMD externals `vue` 映射到不存在的 `window.Vue`，运行时报 `Vue is not defined`。
+
+**方案**：默认值按基座实际全局变量名对齐：
+
+| 插件 | 旧默认 | 新默认（N1） | 基座全局变量 |
+| ------ | ------ | ------ | ------ |
+| `widgetVitePlugin`（Vue3） | `'Vue'` | `'Vue3'` | `window.Vue3` |
+| `widgetVueCliPlugin`（Vue2） | `'Vue'` | `'Vue2'` | `window.Vue2` |
+
+模板配置同步对齐（demo `vue.config.js` / `vite.config.js` 不再显式传 `vueGlobal` 也能正确 externals）。
+
+**收益**：物料零配置即可正确 externals 到基座全局变量；消除「忘了配 vueGlobal」导致运行时 `Vue is not defined` 的常见踩坑。
+
+### 17.9 N2 — scope.bus 补 off 方法
+
+**问题**：`widget-bus` 的 `createBus` 提供 `emit / on / once / off` 四方法，但 `widget-scope` 包装 `scope.bus` 时漏实现 `off`，导致物料调用 `scope.bus.off(type, handler)` 抛 `TypeError: off is not a function`，只能用 `on` 返回的取消函数，无法按 handler 反查移除。
+
+**方案**：`scope.bus` 补 `off` 方法，与 `widgetBus` API 完全对齐：
+
+```js
+const bus = {
+  emit(type, payload, options) { /* try/catch */ },
+  on(type, cb) { /* 返回取消函数 */ },
+  once(type, cb) { /* 返回取消函数 */ },
+  off(type, cb) {  // N2：补全
+    try {
+      if (busInstance && busInstance.off) busInstance.off(type, cb);
+    } catch (e) { log.error('bus.off failed:', e.message); }
+  }
+};
+```
+
+**收益**：`scope.bus` 与 `window.widgetBus` API 完全对齐，物料在 scope 与全局 bus 之间迁移零成本；`off` 按 handler 反查移除 once 注册的监听（与 widget-bus §9.2 一致）。
+
+### 17.10 N3 — UI_DEP_LIB_MISMATCH 纳入 WidgetError 枚举
+
+**问题**：`preloadUiDependencies` 检测到 `uiDependencies.lib` 与 `vueVersion` 不匹配时抛错，但错误码用裸字符串 `'UI_DEP_LIB_MISMATCH'`，未挂到 `WidgetError` 枚举。用户用 `err.code === WidgetError.UI_DEP_LIB_MISMATCH` 捕获时拿到 `undefined`，只能用裸字符串硬编码。
+
+**方案**：`WidgetError` 枚举新增 `UI_DEP_LIB_MISMATCH`：
+
+```js
+const WidgetError = {
+  LOAD_TIMEOUT: 'LOAD_TIMEOUT',
+  SCRIPT_ERROR: 'SCRIPT_ERROR',
+  CSS_ERROR: 'CSS_ERROR',
+  DEP_VERSION_MISMATCH: 'DEP_VERSION_MISMATCH',
+  ELEMENT_TIMEOUT: 'ELEMENT_TIMEOUT',
+  PROPS_ERROR: 'PROPS_ERROR',
+  NOT_FOUND: 'NOT_FOUND',
+  UI_DEP_LIB_MISMATCH: 'UI_DEP_LIB_MISMATCH'  // N3：纳入枚举
+};
+```
+
+**收益**：用户可用 `err.code === WidgetError.UI_DEP_LIB_MISMATCH` 枚举捕获，与其它错误码处理方式一致。
+
+### 17.11 N4 — vueVersion 非法值白名单校验
+
+**问题**：`checkDependencies` 原仅 `if (vueVersion !== 'none' && vueVersion !== '3')` 走 Vue2 分支，导致 `vueVersion: 'Vue3'` / `vueVersion: 3`（数字）/ `vueVersion: 'vue2'` 等非法值静默回退到 Vue2 校验，掩盖物料声明错误。
+
+**方案**：白名单校验，非法值直接报错：
+
+```js
+// vueVersion 白名单校验（N4）：非法值不静默回退到 vue2
+if (!['2', '3', 'none'].includes(vueVersion)) {
+  errors.push(
+    `物料 ${name} 的 vueVersion="${vueVersion}" 不合法，必须为 '2'、'3' 或 'none'`
+  );
+}
+```
+
+**收益**：防 `'Vue3'` / `3` / `'vue2'` 等非法值静默回退到 vue2，物料声明错误在加载阶段即暴露。
+
+### 17.12 N5 — loadScript/loadStyle 错误信息补全物料名
+
+**问题**：`loadScript` / `loadStyle` 失败抛错只含 URL，不含物料名。错误信息形如 `Failed to load script: https://cdn/.../bi-finance-panel.js`，用户需从 URL 反推物料名，定位成本高。
+
+**方案**：`loadWidget` catch 错误后补全 `error.widgetName` 字段：
+
+```js
+try {
+  checkDependencies(widget);
+  await Promise.all([this.loadScript(js), this.loadStyle(css)]);
+  // ...
+} catch (error) {
+  // 错误信息补全物料名（N5）：loadScript/loadStyle 的错误只含 URL，补全后用户可直接定位
+  if (!error.widgetName) {
+    error.widgetName = name;
+  }
+  throw error;
+}
+```
+
+**收益**：错误信息含物料名，用户可直接定位是哪个物料加载失败。
+
+### 17.13 N6 — preloadUiDependencies 错误信息加物料名
+
+**问题**：`preloadUiDependencies` 抛 `UI_DEP_LIB_MISMATCH` 时错误信息只含 lib 名，不含物料名，用户不知道是哪个物料的 UI 依赖配置错。
+
+**方案**：错误信息加物料名：
+
+```js
+if (!LIB_VUE_MAP[lib]) {
+  throw createUiError(`物料 ${widget.name} 的 uiDependencies.lib 未知: ${lib}（N6）`, WidgetError.UI_DEP_LIB_MISMATCH);
+}
+if (LIB_VUE_MAP[lib] !== vv) {
+  throw createUiError(
+    `物料 ${widget.name} vueVersion=${vv} 但 uiDependencies.lib=${lib}（期望 vueVersion=${LIB_VUE_MAP[lib]}）`,
+    WidgetError.UI_DEP_LIB_MISMATCH
+  );
+}
+```
+
+**收益**：UI 依赖失败时错误信息含物料名，定位更直接。
+
+### 17.14 N7 — SUPPORTED_DEPS .d.ts 补全 lodash/axios 类型声明
+
+**问题**：`wc/widget-loader/index.d.ts` 的 `SUPPORTED_DEPS` 类型只声明 `vue2` / `vue3`，缺 `lodash` / `axios`，TS 用户访问 `SUPPORTED_DEPS.lodash` 报类型错误。
+
+**方案**：`.d.ts` 补全：
+
+```ts
+export const SUPPORTED_DEPS: {
+  vue2: SupportedDep;
+  vue3: SupportedDep;
+  lodash: SupportedDep;   // N7：补全
+  axios: SupportedDep;    // N7：补全
+};
+```
+
+`SupportedDep.globalVar` 类型也补 `'_' | 'axios'`。
+
+**收益**：TS 用户访问 `SUPPORTED_DEPS.lodash` / `.axios` 不报类型错误，IDE 自动补全正确。
+
+### 17.15 N8 — checkDependencies 移进 try 块
+
+**问题**：`loadWidget` 原把 `checkDependencies(widget)` 放在 try 块外。`checkDependencies` 内部调 `t()` 翻译错误信息，若 i18n 字典加载失败 `t()` 抛错，异常冒泡到 `mountWidget` 的 catch，被当成「物料加载失败」渲染带「点击重试」的降级占位——但 i18n 失败与物料本身无关，点重试也不会修 i18n，按钮毫无意义。
+
+**方案**：把 `checkDependencies` 移进 try 块，i18n 失败时异常被同一 catch 处理，错误信息走「物料加载失败」链路但不下发无意义的重试按钮（`onRetry = null`）：
+
+```js
+try {
+  checkDependencies(widget);  // N8：移进 try，i18n 失败不冒泡到无意义的重试按钮
+  await Promise.all([this.loadScript(js), this.loadStyle(css)]);
+  await this.waitForCustomElement(name);
+  this.definedElements.add(name);
+  this.widgetResources.set(name, { js, css });
+} catch (error) {
+  // 统一处理：i18n 失败、版本不兼容、加载失败都走这里
+  // ...
+}
+```
+
+**收益**：i18n 失败不再冒泡到无意义的重试按钮；错误处理路径统一。
+
+### 17.16 N9 — markWidgetFailed 延迟清理 mountedWidgets
+
+**问题**：`markWidgetFailed` 标记 `entry.failed = true` 后渲染降级占位（含「点击重试」）。`onRetry` 闭包需读 `entry`（清除 failed 标记后重挂载），故 entry 不能立即 delete。但若用户 5 分钟内不点重试，entry 永久驻留 `mountedWidgets` Map，element 也无法被 GC（Map 持有 element 引用），导致内存泄漏。
+
+**方案**：`markWidgetFailed` 渲染降级占位后启动 5 分钟定时器，到期若 entry 仍 failed（未点重试）则 delete：
+
+```js
+markWidgetFailed(element, error) {
+  // ... 标记 failed、移除崩溃元素、emit error、renderFallback ...
+
+  // 延迟清理（N9）：保留 entry 供 onRetry 使用，5 分钟后无重试则清理，防内存泄漏
+  setTimeout(() => {
+    const e = this.mountedWidgets.get(element);
+    if (e && e.failed) {
+      this.mountedWidgets.delete(element);
+    }
+  }, 5 * 60 * 1000);
+}
+```
+
+`onRetry` 闭包在用户点重试时立即 `mountedWidgets.delete(element)` 清除 failed 标记后重挂载（与新元素 entry 区分）。
+
+**收益**：防内存泄漏——5 分钟无重试则清理 entry，element 可被 GC；用户点重试时仍能正常工作。
+
+### 17.17 N10 — unloadWidget 清理 mountedWidgets 同名条目
+
+**问题**：`unloadWidget(name)` 清理 `<script>` / `<link>` 与 `widgetResources` / `loadedResources` / `definedElements`，但漏清理 `mountedWidgets` 中该物料的已挂载实例条目。卸载后实例 entry 残留 Map，element 持续被引用无法 GC。
+
+**方案**：`unloadWidget` 遍历 `mountedWidgets` 清理同名条目：
+
+```js
+unloadWidget(name) {
+  // ... 清理 resourceNodes / loadedResources / widgetResources / definedElements ...
+
+  // 清理该物料的已挂载实例（N10：防内存泄漏）
+  for (const [el, entry] of this.mountedWidgets) {
+    if (entry.widget.name === name) {
+      this.mountedWidgets.delete(el);
+    }
+  }
+}
+```
+
+**收益**：防内存泄漏——卸载后实例 entry 不残留，element 可被 GC；与 `unmountWidget(element)` 行为对齐（后者已 delete entry）。
+
+### 17.18 N11 — pendingAncestorsByHost 失败回滚
+
+**问题**：`scope.loader.loadWidget(child)` / `mountWidget(container, child)` 先 `propagateAncestors(child.name)` 把祖先链写入 `pendingAncestorsByHost`，再调底层 loader 加载。若加载失败（网络 / 版本不兼容 / 元素注册超时），预置的祖先链不清理，残留 Map：
+
+- 内存泄漏：失败物料的祖先链条目永久驻留。
+- 循环检测误判：后续同名子物料正常加载时，会消费到残留的祖先链，可能误判为循环。
+
+**方案**：`loadWidget` / `mountWidget` 在底层 loader 调用 catch 时回滚，清除预置的祖先链条目：
+
+```js
+async loadWidget(widget) {
+  if (!widget || !widget.name) throw new Error('...');
+  checkCycle(widget.name);
+  propagateAncestors(widget.name);  // 预置祖先链
+  const mod = await getLoaderModule();
+  const inst = mod.defaultLoader || mod;
+  try {
+    return await inst.loadWidget(widget);
+  } catch (e) {
+    // 失败回滚：清除预置的祖先链，避免泄漏 + 循环检测误判（N11）
+    const bucket = getAncestorBucket(host);
+    bucket.delete(widget.name);
+    throw e;
+  }
+}
+```
+
+`mountWidget` 同样处理。
+
+**收益**：防内存泄漏 + 循环检测误判——失败时祖先链不残留；正常加载路径行为不变（`consumePendingAncestors` 在子物料 `createWidgetScope` 时已 delete）。
+
+### 17.19 N12 — DevTools registeredWidgets 改用 Map 去重
+
+**问题**：DevTools `injected.js` Hook `customElements.define` 时用数组 `push` 记录注册物料。同一物料名重复 `define`（HMR / 重载）会重复 push，数组无限增长：
+
+- 内存泄漏：数组条目数随 HMR 次数线性增长。
+- CPU 泄漏：`collectSnapshot` 遍历数组查 DOM，重复条目导致重复 `querySelectorAll`。
+
+**方案**：改用 `Map<name, { name, timestamp }>` 去重，同名物料只保留最新注册时间：
+
+```js
+var registeredWidgetsMap = new Map();   // N12：Map<name, { name, timestamp }> 同名物料只保留最新注册时间
+
+customElements.define = function (name, constructor, options) {
+  if (typeof name === 'string' && name.indexOf('bi-') === 0) {
+    registeredWidgetsMap.set(name, { name: name, timestamp: Date.now() });  // set 自动去重
+  }
+  return origDefine(name, constructor, options);
+};
+```
+
+`collectSnapshot` 改用 `Array.from(registeredWidgetsMap.values())` 遍历。
+
+**收益**：防内存 + CPU 双泄漏——HMR 重载不再导致数组线性增长；`collectSnapshot` 不再重复扫描同名物料。
+
+### 17.20 N13 — 构建期 warn 含物料名
+
+**问题**：构建期 `widget-wrapper-plugin` 在 CSS 命名空间扫描、schema 生成等环节告警时不含物料名，用户看到 warn 不知道是哪个物料出问题。
+
+**方案**：所有 warn / error 信息含物料名 `${widgetName}`：
+
+```js
+console.warn(`[widget-wrapper-plugin] 物料 ${widgetName} CSS 命名空间检查: ${formatCssIssues(issues)}`);
+console.warn(`[widget-wrapper-plugin] 物料 ${widgetName} schema 生成失败: ${e.message}`);
+```
+
+**收益**：CSS 重命名 / schema 生成 / 风险扫描失败时提示是哪个物料，定位更直接。
+
+### 17.21 N14 — i18n addMessages locale 归一化
+
+**问题**：`addMessages(locale, msgs)` 原直接以传入 locale 为 key 写字典。物料调用 `addMessages('zh-CN', msgs)` 会写入 `messages['zh-CN']`，但 `t()` 查找时按回退链 `['zh-CN', 'zh', 'en', 'zh']`，若 `zh-CN` 字典未注册则回退到 `zh`。结果：
+
+- 物料用 `zh-CN` 注入文案，但 `setLocale('zh-CN')` 时回退链查 `zh` 字典，注入的文案查不到。
+- 字典出现 `zh-CN` 与 `zh` 两个并行桶，重复且易遗漏。
+
+**方案**：`addMessages` 入口归一化 locale 到 base lang：
+
+```js
+let addMessages = function addMessages(locale, msgs) {
+  // 归一化到 base locale（N14）：使 addMessages('zh-CN', ...) 与 addMessages('zh', ...)
+  // 写入同一个 messages 桶，避免重复桶 / 查找遗漏
+  const normalizedLocale = String(locale).split('-')[0];  // 'zh-CN' → 'zh'
+  if (!messages[normalizedLocale]) messages[normalizedLocale] = {};
+  deepMerge(messages[normalizedLocale], msgs);
+}
+```
+
+**收益**：`addMessages('zh-CN', ...)` 与 `addMessages('zh', ...)` 写入同一桶，与字典 key（base lang）一致；消除重复桶与查找遗漏。
+
+---
+
 ## 附录：关键实现索引
 
 | 技术点 | 文件 | 关键行 |
@@ -1535,3 +2019,4 @@ const RISK_PATTERNS = {
 | 声明式 Babel 转换 | [babel-plugin.js](file:///workspace/wc/widget-declarative-plugin/babel-plugin.js) | `CallExpression` / `JSXElement` visitor |
 | DevTools Hook | [injected.js](file:///workspace/wc/devtools-extension/injected.js) | `customElements.define` / `widgetBus.emit` Hook |
 | AST 风险扫描 | [js-risk-scanner/index.js](file:///workspace/wc/js-risk-scanner/index.js) | `scanViaAST` / `stripCommentsAndStrings` |
+| 性能优化与 API 一致性改进 | [i18n/index.js](file:///workspace/wc/i18n/index.js) / [widget-context/index.js](file:///workspace/wc/widget-context/index.js) / [widget-scope/index.js](file:///workspace/wc/widget-scope/index.js) / [widget-loader/index.js](file:///workspace/wc/widget-loader/index.js) / [widget-wrapper-plugin/vite-plugin.js](file:///workspace/wc/widget-wrapper-plugin/vite-plugin.js) / [devtools-extension/injected.js](file:///workspace/wc/devtools-extension/injected.js) | K1-K6 + N1-N14（详见 §17） |

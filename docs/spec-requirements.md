@@ -229,6 +229,13 @@ The system SHALL provide build plugins that automatically wrap Vue2 / Vue3 / H5 
 - **THEN** 输出无框架依赖的 UMD Custom Element
 - **AND THEN** 当 `wc-widget-scope` 不可用时，回退到内建最小 scope（`createMinimalScope`）
 
+#### Scenario: Vue3 scope 条件注入（K6）
+- **WHEN** Vue3 wrapper 的 `connectedCallback` 渲染物料组件，业务组件未声明 `scope` prop
+- **THEN** wrapper 检测 `getDeclaredPropNames(Component).includes('scope')` 为 false，不向组件 props 注入 `scope`
+- **AND THEN** `scope` 不作为 fallthrough attribute 透传到根元素（避免 `<bi-xxx scope="[object Object]">` 污染根元素属性）
+- **AND THEN** 不触发 Vue3 默认的 attribute 继承行为告警
+- **AND THEN** 当业务组件声明了 `scope` prop 时，wrapper 正常注入 `this._scope`（行为不变）
+
 #### Requirement: FR-WP-2 light DOM 强制（禁用 Shadow DOM）
 The system SHALL mount all widgets to light DOM and SHALL reject Shadow DOM usage to ensure host global UI library styles (ElementUI / ElementPlus) penetrate into widgets.
 
@@ -293,6 +300,18 @@ The system SHALL validate host-provided runtime versions against the widget's de
 - **WHEN** 物料依赖 vue2 `^2.6.0`，基座 `window.Vue2.version` 为 `2.7.0`
 - **THEN** 校验通过，正常加载
 - **AND THEN** 轻量 semver 支持 `^` / `~` / `>=` / `>` / `<=` / `<` / `=` / 精确版本 / `*` / `||` 或范围 / 空格 AND 复合范围；`^` 对 0.x 收紧到同 minor，0.0.x 收紧到同 patch
+
+#### Scenario: vueVersion 缺失告警（K5）
+- **WHEN** 物料配置未声明 `vueVersion`（`widget.vueVersion === undefined`）
+- **THEN** `checkDependencies` 在控制台 `console.warn` 提示「物料 ${name} 未声明 vueVersion，默认按 Vue2 校验。Vue3 物料请显式声明 vueVersion:'3'，H5 物料请声明 vueVersion:'none'」
+- **AND THEN** 不阻断加载，仍按默认 `'2'` 继续校验（保证存量物料平滑过渡）
+- **AND THEN** 告警信息含物料名与正确的声明建议，开发者可快速定位遗漏声明
+
+#### Scenario: vueVersion 非法值白名单校验（N4）
+- **WHEN** 物料声明 `vueVersion` 为非白名单值（如 `'Vue3'` / `3`（数字）/ `'vue2'` / `'V2'` 等）
+- **THEN** `checkDependencies` 收集错误：`物料 ${name} 的 vueVersion="${vueVersion}" 不合法，必须为 '2'、'3' 或 'none'`
+- **AND THEN** 抛 `DEP_VERSION_MISMATCH` 错误，渲染降级占位（不提供重试按钮，配置错误为确定性错误）
+- **AND THEN** 非法值不静默回退到 vue2 校验，避免「校验通过但运行时不兼容」的假象
 
 #### Requirement: FR-WL-3 错误边界与降级
 The system SHALL isolate single-widget failures from crashing the whole dashboard via global error listeners, attribute errors to widgets, and render fallback placeholders.
@@ -393,6 +412,24 @@ The system SHALL provide a frozen widgetScope object with controlled API surface
 - **AND THEN** 多级嵌套（A→B→C→A）祖先链正确传播，链路含 `A -> B -> C -> A`
 - **AND THEN** 多 Host 场景按 `pendingAncestorsByHost` 分桶，避免微前端 / iframe 嵌套误判
 
+#### Scenario: scope 同步语义（K2）
+- **WHEN** 物料在 `connectedCallback` / 初始化阶段调用 `scope.context.get('user')` 或 `scope.t('title')`
+- **THEN** 返回值与全局 `getContext('user')` / `t('title')` 完全一致且为同步返回（非 Promise）
+- **AND THEN** `scope.bus.emit / on / once / off` 是同步调用，基座同步监听器在同一事件循环内收到事件
+- **AND THEN** `widget-scope` 同步引入 `widget-context` / `widget-bus` / `i18n`（消除「同一上下文两套异步语义」），`widget-loader` 保持懒加载（`scope.loader.loadWidget` 返回 Promise）
+- **AND THEN** 同步引入不增加物料包首屏体积（`widget-context` / `i18n` / `widget-scope` 经 `external` + 全局变量提供）
+
+#### Scenario: scope.bus off 方法（N2）
+- **WHEN** 物料调用 `scope.bus.off(type, handler)` 移除已注册监听
+- **THEN** 按 handler 反查移除监听，与 `window.widgetBus.off(type, handler)` 行为一致
+- **AND THEN** `off` 可移除 `scope.bus.once(type, handler)` 注册的监听（与 widget-bus once/off 协调一致）
+
+#### Scenario: loader 失败回滚祖先链（N11）
+- **WHEN** `scope.loader.loadWidget(child)` / `mountWidget(container, child)` 调用底层 loader 失败（网络 / 版本不兼容 / 元素注册超时）
+- **THEN** catch 中清除 `pendingAncestorsByHost` 预置的 child.name 祖先链条目
+- **AND THEN** 失败物料的祖先链不残留 Map，避免内存泄漏
+- **AND THEN** 后续同名子物料正常加载时不消费到残留祖先链，避免循环检测误判
+
 ### 6.6 全局上下文（widget-context）
 
 #### Requirement: FR-CTX-1 只读上下文注入
@@ -413,6 +450,14 @@ The system SHALL provide a global context store that widgets can only read (get 
 - **WHEN** `renderWidget` 创建物料元素时调用 `injectContext(element)`
 - **THEN** 序列化上下文写入 `data-context` attribute 与 `element._wcContext` 实例属性
 - **AND THEN** 序列化失败不阻断挂载（优先 JSON.stringify，失败回退 safeStringify 再失败为 `'{}'`）
+
+#### Scenario: 序列化缓存（K3）
+- **WHEN** 看板同页挂载 N 个物料，每个物料 `renderWidget` 都调 `injectContext(element)`
+- **THEN** 首次调用执行 `JSON.stringify` 全量上下文，并缓存序列化结果（三重缓存键：`store` 引用 + `store.version` + `keys` 指纹）
+- **AND THEN** 后续 N-1 次调用命中缓存直接复用序列化字符串，不再重复 `JSON.stringify`
+- **AND THEN** 基座调用 `setContext` / `clearContext` 时 `store.version++`，缓存键自动失效，下一次 `injectContext` 重新序列化并更新缓存
+- **AND THEN** SSR 无 `window` 场景（store 为 null）不写缓存，每次正常序列化
+- **AND THEN** 不同 `keys` 子集（不同物料注入不同上下文 key）有独立缓存条目（按 `JSON.stringify(keys)` 指纹区分）
 
 ### 6.7 注册表（widget-registry）
 
@@ -624,6 +669,27 @@ The system SHALL reduce first-screen UI volume from hundreds of kB to tens of kB
 - **THEN** 按需加载首屏 UI 体积从「数百 kB」（全量 element-plus JS gzip ~353.5kB / CSS 320kB）压缩到「数十 kB」
 - **AND THEN** 多物料共享同一份组件缓存（`loadedResources` Map 去重）
 
+#### Requirement: NFR-PERF-3 热路径缓存
+The system SHALL memoize pure-function results and cache serialization outputs on hot rendering / loading paths to avoid redundant computation as the number of widgets grows.
+
+#### Scenario: i18n 回退链 memoize（K1）
+- **WHEN** 物料渲染 / loader 错误提示反复调用 `t(key)`，每次内部先 `getLocaleFallbackChain(currentLocale)`
+- **THEN** `getLocaleFallbackChain` 是纯函数，按 locale 用模块级 `Map<locale, chain>` 缓存结果
+- **AND THEN** 同一 locale 仅计算一次回退链（含 `split` / `push` / `includes`），后续命中缓存 O(1) 返回
+- **AND THEN** locale 切换只是查另一个 key，缓存无需手动失效
+
+#### Scenario: injectContext 序列化缓存（K3）
+- **WHEN** 看板同页挂载 N 个物料，每个物料 `renderWidget` 都调 `injectContext(element)` 全量 `JSON.stringify` 上下文
+- **THEN** 用三重缓存键（`store` 引用 + `store.version` + `keys` 指纹）缓存序列化字符串
+- **AND THEN** 上下文未变时 N 次序列化降为 1 次（首次未命中算 1 次，后续 N-1 次命中复用）
+- **AND THEN** `setContext` / `clearContext` 时 `store.version++`，缓存键自动失效，无需手动清理
+
+#### Scenario: unloadWidget 节点引用 O(1) 卸载（K4）
+- **WHEN** 调用 `unloadWidget(name)` 清理该物料的 `<script>` / `<link>` 节点
+- **THEN** 通过 `resourceNodes: Map<url, DOMNode>` 直接 `get(url)` 拿到节点引用 O(1) 移除
+- **AND THEN** 不再 O(n) 遍历 `document.head.children` 比对 `src` / `href`（n 为 head 子节点总数）
+- **AND THEN** head 子节点越多（看板物料多、基座样式多）O(1) 收益越显著
+
 ### 7.2 可靠性
 
 #### Requirement: NFR-REL-1 单点失败不影响整体
@@ -713,6 +779,7 @@ The system SHALL define structured error codes for all failure scenarios.
   - `PROPS_ERROR`：需修复数据（循环引用）
   - `UI_DEP_LIB_MISMATCH`：UI 依赖与 vueVersion 不匹配
   - `NOT_FOUND`：配置错误
+- **AND THEN** 所有错误码均挂到 `WidgetError` 枚举（N3：`UI_DEP_LIB_MISMATCH` 也已纳入），用户可用 `err.code === WidgetError.XXX` 而非裸字符串硬编码捕获
 
 ---
 
@@ -776,23 +843,23 @@ The system SHALL define structured error codes for all failure scenarios.
 
 | 需求编号 | 模块 | 关键文件 |
 | ------ | ------ | ------ |
-| FR-WP-1~4 | widget-wrapper-plugin | `wc/widget-wrapper-plugin/{vite-plugin,vue-cli-plugin,h5-vite-plugin,postcss-namespace}.js` |
-| FR-WL-1~5 | widget-loader | `wc/widget-loader/index.js` |
+| FR-WP-1~4 | widget-wrapper-plugin | `wc/widget-wrapper-plugin/{vite-plugin,vue-cli-plugin,h5-vite-plugin,postcss-namespace}.js`（K6/N1/N13） |
+| FR-WL-1~5 | widget-loader | `wc/widget-loader/index.js`（K4/K5/N4/N5/N6/N8/N9/N10） |
 | FR-PP-1 | props 协议 | `wc/widget-loader/index.js` (renderWidget) + `wc/vue2-widget-template/widget-wrapper.js` |
 | FR-BUS-1 | widget-bus | `wc/widget-bus/index.js` |
-| FR-SCOPE-1 | widget-scope | `wc/widget-scope/index.js` |
-| FR-CTX-1 | widget-context | `wc/widget-context/index.js` |
+| FR-SCOPE-1 | widget-scope | `wc/widget-scope/index.js`（K2/N2/N11） |
+| FR-CTX-1 | widget-context | `wc/widget-context/index.js`（K3） |
 | FR-REG-1 | widget-registry | `wc/widget-registry/index.js` |
 | FR-PAGE-1 | widget-page | `wc/widget-page/index.js` |
-| FR-I18N-1~2 | i18n | `wc/i18n/index.js` |
+| FR-I18N-1~2 | i18n | `wc/i18n/index.js`（K1/N14） |
 | FR-SCHEMA-1~2 | schema-generator | `wc/schema-generator/index.js` |
-| FR-UI-1 | UI 按需加载 | `wc/widget-loader/index.js` (preloadUiDependencies) |
+| FR-UI-1 | UI 按需加载 | `wc/widget-loader/index.js` (preloadUiDependencies)（N6） |
 | FR-DECL-1 | widget-declarative-plugin | `wc/widget-declarative-plugin/{index,runtime,babel-plugin,vite-plugin}.js` |
 | FR-MIG-1~3 | 迁移工具链 | `wc/migration-skill/index.js` / `wc/ai-assistant/cli.js` / `wc/dependency-analyzer/index.js` |
-| FR-DEV-1 | DevTools | `wc/devtools-extension/{manifest,panel,content-script,injected,devtools}.{json,js}` |
-| NFR-PERF-1~2 | 性能 | `PERFORMANCE.md` / `wc/widget-loader/__tests__/performance.bench.js` |
+| FR-DEV-1 | DevTools | `wc/devtools-extension/{manifest,panel,content-script,injected,devtools}.{json,js}`（N12） |
+| NFR-PERF-1~3 | 性能 | `PERFORMANCE.md` / `wc/widget-loader/__tests__/performance.bench.js` / `wc/i18n/index.js`（K1 memoize）/ `wc/widget-context/index.js`（K3 序列化缓存）/ `wc/widget-loader/index.js`（K4 resourceNodes O(1) 卸载） |
 | NFR-REL-1 | 可靠性 | `wc/widget-loader/index.js` (错误边界) |
 | NFR-COMP-1~2 | 兼容性 | `wc/widget-loader/index.js` (createWidgetLoader) |
 | NFR-MAINT-1~2 | 可维护性 | `scripts/verify-md-*.js` / `vitest.config.js` |
 | NFR-SEC-1~2 | 安全性 | `wc/widget-loader/index.js` (crossOrigin) / `wc/ai-assistant/cli.js` |
-| NFR-OBS-1~2 | 可观测性 | `wc/widget-loader/index.js` (WidgetError) / `TROUBLESHOOTING.md` |
+| NFR-OBS-1~2 | 可观测性 | `wc/widget-loader/index.js` (WidgetError，N3 纳入 UI_DEP_LIB_MISMATCH) / `TROUBLESHOOTING.md` |

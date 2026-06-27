@@ -35,7 +35,8 @@ function getStore() {
   if (!window[GLOBAL_KEY]) {
     window[GLOBAL_KEY] = {
       data: {},           // 上下文数据 { user, permissions, theme, ... }
-      listeners: new Map() // key -> Set<callback>
+      listeners: new Map(), // key -> Set<callback>
+      version: 0          // 上下文版本号，setContext/clearContext 变更时递增（用于 injectContext 缓存失效）
     };
   }
   return window[GLOBAL_KEY];
@@ -102,6 +103,9 @@ export function setContext(partial, opts = {}) {
     }
   });
 
+  // 有变更时递增版本号（用于 injectContext 序列化缓存失效判定）
+  if (changedKeys.length > 0) store.version++;
+
   // 通过 widget-bus 广播（让跨技术栈物料都能收到）
   if (broadcast && changedKeys.length > 0 && typeof window !== 'undefined' && window.widgetBus) {
     window.widgetBus.emit('context-change', { keys: changedKeys, context: { ...store.data } });
@@ -155,6 +159,8 @@ export function onContextChange(key, callback) {
 export function clearContext(key) {
   const store = getStore();
   if (!store) return;
+  // 只在该 key 实际存在时才清除、通知并递增版本号
+  if (!(key in store.data)) return;
   delete store.data[key];
   // 通知订阅者值为 undefined
   const callbacks = store.listeners.get(key);
@@ -163,6 +169,8 @@ export function clearContext(key) {
       try { cb(undefined); } catch (e) { /* ignore */ }
     });
   }
+  // 递增版本号（用于 injectContext 序列化缓存失效判定）
+  store.version++;
 }
 
 // ─── 多 Host 场景：独立上下文实例 ───
@@ -245,6 +253,15 @@ function safeStringify(obj) {
   });
 }
 
+// ─── injectContext 序列化缓存（K3）───
+// renderWidget 每次挂载物料都调 injectContext，每次都 JSON.stringify 全量上下文。
+// N 个物料 = N 次序列化。这里用三重缓存键（store 引用 + version + keys 指纹）
+// 缓存序列化结果：上下文未变时复用同一字符串，避免重复 stringify。
+let _injectCacheStore = null;
+let _injectCacheVersion = -1;
+let _injectCacheKeysFp = undefined;
+let _injectCacheSerialized = null;
+
 /**
  * 将全局上下文注入到物料元素
  * @param {HTMLElement} element 物料 DOM 元素
@@ -252,6 +269,7 @@ function safeStringify(obj) {
  */
 export function injectContext(element, keys) {
   if (!element) return;
+  const store = getStore();
   const ctx = getContext();
   const filtered = keys ? {} : ctx;
   if (keys) {
@@ -260,11 +278,34 @@ export function injectContext(element, keys) {
   // 注入到元素属性（供 attributeChangedCallback 读取）
   // 优先用普通 stringify（快）；循环引用等导致失败时降级为 safeStringify，
   // 既保证不抛错，又让 data-context 携带去环后的可用数据而非整体缺失
+
+  // 计算当前调用的 keys 指纹：keys 存在则用其 JSON 字符串，否则为 null
+  const keysFp = keys ? JSON.stringify(keys) : null;
+
+  // 三重缓存键命中判定：store 引用 + version + keys 指纹 一致且已缓存过
+  const cacheHit = store
+    && store === _injectCacheStore
+    && store.version === _injectCacheVersion
+    && _injectCacheKeysFp === keysFp
+    && _injectCacheSerialized !== null;
+
   let serialized;
-  try {
-    serialized = JSON.stringify(filtered);
-  } catch (e) {
-    try { serialized = safeStringify(filtered); } catch (_) { serialized = '{}'; }
+  if (cacheHit) {
+    // 命中缓存，直接复用已序列化的字符串，跳过 JSON.stringify
+    serialized = _injectCacheSerialized;
+  } else {
+    try {
+      serialized = JSON.stringify(filtered);
+    } catch (e) {
+      try { serialized = safeStringify(filtered); } catch (_) { serialized = '{}'; }
+    }
+    // 只有 store 存在时才写缓存（SSR 无 window 场景 store 为 null，不缓存）
+    if (store) {
+      _injectCacheStore = store;
+      _injectCacheVersion = store.version;
+      _injectCacheKeysFp = keysFp;
+      _injectCacheSerialized = serialized;
+    }
   }
   try {
     element.setAttribute('data-context', serialized);

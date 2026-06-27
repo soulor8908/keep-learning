@@ -115,7 +115,10 @@
 - **业务层** 依赖 **编排层**（PageManager）与 **加载层**（mountWidget）。
 - **编排层** 依赖 **加载层**（createWidgetLoader）。
 - **加载层** 依赖 **通信层**（i18n 翻译错误信息）与 **隔离层**（injectContext）。
-- **隔离层** 同步引入 **通信层**（widget-bus），懒加载其他（widget-context / i18n / widget-loader）。
+- **隔离层** 同步引入 **通信层**（widget-bus / widget-context / i18n），懒加载 **加载层**（widget-loader）。
+  - K2 改进：原 `widget-context` / `i18n` 懒加载导致 `scope.context.get` / `scope.t` 与全局 API 异步语义不一致，现统一同步引入，消除「同一上下文两套异步语义」。
+  - `widget-loader` 保持懒加载：`scope.loader.loadWidget` / `mountWidget` 本身就是异步操作，且懒加载可减小首屏体积。
+  - 同步引入不增加物料包体积：`widget-context` / `i18n` / `widget-scope` 均经 `external` + 全局变量提供（`window.__wcContext__` / `window.__wcI18n__` / `window.__wcWidgetScope__`）。
 - **包装层** 与运行时解耦：构建期 external，运行时通过全局变量桥接。
 
 ---
@@ -131,7 +134,7 @@
 ```text
 WidgetLoader (class)
 ├── 构造：hostId, loadedResources(Map), definedElements(Set),
-│         widgetResources(Map), mountedWidgets(Map),
+│         widgetResources(Map), resourceNodes(Map), mountedWidgets(Map),
 │         globalErrorListenerInstalled(bool), lifecycleHooks(Object)
 ├── 私有方法
 │   ├── _loadScriptOnce(url, opts) / _loadStyleOnce(url, opts)
@@ -158,6 +161,9 @@ WidgetLoader (class)
 - 模块级 `defaultLoader` 单例委托保持向后兼容，模块级导出函数（`loadWidget` / `mountWidget` 等）委托到单例。
 - `createWidgetLoader(opts)` 工厂创建独立实例，每个实例持有独立状态，`hostId` 贯穿生命周期事件 payload。
 - `mountedWidgets` 用 **Map**（非 WeakMap）：错误归因需 `for...of` 遍历，WeakMap 不可迭代；元素生命周期由 loader 显式 `delete` 管理，不会泄漏。
+  - N9：`markWidgetFailed` 渲染降级占位后启动 5 分钟定时器，到期若 entry 仍 failed（未点重试）则 delete，防 entry 永久驻留。
+  - N10：`unloadWidget(name)` 同步清理 `mountedWidgets` 中该物料同名条目，与 `unmountWidget(element)` 行为对齐。
+- `resourceNodes: Map<url, DOMNode>`（K4）：`_loadScriptOnce` / `_loadStyleOnce` 创建节点后写入引用，`unloadWidget` 直接 `get(url)` O(1) 移除节点，无需 O(n) 遍历 `document.head.children` 比对 src/href。
 
 **模块级常量**：
 - `SUPPORTED_DEPS`：vue2/vue3/lodash/axios/element-ui/element-plus 版本契约表。
@@ -237,12 +243,12 @@ createBus(namespace?)
 ```text
 createWidgetScope({ name, version, host })
 ├── meta: { name, version, host, __isWidgetScope: true }
-├── context: { get, subscribe }（只读，set 走基座 setContext）
-├── bus: createBus(name)（命名空间隔离）
+├── context: { get, subscribe }（只读，set 走基座 setContext；同步语义）
+├── bus: createBus(name)（命名空间隔离；emit/on/once/off 四方法齐全，与 widgetBus API 对齐）
 ├── log: { debug, info, warn, error }（debug 默认关闭）
-├── t: (key, params) => i18n.t(key, params)（懒加载 i18n）
+├── t: (key, params) => i18n.t(key, params)（同步引入 i18n，K2）
 ├── request: { fetch(url, opts), addInterceptor(fn) }（受控 fetch）
-├── loader: { loadWidget(childWidget), mountWidget(container, childWidget), ... }
+├── loader: { loadWidget(childWidget), mountWidget(container, childWidget), ... }（懒加载 widget-loader）
 └── __noGlobalAccess: true
 ```
 
@@ -262,8 +268,12 @@ checkCycle(name, ancestors)
 ```
 
 **关键设计**：
-- 同步引入 `widget-bus`（保证 scope.bus 同步语义，基座同步监听器在同一事件循环内收到事件）。
-- 懒加载 `widget-context` / `i18n` / `widget-loader`（API 返回 Promise，减小首屏体积）。
+- 同步引入 `widget-bus` / `widget-context` / `i18n`（K2）：保证 `scope.bus` / `scope.context.get` / `scope.context.onChange` / `scope.t` 同步语义与全局 API 一致，消除「同一上下文两套异步语义」的心智负担，避免初始化时同步读取数据丢失时机。
+  - `widget-bus`：事件总线 `emit/on/once/off` 本就是同步 API（基于 `window.dispatchEvent`）。
+  - `widget-context` / `i18n`：通过 `external` + 全局变量提供，同步引入不增加物料包首屏体积。
+- 懒加载 `widget-loader`（`scope.loader.loadWidget` / `mountWidget` 返回 Promise，本身是异步操作）。
+- `scope.bus` 提供 `off` 方法（N2）：与 `window.widgetBus` API 完全对齐，按 handler 反查移除监听。
+- `scope.loader.loadWidget` / `mountWidget` 失败时回滚预置祖先链（N11）：catch 中 `bucket.delete(child.name)`，防内存泄漏 + 循环检测误判。
 - `Object.freeze` 冻结 scope 防止物料随意扩展。
 - `isWidgetScope(obj)` 仅校验 `meta.__isWidgetScope === true`（不校验顶层 `__noGlobalAccess`，因解构丢失导致误判）。
 
@@ -277,20 +287,27 @@ checkCycle(name, ancestors)
 window.__wcContext__
 ├── data: Object（键值存储）
 ├── listeners: Map<key, Set<cb>>
+├── version: number（上下文版本号，setContext/clearContext 变更时递增；用于 injectContext 缓存失效判定）
 ├── setContext(partial, opts?)
 │   ├── 浅比较（默认）/ deep 比较（opts.deep=true）
+│   ├── 变化时 version++（K3：供 injectContext 序列化缓存判定失效）
 │   ├── 变化时通知 onContextChange 订阅者
 │   └── window.widgetBus.emit('context-change', { keys, context })
 ├── getContext(key?) → 返回浅拷贝
 ├── onContextChange(key, cb) → 返回取消函数
 ├── clearContext(key)
+│   └── 变化时 version++（K3）
 └── injectContext(element, keys?)
-    ├── JSON.stringify（失败回退 safeStringify 再失败 '{}'）
+    ├── 三重缓存键判定（store 引用 + store.version + keys 指纹，K3）
+    │   ├── 命中 → 复用缓存的序列化字符串
+    │   └── 未命中 → JSON.stringify（失败回退 safeStringify 再失败 '{}'），并写缓存
     ├── 写入 element.setAttribute('data-context', json)
     └── 写入 element._wcContext = context（实例属性）
 ```
 
-**createContext()**：创建独立实例（闭包 data/listeners），用于 iframe / 微前端隔离。
+**K3 序列化缓存**：`renderWidget` 每次挂载物料都调 `injectContext`，N 个物料同页 = N 次全量 `JSON.stringify`。引入三重缓存键（`store` 引用 + `store.version` + `keys` 指纹）后，上下文未变时复用同一序列化字符串，N 次降为 1 次。`store.version` 在 `setContext` / `clearContext` 时自增，缓存自动失效，无需手动清理。详见 [technical-implementation.md §10.2](file:///workspace/docs/technical-implementation.md)。
+
+**createContext()**：创建独立实例（闭包 data/listeners/version），用于 iframe / 微前端隔离。
 
 ### 3.6 widget-registry —— 注册表
 
@@ -349,11 +366,13 @@ PageManager (class)
 **locale 回退链**：
 
 ```text
-getLocaleFallbackChain(locale)
+getLocaleFallbackChain(locale)  // K1：纯函数，按 locale memoize（Map 缓存），同一 locale 仅计算一次
 ├── 'zh-CN' → ['zh-CN', 'zh', 'en', 'zh']
 ├── 'en-GB' → ['en-GB', 'en', 'zh']
 └── 最终回退到 en 再到 zh
 ```
+
+**K1 memoize**：`getLocaleFallbackChain` 是纯函数（locale → 确定性数组），用模块级 `Map<locale, chain>` 缓存结果。`t()` 是物料渲染与 loader 错误提示的热路径，缓存后同一 locale 仅计算一次，避免反复 `split` / `push` / `includes` 构造数组。缓存 key 为 locale 字符串，locale 切换只是查另一个 key，无需手动失效。
 
 **多 bundle 单例幂等**：
 
@@ -362,6 +381,8 @@ window.__wcI18n__ 已存在时
 └── 本 bundle 的函数代理到全局实例（g.t.bind(g)）
     └── 确保操作同一份 messages / listeners / currentLocale
 ```
+
+**addMessages locale 归一化（N14）**：`addMessages(locale, msgs)` 入口归一化 locale 到 base lang（`'zh-CN'` → `'zh'`），使 `addMessages('zh-CN', ...)` 与 `addMessages('zh', ...)` 写入同一桶，与 `t()` 查找时回退链的 base lang key 一致，避免 `zh-CN` 与 `zh` 两个并行桶导致查找遗漏。
 
 ### 3.9 schema-generator —— Schema 生成器
 
@@ -419,7 +440,7 @@ injected.js ──CustomEvent──> content-script.js ──sendResponse──>
 ```
 
 **injected.js 三大 Hook**：
-1. Hook `customElements.define`：追踪 `bi-*` 物料注册（`registeredWidgets`）。
+1. Hook `customElements.define`：追踪 `bi-*` 物料注册（`registeredWidgets`，N12 改用 `Map<name, {name, timestamp}>` 去重，防 HMR 重载导致数组线性增长与 `collectSnapshot` 重复扫描）。
 2. Hook `window.widgetBus.emit`：捕获事件总线消息（`busEvents`，500 条环形缓冲）。
 3. 暴露 `window.__wcDevtoolsBridge.onLifecycle`：widget-loader 调用记录生命周期事件。
 
@@ -457,7 +478,7 @@ rollupOptions: {
   external: ['vue', 'element-plus', 'wc-i18n', 'wc-widget-scope', 'lodash', 'axios'],
   output: {
     globals: {
-      vue: vueGlobal,                    // 默认 'Vue'，可覆盖为 'Vue3'
+      vue: vueGlobal,                    // 默认 'Vue3'（N1：对齐基座 window.Vue3），可覆盖
       'element-plus': 'ElementPlus',
       'wc-i18n': '__wcI18n__',
       'wc-widget-scope': '__wcWidgetScope__',
@@ -467,6 +488,8 @@ rollupOptions: {
   }
 }
 ```
+
+> **N1 vueGlobal 默认值对齐基座**：原默认 `'Vue'` 与基座实际全局变量名不一致（基座用 `window.Vue2` / `window.Vue3`），未显式配置时 UMD externals `vue` 映射到不存在的 `window.Vue`，运行时报 `Vue is not defined`。现按基座实际全局变量名对齐：Vue3 插件（`widgetVitePlugin`）默认 `'Vue3'`，Vue2 插件（`widgetVueCliPlugin`）默认 `'Vue2'`，物料零配置即可正确 externals。
 
 ### 4.3 决策 3：扁平化 props 协议（禁用 config 聚合）
 
@@ -852,12 +875,12 @@ mountWithFallback(container, widget)
 
 | API | 替代的 window 直接访问 | 隔离方式 |
 | ------ | ------ | ------ |
-| `scope.context.get` | `window.__wcContext__` | 只读，set 走基座 |
-| `scope.bus` | `window.widgetBus` | 命名空间隔离 |
+| `scope.context.get` | `window.__wcContext__` | 只读，set 走基座；同步引入（K2） |
+| `scope.bus` | `window.widgetBus` | 命名空间隔离；emit/on/once/off 完整对齐（N2） |
 | `scope.log` | `console.*` | debug 可控 |
-| `scope.t` | `window.__wcI18n__.t` | 懒加载 |
+| `scope.t` | `window.__wcI18n__.t` | 同步引入 i18n（K2），与全局 t() 同步语义一致 |
 | `scope.request` | `window.fetch` | 拦截器注入 |
-| `scope.loader` | `window` 直接加载子物料 | 循环检测 |
+| `scope.loader` | `window` 直接加载子物料 | 循环检测；失败回滚祖先链（N11） |
 
 ### 9.3 构建期安全扫描
 

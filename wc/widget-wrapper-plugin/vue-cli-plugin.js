@@ -157,7 +157,7 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     throw new Error('[widget-vue-cli-plugin] 请配置 name 和 component');
   }
 
-  const { name, component, vueGlobal = 'Vue', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
+  const { name, component, vueGlobal = 'Vue2', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
 
   return function chainWebpack(config) {
     const wrapperCode = generateVue2Wrapper(name, vueGlobal);

@@ -118,12 +118,16 @@ class WidgetElement extends HTMLElement {
     // props 用 ref 承载，render 中访问 .value 建立响应式依赖；
     // 任一 prop 变化时整体替换 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
     this._propsRef = ref(this._collectProps());
+    const hasScopeProp = getDeclaredPropNames(Component).includes('scope');
     this.app = createApp({
-      render: () => h(Component, {
-        ref: this._captureWidget,
-        ...this._propsRef.value,
-        scope: this._scope
-      })
+      render: () => {
+        const props = { ...this._propsRef.value };
+        if (hasScopeProp) props.scope = this._scope;
+        return h(Component, {
+          ref: this._captureWidget,
+          ...props
+        });
+      }
     });
     // 注册基座提供的 element-plus 组件到物料 app（Vue3 app 隔离，基座注册的组件对物料 app 不可见）
     // window.ElementPlus 由基座 setupElementPlus 挂载，含物料用到的 ElCard/ElButton 等
@@ -198,7 +202,7 @@ customElements.define('${widgetName}', WidgetElement);
 }
 
 export default function widgetVitePlugin(options = {}) {
-  const { name, component, vueGlobal = 'Vue', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
+  const { name, component, vueGlobal = 'Vue3', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
   if (!name || !component) {
     throw new Error('[widget-vite-plugin] 请配置 name 和 component');
   }
@@ -275,14 +279,14 @@ export default function widgetVitePlugin(options = {}) {
           fs.renameSync(defaultCssPath, targetCssPath);
         }
       } catch (e) {
-        console.warn('[widget-vite-plugin] CSS 重命名失败:', e.message);
+        console.warn(`[widget-vite-plugin] 物料 ${name} CSS 重命名失败:`, e.message);
       }
 
       try {
         if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
         writeSchema(name, componentPath, path.join(outputDir, `${name}.schema.json`));
       } catch (e) {
-        console.warn('[widget-vite-plugin] 自动生成 schema.json 失败:', e.message);
+        console.warn(`[widget-vite-plugin] 物料 ${name} 自动生成 schema.json 失败:`, e.message);
       }
 
       // ─── 强制 Vue scoped CSS 检测（构建期）───

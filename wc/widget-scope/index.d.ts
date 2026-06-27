@@ -48,20 +48,20 @@ export type ScopeContextChangeCallback = (
   partial?: Record<string, any>
 ) => void;
 
-/** 只读上下文访问（懒加载 widget-context 模块，故方法返回 Promise） */
+/** 只读上下文访问（同步，与全局 getContext/onContextChange 行为一致） */
 export interface WidgetScopeContext {
   /**
-   * 获取上下文值（只读快照）
+   * 获取上下文值（只读快照，同步返回）
    * @param key 不传返回整个上下文快照
    */
-  get(key?: string): Promise<any>;
+  get(key?: string): any;
   /**
    * 订阅上下文变化
    * @param key 上下文 key
    * @param cb 回调，接收新值
-   * @returns 取消订阅函数（异步返回）
+   * @returns 取消订阅函数（同步返回）
    */
-  onChange(key: string, cb: ScopeContextChangeCallback): Promise<() => void>;
+  onChange(key: string, cb: ScopeContextChangeCallback): () => void;
 }
 
 /** bus 派发选项（透传到底层 createBus 的 CustomEvent） */
@@ -91,6 +91,10 @@ export interface WidgetScopeBus {
    * @returns 取消订阅函数；底层 bus 异常时返回 no-op
    */
   once(type: string, cb: ScopeBusHandler): () => void;
+  /**
+   * 取消监听事件（与 widget-bus.off 对齐）
+   */
+  off(type: string, cb: ScopeBusHandler): void;
 }
 
 /** 受控日志（自动加物料名前缀，便于排查） */
@@ -164,8 +168,8 @@ export interface WidgetScope {
   readonly bus: WidgetScopeBus;
   /** 受控日志 */
   readonly log: WidgetScopeLog;
-  /** i18n 翻译（共享基座 locale 状态），失败时返回原 key */
-  readonly t: (key: string, params?: Record<string, any>) => Promise<string>;
+  /** i18n 翻译（同步，共享基座 locale 状态），失败时返回原 key */
+  readonly t: (key: string, params?: Record<string, any>) => string;
   /** 受控 fetch 封装（可选注入鉴权头） */
   readonly request: WidgetScopeRequest;
   /** 嵌套物料加载器（带循环依赖检测） */

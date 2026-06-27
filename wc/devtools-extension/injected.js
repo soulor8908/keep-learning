@@ -19,7 +19,7 @@
   window.__wcDevtoolsInjected = true;
 
   // ─── 状态收集 ───
-  var registeredWidgets = [];   // [{ name, timestamp }]
+  var registeredWidgetsMap = new Map();   // Map<name, { name, timestamp }> 同名物料只保留最新注册时间
   var lifecycleEvents = [];     // [{ event, payload, timestamp }]
   var busEvents = [];           // [{ type, payload, timestamp }]
   var MAX_EVENTS = 500;         // 环形缓冲，避免无限增长
@@ -34,7 +34,7 @@
   customElements.define = function (name, constructor, options) {
     // 只追踪 bi-* 前缀的物料（约定物料名以 bi- 开头）
     if (typeof name === 'string' && name.indexOf('bi-') === 0) {
-      registeredWidgets.push({ name: name, timestamp: Date.now() });
+      registeredWidgetsMap.set(name, { name: name, timestamp: Date.now() });
     }
     return origDefine(name, constructor, options);
   };
@@ -102,7 +102,7 @@
   function collectSnapshot() {
     var domWidgets = [];
     // 遍历所有已注册的 bi-* custom element，查找 DOM 中的实例
-    registeredWidgets.forEach(function (reg) {
+    Array.from(registeredWidgetsMap.values()).forEach(function (reg) {
       var instances = document.querySelectorAll(reg.name);
       instances.forEach(function (el) {
         domWidgets.push({
@@ -128,12 +128,12 @@
         wcWidgetScope: !!window.__wcWidgetScope__,
         widgetBus: !!window.widgetBus
       },
-      registeredWidgets: registeredWidgets,
+      registeredWidgets: Array.from(registeredWidgetsMap.values()),
       domWidgets: domWidgets,
       lifecycleEvents: lifecycleEvents.slice(-100),  // 最近 100 条
       busEvents: busEvents.slice(-100),
       stats: {
-        totalRegistered: registeredWidgets.length,
+        totalRegistered: registeredWidgetsMap.size,
         totalInDom: domWidgets.length,
         lifecycleCount: lifecycleEvents.length,
         busEventCount: busEvents.length

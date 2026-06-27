@@ -319,5 +319,36 @@ describe('widget-context', () => {
       expect(() => injectContext(null)).not.toThrow();
       expect(injectContext(null)).toBeUndefined();
     });
+
+    it('同上下文版本多次 injectContext 复用序列化结果（缓存命中）', () => {
+      setContext({ user: { id: 1 }, theme: 'dark' });
+      const stringifySpy = vi.spyOn(JSON, 'stringify');
+      try {
+        const el1 = document.createElement('div');
+        const el2 = document.createElement('div');
+        const el3 = document.createElement('div');
+        injectContext(el1);
+        injectContext(el2);
+        injectContext(el3);
+        expect(el2.getAttribute('data-context')).toBe(el1.getAttribute('data-context'));
+        expect(el3.getAttribute('data-context')).toBe(el1.getAttribute('data-context'));
+      } finally {
+        stringifySpy.mockRestore();
+      }
+    });
+
+    it('setContext 后序列化缓存失效，data-context 更新为新值', () => {
+      setContext({ count: 1 });
+      const el1 = document.createElement('div');
+      injectContext(el1);
+      const before = el1.getAttribute('data-context');
+      setContext({ count: 2 });
+      const el2 = document.createElement('div');
+      injectContext(el2);
+      const after = el2.getAttribute('data-context');
+      expect(after).not.toBe(before);
+      expect(JSON.parse(after).count).toBe(2);
+      expect(JSON.parse(before).count).toBe(1);
+    });
   });
 });

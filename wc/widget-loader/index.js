@@ -143,9 +143,24 @@ export function checkDependencies(widget) {
   const { name, vueVersion = '2', runtimeDeps } = widget;
   const errors = [];
 
+  // vueVersion 缺失告警（K5）：不声明时默认按 Vue2 校验，但应提示用户显式声明
+  if (widget.vueVersion === undefined) {
+    console.warn(
+      `[widget-loader] 物料 ${name} 未声明 vueVersion，默认按 Vue2 校验。` +
+      `Vue3 物料请显式声明 vueVersion:'3'，H5 物料请声明 vueVersion:'none'。`
+    );
+  }
+
+  // vueVersion 白名单校验（N4）：非法值不静默回退到 vue2
+  if (!['2', '3', 'none'].includes(vueVersion)) {
+    errors.push(
+      `物料 ${name} 的 vueVersion="${vueVersion}" 不合法，必须为 '2'、'3' 或 'none'`
+    );
+  }
+
   // 1. Vue 运行时校验：按物料声明的 vueVersion 选择对应全局变量
   //    vueVersion='none' 表示原生 H5 物料，不依赖 Vue，跳过校验
-  if (vueVersion !== 'none') {
+  if (vueVersion !== 'none' && ['2', '3'].includes(vueVersion)) {
     const vueKey = vueVersion === '3' ? 'vue3' : 'vue2';
     const vueDep = SUPPORTED_DEPS[vueKey];
     const vueRuntime = typeof window !== 'undefined' ? window[vueDep.globalVar] : undefined;
@@ -217,7 +232,8 @@ export const WidgetError = {
   VERSION_MISMATCH: 'DEP_VERSION_MISMATCH', // 公共依赖版本不兼容
   NOT_FOUND: 'NOT_FOUND',               // 物料未找到（name/js 缺失）
   ELEMENT_TIMEOUT: 'ELEMENT_TIMEOUT',   // Custom Element 注册超时
-  PROPS_ERROR: 'PROPS_ERROR'            // props 序列化失败（如循环引用）
+  PROPS_ERROR: 'PROPS_ERROR',           // props 序列化失败（如循环引用）
+  UI_DEP_LIB_MISMATCH: 'UI_DEP_LIB_MISMATCH' // UI 库与 vueVersion 不匹配
 };
 
 function createError(message, code) {
@@ -323,6 +339,8 @@ class WidgetLoader {
     this.definedElements = new Set();
     // 物料名 -> { js, css }：记录每个物料加载的资源 URL，供 unloadWidget 清理
     this.widgetResources = new Map();
+    // 资源节点引用：url → DOM node，供 unloadWidget O(1) 移除（K4）
+    this.resourceNodes = new Map();
 
     // ─── 错误边界（Step 3）：单点失败不影响整体 ───
     // 跟踪已挂载物料，全局监听运行时错误并归因到对应物料，
@@ -396,6 +414,8 @@ class WidgetLoader {
         reject(createError(`Failed to load script: ${url}`, WidgetError.SCRIPT_ERROR));
       };
       document.head.appendChild(script);
+      // 保存节点引用供 unloadWidget O(1) 移除（K4）
+      this.resourceNodes.set(url, script);
     });
 
     // 真正失败时清理缓存，允许重试（仅当缓存仍指向当前 promise）
@@ -471,6 +491,8 @@ class WidgetLoader {
         reject(createError(`Failed to load style: ${url}`, WidgetError.CSS_ERROR));
       };
       document.head.appendChild(link);
+      // 保存节点引用供 unloadWidget O(1) 移除（K4）
+      this.resourceNodes.set(url, link);
     });
 
     loadPromise.catch(() => {
@@ -566,10 +588,10 @@ class WidgetLoader {
     }
 
     // 版本契约校验：不兼容直接拒绝加载，给出明确提示而非晦涩的 runtime error
-    checkDependencies(widget);
-
+    // 移进 try 块（N8）：checkDependencies 内部调 t() 可能抛错，应在 catch 中统一处理
     log('start loading widget:', name, { js, css });
     try {
+      checkDependencies(widget);
       await Promise.all([this.loadScript(js), this.loadStyle(css)]);
       await this.waitForCustomElement(name);
       this.definedElements.add(name);
@@ -577,6 +599,10 @@ class WidgetLoader {
       this.widgetResources.set(name, { js, css });
       log('widget loaded:', name);
     } catch (error) {
+      // 错误信息补全物料名（N5）：loadScript/loadStyle 的错误只含 URL，补全后用户可直接定位
+      if (!error.widgetName) {
+        error.widgetName = name;
+      }
       console.error(`[widget-loader] load widget "${name}" failed:`, error);
       throw error;
     }
@@ -750,6 +776,13 @@ class WidgetLoader {
     };
     renderFallback(container, message, widget, onRetry);
     console.error(`[widget-loader] 物料 "${name}" 运行时崩溃:`, error);
+    // 延迟清理：保留 entry 供 onRetry 使用，5 分钟后无重试则清理（N9：防内存泄漏）
+    setTimeout(() => {
+      const e = this.mountedWidgets.get(element);
+      if (e && e.failed) {
+        this.mountedWidgets.delete(element);
+      }
+    }, 5 * 60 * 1000);
   }
 
   attributeErrorToWidget(event) {
@@ -985,26 +1018,44 @@ class WidgetLoader {
     if (!name) return;
     const resources = this.widgetResources.get(name);
     if (resources) {
-      // 移除 <script> / <link> 标签
-      // 遍历所有标签比较 src/href，而非用 querySelectorAll(URL)，
-      // 避免 URL 含 " 或 ] 等特殊字符时 CSS 选择器语法错误
+      // 移除 <script> / <link> 标签：优先用 resourceNodes O(1) 移除（K4），
+      // 找不到引用时回退 querySelectorAll 全文档扫描（兼容边缘场景）
       if (resources.js) {
-        Array.from(document.querySelectorAll('script')).forEach(s => {
-          if (s.src === resources.js || s.getAttribute('src') === resources.js) {
-            if (s.parentNode) s.parentNode.removeChild(s);
-          }
-        });
+        const node = this.resourceNodes.get(resources.js);
+        if (node && node.parentNode) {
+          node.parentNode.removeChild(node);
+        } else {
+          Array.from(document.querySelectorAll('script')).forEach(s => {
+            if (s.src === resources.js || s.getAttribute('src') === resources.js) {
+              if (s.parentNode) s.parentNode.removeChild(s);
+            }
+          });
+        }
+        this.resourceNodes.delete(resources.js);
         this.loadedResources.delete(resources.js);
       }
       if (resources.css) {
-        Array.from(document.querySelectorAll('link[rel="stylesheet"]')).forEach(l => {
-          if (l.href === resources.css || l.getAttribute('href') === resources.css) {
-            if (l.parentNode) l.parentNode.removeChild(l);
-          }
-        });
+        const node = this.resourceNodes.get(resources.css);
+        if (node && node.parentNode) {
+          node.parentNode.removeChild(node);
+        } else {
+          Array.from(document.querySelectorAll('link[rel="stylesheet"]')).forEach(l => {
+            if (l.href === resources.css || l.getAttribute('href') === resources.css) {
+              if (l.parentNode) l.parentNode.removeChild(l);
+            }
+          });
+        }
+        this.resourceNodes.delete(resources.css);
         this.loadedResources.delete(resources.css);
       }
       this.widgetResources.delete(name);
+    }
+    // 清理该物料的已挂载实例（N10：防内存泄漏）
+    for (const [el, entry] of this.mountedWidgets) {
+      if (entry.widget && entry.widget.name === name) {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+        this.mountedWidgets.delete(el);
+      }
     }
     this.definedElements.delete(name);
     log('widget unloaded:', name);
@@ -1126,21 +1177,21 @@ export async function preloadUiDependencies(widgets, options = {}) {
     if (!ui) continue; // 无 uiDependencies 的 widget 跳过
     const lib = ui.lib;
     if (!LIB_VUE_MAP[lib]) {
-      throw createUiError(`Unknown uiDependencies.lib: ${lib}`, 'UI_DEP_LIB_MISMATCH');
+      throw createUiError(`物料 ${widget.name} 的 uiDependencies.lib 未知: ${lib}（N6）`, WidgetError.UI_DEP_LIB_MISMATCH);
     }
     // 校验 lib 与 vueVersion 匹配（vueVersion 默认 '2'，与 checkDependencies 一致）
     const vv = widget.vueVersion || '2';
     if (LIB_VUE_MAP[lib] !== vv) {
       throw createUiError(
-        `Widget ${widget.name} vueVersion=${vv} but uiDependencies.lib=${lib} (expected vueVersion=${LIB_VUE_MAP[lib]})`,
-        'UI_DEP_LIB_MISMATCH'
+        `物料 ${widget.name} vueVersion=${vv} 但 uiDependencies.lib=${lib}（期望 vueVersion=${LIB_VUE_MAP[lib]}）`,
+        WidgetError.UI_DEP_LIB_MISMATCH
       );
     }
     // vueVersion='none' 不应有 uiDependencies
     if (vv === 'none') {
       throw createUiError(
-        `Widget ${widget.name} vueVersion='none' but declares uiDependencies`,
-        'UI_DEP_LIB_MISMATCH'
+        `物料 ${widget.name} vueVersion='none' 但声明了 uiDependencies`,
+        WidgetError.UI_DEP_LIB_MISMATCH
       );
     }
 

@@ -69,6 +69,26 @@ describe('wc/i18n', () => {
       // 回退到 en
       expect(t('sales.title')).toBe('Sales Dashboard');
     });
+
+    it('回退链缓存：多次切换 locale 后 t() 仍返回正确结果（缓存不混淆）', () => {
+      addMessages('zh', { fbtest: { shared: '中文值' } });
+      addMessages('en', { fbtest: { shared: 'EN value' } });
+      setLocale('zh-CN'); expect(t('fbtest.shared')).toBe('中文值');
+      setLocale('en-GB'); expect(t('fbtest.shared')).toBe('EN value');
+      setLocale('zh-CN'); expect(t('fbtest.shared')).toBe('中文值');
+      setLocale('en');    expect(t('fbtest.shared')).toBe('EN value');
+      setLocale('zh');     expect(t('fbtest.shared')).toBe('中文值');
+      setLocale('fr');    expect(t('fbtest.shared')).toBe('EN value');
+      setLocale('zh-CN'); expect(t('fbtest.shared')).toBe('中文值');
+    });
+
+    it('addMessages locale 归一化：zh-CN 与 zh 写入同一桶', () => {
+      addMessages('zh-CN', { fbtest: { from_zh_cn: 'zh-CN写入' } });
+      addMessages('zh', { fbtest: { from_zh: 'zh写入' } });
+      setLocale('zh');
+      expect(t('fbtest.from_zh_cn')).toBe('zh-CN写入');
+      expect(t('fbtest.from_zh')).toBe('zh写入');
+    });
   });
 
   describe('addMessages 深合并', () => {

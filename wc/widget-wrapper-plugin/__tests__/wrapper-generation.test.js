@@ -116,6 +116,13 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
       expect(code).not.toContain("name === 'config'");
       expect(code).not.toContain('_updateConfig');
     });
+
+    it('scope 仅在组件声明时注入（防 fallthrough 到根元素，非无条件注入）', () => {
+      expect(code).toContain('hasScopeProp');
+      expect(code).toContain("getDeclaredPropNames(Component).includes('scope')");
+      expect(code).toContain('if (hasScopeProp) props.scope = this._scope');
+      expect(code).not.toMatch(/scope:\s*this\._scope/);
+    });
   });
 
   describe('T1.4c H5 wrapper (generateH5Wrapper)', () => {

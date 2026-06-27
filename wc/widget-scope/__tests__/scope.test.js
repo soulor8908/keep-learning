@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createWidgetScope, isWidgetScope } from '../index.js';
 import { createBus } from '../../widget-bus/index.js';
+import { setContext, getContext } from '../../widget-context/index.js';
 
 // 刷新微任务队列：用 setTimeout(0) 宏任务确保所有 pending 微任务（含 chained .then）执行完毕
 const flush = () => new Promise(r => setTimeout(r, 0));
@@ -252,6 +253,66 @@ describe('widget-scope 基础', () => {
       await scope.bus.emit('evt');
       await flush();
       expect(calls).toEqual(['h2']);
+    });
+
+    it('scope.bus.off 取消已注册的监听器', () => {
+      const scope = createWidgetScope({ name: 'bi-test-off' });
+      const handler = vi.fn();
+      scope.bus.on('test-event', handler);
+      scope.bus.emit('test-event', { data: 1 });
+      expect(handler).toHaveBeenCalledTimes(1);
+      scope.bus.off('test-event', handler);
+      scope.bus.emit('test-event', { data: 2 });
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('scope.context / scope.t 同步语义（与全局 API 对齐）', () => {
+    beforeEach(() => {
+      delete window.__wcContext__;
+      delete window.widgetBus;
+    });
+
+    afterEach(() => {
+      delete window.__wcContext__;
+      delete window.widgetBus;
+    });
+
+    it('scope.context.get(key) 同步返回值（非 Promise）', () => {
+      setContext({ user: { id: 42 } });
+      const scope = createWidgetScope({ name: 'bi-test-sync' });
+      const result = scope.context.get('user');
+      expect(result).toEqual({ id: 42 });
+      expect(result).not.toBeInstanceOf(Promise);
+    });
+
+    it('scope.context.get() 不传 key 同步返回整个上下文快照', () => {
+      setContext({ theme: 'dark', lang: 'zh' });
+      const scope = createWidgetScope({ name: 'bi-test-sync2' });
+      const snap = scope.context.get();
+      expect(snap).toEqual({ theme: 'dark', lang: 'zh' });
+      expect(snap).not.toBeInstanceOf(Promise);
+    });
+
+    it('scope.context.onChange 同步返回取消订阅函数（非 Promise）', () => {
+      const scope = createWidgetScope({ name: 'bi-test-sync3' });
+      const off = scope.context.onChange('x', () => {});
+      expect(typeof off).toBe('function');
+      expect(off).not.toBeInstanceOf(Promise);
+      off();
+    });
+
+    it('scope.t 同步返回翻译（非 Promise）', () => {
+      const scope = createWidgetScope({ name: 'bi-test-sync4' });
+      const result = scope.t('loader.retry');
+      expect(typeof result).toBe('string');
+      expect(result).not.toBeInstanceOf(Promise);
+    });
+
+    it('scope.context.get 与全局 getContext 返回一致', () => {
+      setContext({ user: { id: 99 } });
+      const scope = createWidgetScope({ name: 'bi-test-sync5' });
+      expect(scope.context.get('user')).toEqual(getContext('user'));
     });
   });
 });

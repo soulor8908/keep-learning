@@ -41,26 +41,13 @@
 // 故不再懒加载。widget-bus 体积极小且与 widget-scope 同属基座侧运行时（widget-scope 经
 // external 由基座 window.__wcWidgetScope__ 提供），同步引入不影响物料包首屏体积。
 import { createBus } from '../widget-bus/index.js';
+// widget-context / i18n 同步引入（K2）：保证 scope.context.get/onChange/t
+// 同步语义与全局 API 一致，消除"同一上下文两套异步语义"的心智负担。
+// widget-bus 已同步引入（上方），widget-loader 保持懒加载（loadWidget 本身是异步操作）。
+import { getContext, onContextChange } from '../widget-context/index.js';
+import { t as i18nT } from '../i18n/index.js';
 
-// ─── 懒加载依赖：仅在物料实际调用对应 API 时才 import，减小首屏体积 ───
-// 注意：bus 不在此列（见上方同步 import），因为其 API 是同步的；
-// context/i18n/loader 的 API 本身返回 Promise，保持懒加载合理。
-let contextModulePromise = null;
-function getContextModule() {
-  if (!contextModulePromise) {
-    contextModulePromise = import('../widget-context/index.js');
-  }
-  return contextModulePromise;
-}
-
-let i18nModulePromise = null;
-function getI18nModule() {
-  if (!i18nModulePromise) {
-    i18nModulePromise = import('../i18n/index.js');
-  }
-  return i18nModulePromise;
-}
-
+// loader 保持懒加载（loadWidget 是真正的异步操作）
 let loaderModulePromise = null;
 function getLoaderModule() {
   if (!loaderModulePromise) {
@@ -154,25 +141,25 @@ export function createWidgetScope(opts = {}) {
   // 物料只能 get/订阅，不能 set（set 走基座 setContext，避免反向耦合）
   const context = {
     /**
-     * 获取上下文值（只读快照）
+     * 获取上下文值（只读快照，同步返回）
      * @param {string} [key] 不传返回整个上下文快照
      */
-    async get(key) {
-      const mod = await getContextModule();
-      const inst = opts.contextInstance || mod;
-      return typeof inst.get === 'function'
-        ? inst.get(key)
-        : (mod.getContext ? mod.getContext(key) : undefined);
+    get(key) {
+      if (opts.contextInstance) {
+        return typeof opts.contextInstance.get === 'function'
+          ? opts.contextInstance.get(key) : undefined;
+      }
+      return getContext(key);
     },
     /**
-     * 订阅上下文变化，返回取消订阅函数
+     * 订阅上下文变化，同步返回取消订阅函数
      */
-    async onChange(key, cb) {
-      const mod = await getContextModule();
-      const inst = opts.contextInstance || mod;
-      if (typeof inst.onChange === 'function') return inst.onChange(key, cb);
-      if (typeof mod.onContextChange === 'function') return mod.onContextChange(key, cb);
-      return () => {};
+    onChange(key, cb) {
+      if (opts.contextInstance) {
+        return typeof opts.contextInstance.onChange === 'function'
+          ? opts.contextInstance.onChange(key, cb) : (() => {});
+      }
+      return onContextChange(key, cb);
     }
   };
 
@@ -205,6 +192,13 @@ export function createWidgetScope(opts = {}) {
         log.error('bus.once failed:', e.message);
       }
       return () => {};
+    },
+    off(type, cb) {
+      try {
+        if (busInstance && busInstance.off) busInstance.off(type, cb);
+      } catch (e) {
+        log.error('bus.off failed:', e.message);
+      }
     }
   };
 
@@ -223,11 +217,9 @@ export function createWidgetScope(opts = {}) {
     }
   };
 
-  // ─── i18n 翻译（共享基座 locale 状态）───
-  async function t(key, params) {
-    const mod = await getI18nModule();
-    if (typeof mod.t === 'function') return mod.t(key, params);
-    return key;
+  // ─── i18n 翻译（同步，共享基座 locale 状态）───
+  function t(key, params) {
+    return i18nT(key, params);
   }
 
   // ─── 环境元信息（只读）───
@@ -297,7 +289,14 @@ export function createWidgetScope(opts = {}) {
       propagateAncestors(widget.name);
       const mod = await getLoaderModule();
       const inst = mod.defaultLoader || mod;
-      return inst.loadWidget(widget);
+      try {
+        return await inst.loadWidget(widget);
+      } catch (e) {
+        // 失败回滚：清除预置的祖先链，避免泄漏 + 循环检测误判（N11）
+        const bucket = getAncestorBucket(host);
+        bucket.delete(widget.name);
+        throw e;
+      }
     },
     /**
      * 加载并挂载子物料到指定容器
@@ -311,7 +310,14 @@ export function createWidgetScope(opts = {}) {
       propagateAncestors(widget.name);
       const mod = await getLoaderModule();
       const inst = mod.defaultLoader || mod;
-      return inst.mountWidget(container, widget);
+      try {
+        return await inst.mountWidget(container, widget);
+      } catch (e) {
+        // 失败回滚：清除预置的祖先链，避免泄漏 + 循环检测误判（N11）
+        const bucket = getAncestorBucket(host);
+        bucket.delete(widget.name);
+        throw e;
+      }
     },
     /**
      * 卸载子物料元素

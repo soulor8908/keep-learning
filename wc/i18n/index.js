@@ -19,6 +19,8 @@ const messages = { zh, en };
 const listeners = new Set();
 let currentLocale = 'zh';
 
+const _fallbackChainCache = new Map();
+
 /**
  * 解析 locale 的回退链
  * 例如 'zh-CN' -> ['zh-CN', 'zh', 'en']，'zh-TW' -> ['zh-TW', 'zh', 'en']
@@ -27,6 +29,9 @@ let currentLocale = 'zh';
  * @returns {string[]} 按优先级排列的 locale 列表
  */
 function getLocaleFallbackChain(locale) {
+  // 纯函数（locale -> 确定性数组），按 locale 缓存，同一 locale 仅计算一次
+  const cached = _fallbackChainCache.get(locale);
+  if (cached) return cached;
   const chain = [locale];
   // 提取基础语言（如 zh-CN -> zh）
   const base = String(locale).split('-')[0];
@@ -35,6 +40,7 @@ function getLocaleFallbackChain(locale) {
   if (!chain.includes('en')) chain.push('en');
   // 最终回退到 zh（若 en 也没有，作为最后保障）
   if (!chain.includes('zh')) chain.push('zh');
+  _fallbackChainCache.set(locale, chain);
   return chain;
 }
 
@@ -153,10 +159,13 @@ function deepMerge(target, source) {
  * @param {Object} msgs 待合并的字典，会深合并到现有字典
  */
 let addMessages = function addMessages(locale, msgs) {
-  if (!messages[locale]) messages[locale] = {};
+  // 归一化到 base locale，使 addMessages('zh-CN', ...) 与 addMessages('zh', ...)
+  // 写入同一个 messages 桶，避免重复桶 / 查找遗漏
+  const normalizedLocale = String(locale).split('-')[0];
+  if (!messages[normalizedLocale]) messages[normalizedLocale] = {};
   // 深合并：递归合并嵌套对象，避免部门注入文案时意外覆盖基座已有的其他 key
   // 例如 msgs.loader.dep_missing 不会覆盖基座的 loader.dep_version
-  deepMerge(messages[locale], msgs);
+  deepMerge(messages[normalizedLocale], msgs);
 }
 
 const i18n = { t, getLocale, setLocale, onLocaleChange, addMessages };

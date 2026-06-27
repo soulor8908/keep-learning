@@ -122,9 +122,14 @@ export function createWidgetWrapper(Component, widgetName) {
       // props 用 ref 承载，render 中访问 .value 建立响应式依赖；
       // 任一 prop 变化时整体替换 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
       this._propsRef = ref(this._collectProps());
+      const hasScopeProp = getDeclaredPropNames(Component).includes('scope');
       this.app = createApp({
-        // 注入 scope（必传）+ 各独立 prop
-        render: () => h(Component, { ...this._propsRef.value, scope: this._scope })
+        // 仅在组件声明了 scope prop 时注入（防 $attrs fallthrough 到根元素）
+        render: () => {
+          const props = { ...this._propsRef.value };
+          if (hasScopeProp) props.scope = this._scope;
+          return h(Component, props);
+        }
       });
       // 注册基座提供的 element-plus 组件到物料 app（Vue3 app 隔离，基座注册的组件对物料 app 不可见）
       // window.ElementPlus 由基座 setupElementPlus 挂载，含物料用到的 ElCard/ElButton 等

@@ -18,7 +18,7 @@ vi.mock('../../../widget-context/index.js', () => ({
   injectContext: () => {}
 }));
 
-import { checkDependencies, SUPPORTED_DEPS } from '../index.js';
+import { checkDependencies, SUPPORTED_DEPS, WidgetError } from '../index.js';
 
 describe('checkDependencies', () => {
   let originalVue2, originalVue3;
@@ -96,6 +96,38 @@ describe('checkDependencies', () => {
     } catch (err) {
       expect(err.code).toBe('DEP_VERSION_MISMATCH');
       expect(err.details[0]).toContain('Vue2');
+    }
+  });
+
+  it("vueVersion 缺失时 console.warn 告警但不阻断（显式声明不告警）", () => {
+    window.Vue2 = { version: '2.6.14' };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(() => checkDependencies({ name: 'no-vv' })).not.toThrow();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('未声明 vueVersion'));
+      warnSpy.mockClear();
+      checkDependencies({ name: 'has-vv', vueVersion: '2' });
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      delete window.Vue2;
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("vueVersion 非法值（如 'Vue3', 3, '4'）时抛 DEP_VERSION_MISMATCH", () => {
+    const errors = [
+      { vueVersion: 'Vue3' },
+      { vueVersion: '4' },
+      { vueVersion: 'vue2' },
+    ];
+    for (const w of errors) {
+      try {
+        checkDependencies({ name: 'bad-vv', ...w });
+        throw new Error('should have thrown for ' + JSON.stringify(w));
+      } catch (err) {
+        expect(err.code).toBe('DEP_VERSION_MISMATCH');
+        expect(err.message).toContain('不合法');
+      }
     }
   });
 
@@ -185,5 +217,11 @@ describe('checkDependencies', () => {
         checkDependencies({ name: 'w', vueVersion: '3', runtimeDeps: ['moment', 'lodash'] })
       ).not.toThrow();
     });
+  });
+});
+
+describe('WidgetError 枚举', () => {
+  it('WidgetError 枚举包含 UI_DEP_LIB_MISMATCH', () => {
+    expect(WidgetError.UI_DEP_LIB_MISMATCH).toBe('UI_DEP_LIB_MISMATCH');
   });
 });
