@@ -782,3 +782,11 @@ export function mountWidget(container, widget) {
 export function unloadWidget(container, name) {
   return _defaultLoader.unloadWidget(container, name);
 }
+
+export function unmountWidget(element) {
+  return _defaultLoader.unmountWidget(element);
+}
+
+export function onWidgetLifecycle(event, cb) {
+  return _defaultLoader.onWidgetLifecycle(event, cb);
+}

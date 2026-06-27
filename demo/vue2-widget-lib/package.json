@@ -14,6 +14,7 @@
     "serve:dist": "npx serve dist -l 8081 --cors"
   },
   "dependencies": {
+    "element-ui": "^2.15.14",
     "vue": "^2.6.14"
   },
   "devDependencies": {

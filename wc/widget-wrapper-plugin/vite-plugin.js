@@ -467,6 +467,9 @@ document.querySelectorAll('#panel input[data-prop]').forEach(input => {
   return `
 import { createApp, h, ref } from 'vue';
 import Component from '${entryPath}';
+// dev-preview：直接导入 ElementPlus，确保 el-* 组件可用
+import * as __devElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
 
 ${_sharedPropsCode}
 
@@ -487,14 +490,16 @@ class DevWidgetElement extends HTMLElement {
   connectedCallback() {
     this._propsRef = ref(this._collectProps());
     this.app = createApp({ render: () => h(Component, this._propsRef.value) });
-    ${uiDeps && uiDeps.length > 0 ? `const uiDeps = ${JSON.stringify(uiDeps)};
-    if (typeof window !== 'undefined' && window.ElementPlus && uiDeps.length > 0) {
-      uiDeps.forEach(function(compName) {
-        var pascalName = 'El' + compName.split('-').map(function(s) { return s.charAt(0).toUpperCase() + s.slice(1); }).join('');
-        var comp = window.ElementPlus[pascalName];
-        if (comp) { this.app.component(comp.name || pascalName, comp); this.app.component('el-' + compName, comp); }
-      }, this);
-    }` : ''}
+    // 注册 ElementPlus 组件：优先使用直接导入（dev-preview），回退到 window.ElementPlus（生产）
+    const epSource = typeof __devElementPlus !== 'undefined' ? __devElementPlus : (typeof window !== 'undefined' ? window.ElementPlus : null);
+    if (epSource) {
+      const entries = typeof Object.entries === 'function' ? Object.entries(epSource) : [];
+      for (const [key, comp] of entries) {
+        if (key.startsWith('El') && comp && typeof comp === 'object' && comp.name) {
+          this.app.component(comp.name, comp);
+        }
+      }
+    }
     this.app.mount(this);
   }
   disconnectedCallback() { if (this.app) { this.app.unmount(); this.app = null; } }

@@ -130,6 +130,15 @@ function generateDevPreviewEntryVue2(widgetName, componentPath) {
 import Vue from 'vue';
 import wrap from '@vue/web-component-wrapper';
 import Component from '${componentPath.replace(/\\/g, '/')}';
+// dev-preview：导入 ElementUI 并全局注册，确保 el-* 组件可用
+import ElementUI from 'element-ui';
+import 'element-ui/lib/theme-chalk/index.css';
+Vue.use(ElementUI);
+
+// 告诉 Vue2 编译器 el-* 是自定义元素，不要当 Vue 组件解析
+const _existing = Array.isArray(Vue.config.ignoredElements) ? Vue.config.ignoredElements : [];
+const _hasEl = _existing.some(re => re instanceof RegExp && re.source === '^el-');
+if (!_hasEl) Vue.config.ignoredElements = [..._existing, /^el-/];
 
 // 桥接组件：把宿主 attribute 透传给业务组件
 const BridgeComponent = {
