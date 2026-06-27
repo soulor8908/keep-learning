@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "serve:widget": "vite build --watch --outDir ../vue3-esm-host/widgets"
   },
   "devDependencies": {
     "vite": "^5.2.0"

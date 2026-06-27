@@ -26,7 +26,7 @@
     "dev": "concurrently \"pnpm dev:vue3\" \"pnpm dev:vue2\" \"pnpm dev:vue3-esm\"",
     "dev:vue3": "concurrently \"pnpm --filter vue3-widget-lib serve:dev\" \"pnpm --filter vue3-host serve\"",
     "dev:vue2": "concurrently \"pnpm --filter vue2-widget-lib serve:widget\" \"pnpm --filter vue2-host serve\"",
-    "dev:vue3-esm": "concurrently \"pnpm --filter vue3-esm-widget serve:widget\" \"pnpm --filter vue3-esm-host serve\"",
+    "dev:vue3-esm": "concurrently \"pnpm --filter vue3-esm-widget serve:widget\" \"pnpm --filter vue3-esm-h5 serve:widget\" \"pnpm --filter vue3-esm-host serve\"",
     "dev:vue3-host": "pnpm --filter vue3-host serve",
     "dev:vue2-host": "pnpm --filter vue2-host serve",
     "dev:vue3-esm-host": "pnpm --filter vue3-esm-host serve",

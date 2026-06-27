@@ -1,7 +1,7 @@
 <template>
   <div class="host-app">
     <div class="topbar">
-      <h1>Vue3 ESM Host</h1>
+      <h1>{{ t('title') }}</h1>
       <button class="lang-btn" @click="toggleLocale">
         {{ t('lang') }} → {{ locale === 'zh' ? 'en' : 'zh' }}
       </button>
@@ -40,7 +40,8 @@ const logs = ref([]);
 
 const widgetProps = computed(() => ({
   title: t('hello'),
-  bus
+  bus,
+  t
 }));
 
 function toggleLocale() {
