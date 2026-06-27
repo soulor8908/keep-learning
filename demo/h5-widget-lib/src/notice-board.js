@@ -11,6 +11,19 @@
  * 如需 onMount/onUnmount（绑定事件/定时器），补充对应回调（见 clock-card.js）。
  */
 
+import { addMessages } from 'wc-i18n';
+
+addMessages('zh', {
+  notice: {
+    empty: '暂无公告'
+  }
+});
+addMessages('en', {
+  notice: {
+    empty: 'No notices'
+  }
+});
+
 export default {
   // 声明的独立 prop 名：包装层据此观察对应 kebab-case attribute
   props: ['title', 'items'],
@@ -25,7 +38,7 @@ export default {
           const level = (item && item.level) || 'info';
           return `<li class="bi-notice-board__item bi-notice-board__item--${level}">${text}</li>`;
         }).join('')
-      : '<li class="bi-notice-board__item bi-notice-board__item--empty">暂无公告</li>';
+      : `<li class="bi-notice-board__item bi-notice-board__item--empty">${scope.t('notice.empty')}</li>`;
 
     return `
       <div class="bi-notice-board">

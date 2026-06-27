@@ -1,7 +1,8 @@
 <script setup>
 const props = defineProps({
   title: { type: String, default: 'Widget' },
-  bus: { type: Object, default: null }
+  bus: { type: Object, default: null },
+  t: { type: Function, default: (key) => key }
 });
 
 function emitEvent() {
@@ -12,7 +13,7 @@ function emitEvent() {
 <template>
   <div class="vue-widget">
     <h3>{{ title }}</h3>
-    <button @click="emitEvent">发送事件</button>
+    <button @click="emitEvent">{{ t('esm_widget.send_event') }}</button>
   </div>
 </template>
 
