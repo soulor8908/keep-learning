@@ -14,7 +14,8 @@
     "serve": "vite",
     "serve:widget": "vite build --watch",
     "serve:dev": "cross-env WIDGET_NAME=bi-finance-panel vite build --watch --outDir ../vue3-host/public/widgets",
-    "serve:dist": "npx serve dist -l 8082 --cors"
+    "serve:dist": "npx serve dist -l 8082 --cors",
+    "serve:dev-server": "node scripts/dev-server.js"
   },
   "dependencies": {
     "element-plus": "^2.7.0",

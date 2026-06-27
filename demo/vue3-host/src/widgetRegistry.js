@@ -113,10 +113,14 @@ const FALLBACK_WIDGETS = [
   }
 ];
 
+// 物料服务地址（开发环境从物料服务获取，生产环境从 public 目录获取）
+const WIDGET_SERVICE_URL = 'http://localhost:8082';
+
 // 创建注册表实例：
-// 统一从 /widgets/registry.json 拉取注册表，失败时回退到 FALLBACK_WIDGETS。
+// 开发环境：优先从物料服务获取，失败时回退到本地 FALLBACK_WIDGETS
+// 生产环境：从 public/widgets/registry.json 获取
 const registry = createRegistry({
-  url: '/widgets/registry.json',
+  url: import.meta.env.DEV ? `${WIDGET_SERVICE_URL}/widgets/registry.json` : '/widgets/registry.json',
   fallback: FALLBACK_WIDGETS,
   cacheKey: 'widget-registry-vue3-host',
   timeout: 8000

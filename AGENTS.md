@@ -93,6 +93,12 @@ pnpm dev:vue3-widget
 pnpm dev:vue2-widget
 pnpm dev:vue3-esm-widget
 
+# 一键启动物料服务 + Host（物料从服务获取，支持热更新）
+pnpm dev:vue3-with-service
+
+# 单独启动物料服务
+pnpm --filter vue3-widget-lib serve:dev-server
+
 # 预览 vue3-host（旧方式，保留兼容）
 bash scripts/coze-preview-run.sh
 
