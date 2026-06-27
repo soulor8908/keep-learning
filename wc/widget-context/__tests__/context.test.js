@@ -8,20 +8,26 @@ import {
   createContext,
   injectContext
 } from '../index.js';
+import { createBus } from '../../widget-bus/index.js';
 
 // widget-context 用 window.__wcContext__ 作模块级单例存储，跨用例共享。
 // 每个用例前重置 store，确保订阅者/数据互不污染。
 const GLOBAL_KEY = '__wcContext__';
 
 describe('widget-context', () => {
+  let _listenerBus;
+  let _listenerOffs;
+
   beforeEach(() => {
     delete window[GLOBAL_KEY];
-    delete window.widgetBus;
+    _listenerBus = createBus();
+    _listenerOffs = [];
   });
 
   afterEach(() => {
     delete window[GLOBAL_KEY];
-    delete window.widgetBus;
+    _listenerOffs.forEach(off => off());
+    _listenerBus.destroy();
   });
 
   describe('getContext 快照', () => {
@@ -189,30 +195,28 @@ describe('widget-context', () => {
   });
 
   describe('broadcast 集成', () => {
-    it('变化时通过 window.widgetBus.emit 广播 context-change', () => {
-      const emit = vi.fn();
-      window.widgetBus = { emit };
+    it('变化时通过内部广播 bus 广播 context-change', () => {
+      const received = [];
+      _listenerOffs.push(_listenerBus.on('context-change', p => received.push(p)));
       setContext({ user: { id: 1 } });
-      expect(emit).toHaveBeenCalledWith(
-        'context-change',
-        expect.objectContaining({ keys: ['user'] })
-      );
+      expect(received).toHaveLength(1);
+      expect(received[0]).toEqual(expect.objectContaining({ keys: ['user'] }));
     });
 
     it('无变化时不广播', () => {
-      const emit = vi.fn();
-      window.widgetBus = { emit };
+      const received = [];
+      _listenerOffs.push(_listenerBus.on('context-change', p => received.push(p)));
       setContext({ a: 1 });
-      emit.mockClear();
+      received.length = 0;
       setContext({ a: 1 });
-      expect(emit).not.toHaveBeenCalled();
+      expect(received).toHaveLength(0);
     });
 
     it('broadcast:false 不广播', () => {
-      const emit = vi.fn();
-      window.widgetBus = { emit };
+      const received = [];
+      _listenerOffs.push(_listenerBus.on('context-change', p => received.push(p)));
       setContext({ a: 1 }, { broadcast: false });
-      expect(emit).not.toHaveBeenCalled();
+      expect(received).toHaveLength(0);
     });
   });
 

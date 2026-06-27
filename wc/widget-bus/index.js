@@ -90,3 +90,18 @@ export function createBus(namespace) {
 
   return { emit, on, once, off, destroy };
 }
+
+/**
+ * 创建内部广播 bus（无命名空间，全局通道）
+ *
+ * 用途：widget-context / i18n 等内部模块通过此 bus 广播变化事件（如 context-change、
+ * locale-change），替代依赖 window.widgetBus 全局变量。不暴露到 window，不依赖全局变量。
+ *
+ * 每次调用返回新的 bus 实例，各实例通过 DOM CustomEvent 共享全局通道（bi-widget-bus:<type>），
+ * 因此任何 createBus()（无命名空间）创建的监听器都能接收到广播事件。
+ *
+ * @returns {{emit: Function, on: Function, once: Function, off: Function, destroy: Function}}
+ */
+export function createBroadcastBus() {
+  return createBus();
+}

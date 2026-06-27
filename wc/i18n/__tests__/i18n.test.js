@@ -1,27 +1,30 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { t, getLocale, setLocale, onLocaleChange, addMessages } from '../index.js';
+import { createBus } from '../../widget-bus/index.js';
 
 // 注意：i18n 是模块级单例（messages / listeners / currentLocale 跨用例共享）。
 // 用例间通过 setLocale('zh', true) 复位 locale，并显式 off 所有订阅避免泄漏。
 // addMessages 是追加合并，使用唯一 key 避免与基座文案或其他用例冲突。
 describe('wc/i18n', () => {
-  let busEmitSpy;
+  // 用 createBus()（无命名空间）监听广播事件，与 i18n 内部 _broadcastBus 共享 DOM 通道
+  let _listenerBus;
+  let _busReceived;
   const offs = [];
 
   beforeEach(() => {
-    busEmitSpy = vi.fn();
-    // i18n.setLocale 通过 window.widgetBus.emit 广播 locale-change；
-    // 这里 mock 一个最小 widgetBus，断言广播调用（与 Spec4 的 widget-bus 改动解耦）
-    window.widgetBus = { emit: busEmitSpy };
+    _listenerBus = createBus();
+    _busReceived = [];
+    // 监听 locale-change 广播，存入 _busReceived 供断言
+    _listenerBus.on('locale-change', p => _busReceived.push(p));
     // 强制复位 locale 到 'zh'，清除上一用例的 locale 状态
     setLocale('zh', true);
-    busEmitSpy.mockClear();
+    _busReceived.length = 0;
   });
 
   afterEach(() => {
     while (offs.length) offs.pop()();
-    delete window.widgetBus;
+    _listenerBus.destroy();
     setLocale('zh', true);
   });
 
@@ -128,7 +131,7 @@ describe('wc/i18n', () => {
       offs.push(onLocaleChange(cb));
       setLocale('zh'); // 当前已是 zh
       expect(cb).not.toHaveBeenCalled();
-      expect(busEmitSpy).not.toHaveBeenCalled();
+      expect(_busReceived).toHaveLength(0);
     });
 
     it('force=true 强制广播（locale 未变也触发）', () => {
@@ -136,7 +139,7 @@ describe('wc/i18n', () => {
       offs.push(onLocaleChange(cb));
       setLocale('zh', true);
       expect(cb).toHaveBeenCalledWith('zh');
-      expect(busEmitSpy).toHaveBeenCalledWith('locale-change', { locale: 'zh' });
+      expect(_busReceived).toEqual([{ locale: 'zh' }]);
     });
 
     it('切换到不同 locale 时广播 locale-change', () => {
@@ -144,7 +147,7 @@ describe('wc/i18n', () => {
       offs.push(onLocaleChange(cb));
       setLocale('en');
       expect(cb).toHaveBeenCalledWith('en');
-      expect(busEmitSpy).toHaveBeenCalledWith('locale-change', { locale: 'en' });
+      expect(_busReceived).toEqual([{ locale: 'en' }]);
     });
   });
 

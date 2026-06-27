@@ -140,14 +140,102 @@ customElements.define('${widgetName}', WidgetElement);
 `;
 }
 
+// ─── Dev-Preview 入口模板（Vue2）───
+function generateDevPreviewEntryVue2(widgetName, componentPath) {
+  return `
+import Vue from 'vue';
+import wrap from '@vue/web-component-wrapper';
+import Component from '${componentPath.replace(/\\/g, '/')}';
+
+// 桥接组件：把宿主 attribute 透传给业务组件
+const BridgeComponent = {
+  props: Object.keys(Component.props || {}),
+  render(h) {
+    return h(Component, { props: this.$props });
+  }
+};
+
+if (!customElements.get('${widgetName}')) {
+  customElements.define('${widgetName}', wrap(Vue, BridgeComponent));
+}
+
+// 自动挂载预览
+new Vue({
+  el: '#app',
+  template: '<div><h2>${widgetName} - Dev Preview</h2><${widgetName}></${widgetName}></div>'
+});
+`;
+}
+
 module.exports = function widgetVueCliPlugin(options = {}) {
   if (!options.name || !options.component) {
     throw new Error('[widget-vue-cli-plugin] 请配置 name 和 component');
   }
 
   const { name, component, vueGlobal = 'Vue2', autoNamespace = true } = options;
+  // dev-preview 模式判定：仅在 vue-cli-service serve（NODE_ENV=development 且存在 VUE_CLI_SERVICE）时启用
+  // 避免纯测试环境（NODE_ENV 未设置）误入 dev 路径
+  const isDev = process.env.NODE_ENV === 'development' && !!process.env.VUE_CLI_SERVICE;
 
   return function chainWebpack(config) {
+    const componentPath = path.resolve(process.cwd(), component);
+
+    // ─── Dev-Preview 模式：自动生成预览入口，不打包 UMD ───
+    if (isDev) {
+      const devEntryCode = generateDevPreviewEntryVue2(name, componentPath);
+      const devEntryFile = path.join(os.tmpdir(), `widget-dev-entry-${name}-${Date.now()}.js`);
+      fs.writeFileSync(devEntryFile, devEntryCode);
+
+      // 替换入口为 dev preview
+      const entryStore = config.entryPoints.store;
+      const entryNames = Array.from(entryStore.keys());
+      if (entryNames.length === 0) {
+        config.entry('app').add(devEntryFile);
+      } else {
+        const keep = entryNames[0];
+        for (const n of entryNames) {
+          if (n !== keep) entryStore.delete(n);
+        }
+        config.entry(keep).clear().add(devEntryFile);
+      }
+
+      // dev 模式保留 html 插件（由 vue-cli-service 默认提供），不设置 UMD/externals
+      // PostCSS 命名空间仍启用
+      if (autoNamespace) {
+        const namespacePlugin = createNamespacePlugin(name);
+        ['css', 'scss', 'sass', 'less', 'stylus'].forEach(ruleName => {
+          const rule = config.module.rules.get(ruleName);
+          if (!rule) return;
+          rule.oneOfs.values().forEach(oneOf => {
+            const postcssLoader = oneOf.uses.get('postcss-loader');
+            if (postcssLoader) {
+              postcssLoader.tap(options => {
+                const postcssOptions = options.postcssOptions || options;
+                const plugins = (postcssOptions.plugins || []).slice();
+                plugins.push(namespacePlugin);
+                return {
+                  ...options,
+                  postcssOptions: { ...postcssOptions, plugins }
+                };
+              });
+            }
+          });
+        });
+      }
+
+      // 构建完成后清理临时文件
+      config.plugin('widget-dev-cleanup').use(class {
+        apply(compiler) {
+          compiler.hooks.done.tap('widget-dev-cleanup', () => {
+            if (compiler.options.watch) return;
+            try { fs.unlinkSync(devEntryFile); } catch (_) {}
+          });
+        }
+      });
+      return;
+    }
+
+    // ─── Build 模式：UMD 打包 ───
     const wrapperCode = generateVue2Wrapper(name, vueGlobal);
     const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
     fs.writeFileSync(tmpFile, wrapperCode);
@@ -179,7 +267,6 @@ module.exports = function widgetVueCliPlugin(options = {}) {
       'axios': 'axios'
     });
 
-    const componentPath = path.resolve(process.cwd(), component);
     config.resolve.alias.set('__WIDGET_COMPONENT__', componentPath);
     config.devtool('source-map');
 

@@ -104,8 +104,45 @@ bash scripts/deploy_run.sh
 
 ## 架构决策记录
 - **scope.bus 注入全局 bus**：widget-wrapper 通过 `window.__wcGlobalBus__` 将全局 bus 实例传入 `createWidgetScope`，确保 scope.bus 与基座总线共享同一通道，物料 emit 的事件基座可直接 on 到
-- **widget-bus 只导出 createBus**：删除 Vue2BusPlugin/Vue3BusPlugin/window.widgetBus 等向后兼容导出，新项目不需要
+- **widget-bus 只导出 createBus + createBroadcastBus**：createBus 对外导出，createBroadcastBus 供 widget-context/i18n 内部广播用，不依赖 window.widgetBus 全局变量
 - **widget-page 已删除**：2C 看板是单页面，不需要多页面状态机编排
 - **h5-vite-plugin 已合并到 vite-plugin**：通过 `mode: 'h5'` 选项区分，消除重复代码
 - **ui-loader 从 loader 中拆出**：UI 按需加载是可选能力，不混在核心 loader 里
-- **declarative-plugin 删除 babel-plugin**：只保留 vite-plugin，新项目统一用 Vite
+- **declarative-plugin 只保留 vite-plugin**：babel-plugin.js 作为 vite-plugin 内部实现细节（@private），不对用户导出
+- **scope emit/on/off 快捷方法**：scope 上直接提供 emit/on/off 委托到 scope.bus，与 Vue3 emit 心智模型一致
+- **vite-plugin/vue-cli-plugin dev-preview 模式**：serve 时自动生成预览入口和页面，无需手写 main.js
+
+## 关键运行时全局变量
+
+| 全局变量 | 提供者 | 用途 |
+|---------|--------|------|
+| `window.Vue2` | vue2-host 基座 | Vue2 物料运行时 |
+| `window.Vue3` | vue3-host 基座 | Vue3 物料运行时 |
+| `window.ELEMENT` | vue2-host（element-ui.js） | ElementUI 组件库 |
+| `window.ElementPlus` | vue3-host（element-plus.js） | ElementPlus 组件库 |
+| `window.__wcI18n__` | 基座 | i18n 运行时（物料共享 locale） |
+| `window.__wcWidgetScope__` | 基座 | widgetScope 工厂（createWidgetScope） |
+| `window.__wcGlobalBus__` | 基座 | 全局 bus 实例（scope.bus 注入用） |
+
+## 代码习惯约定
+
+### 通用规则
+1. **语言**：注释与文档用中文，技术术语保留英文。代码标识符用英文。
+2. **不使用 emoji**：代码、注释、文档中均不使用 emoji。
+3. **注释风格**：解释“为什么”而非“是什么”。用 `// ─── 标题 ───` 分隔符划分区块。函数用 JSDoc。
+4. **防御性编码**：系统边界做校验与 try/catch；内部代码信任框架保证；失败不阻断主流程时用 try/catch + console.warn 降级。
+5. **不过度工程化**：只做被要求的事；一次性操作不抽 helper；不为假想的未来需求设计。
+
+### 模块实现
+1. **ESM 优先**：`wc/` 下用 ESM。需引用 CJS 时用 `createRequire`。
+2. **冻结隔离对象**：widgetScope 用 Object.freeze() 冻结。
+3. **多 Host 状态隔离**：加载器等用 class 实例化。
+
+### 测试习惯
+1. 改完 `.js` 用 `node --check` 验证语法。
+2. 测试框架：Vitest（happy-dom 环境）。
+3. 临时文件用完即删。
+
+### Git 提交
+1. 提交信息：中文，`type(scope): 概述` 格式。
+2. 不主动提交，只在用户明确要求时 commit。

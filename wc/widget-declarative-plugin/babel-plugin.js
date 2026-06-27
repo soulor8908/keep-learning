@@ -1,4 +1,6 @@
 /**
+ * @private 内部模块，不对外导出。由 vite-plugin.js 内部 require 使用。
+ *
  * 声明式物料使用插件 —— Babel AST 转换
  *
  * 目标：让物料使用像普通组件/函数调用一样。用户写声明式语法，构建期由 Babel

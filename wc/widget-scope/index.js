@@ -339,6 +339,11 @@ export function createWidgetScope(opts = {}) {
     t,
     request,
     loader,
+    // ─── emit/on/off 快捷方法（委托到 scope.bus，与 Vue3 emit 心智模型一致）───
+    // 卡片开发者可直接用 scope.emit('event', payload)，无需写 scope.bus.emit
+    emit: (...args) => bus.emit(...args),
+    on: (...args) => bus.on(...args),
+    off: (...args) => bus.off(...args),
     // 销毁 scope：移除 bus 上所有 window 事件监听器，防止物料卸载后监听器泄漏
     // wrapper disconnectedCallback 中调用，无需物料手动清理每个 on() 返回的取消函数
     destroy: () => {

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createBus } from '../index.js';
+import { createBus, createBroadcastBus } from '../index.js';
 
 describe('widget-bus', () => {
   describe('emit / on 基本收发', () => {
@@ -262,6 +262,50 @@ describe('widget-bus', () => {
     it('createBus 返回的实例含 destroy 方法', () => {
       const bus = createBus('has-destroy');
       expect(typeof bus.destroy).toBe('function');
+    });
+  });
+
+  describe('createBroadcastBus', () => {
+    it('返回一个可用的 bus 实例（含 emit/on/off/destroy）', () => {
+      const bus = createBroadcastBus();
+      expect(typeof bus.emit).toBe('function');
+      expect(typeof bus.on).toBe('function');
+      expect(typeof bus.off).toBe('function');
+      expect(typeof bus.destroy).toBe('function');
+    });
+
+    it('使用全局命名空间（无 namespace），与 createBus() 共享通道', () => {
+      const broadcast = createBroadcastBus();
+      const listener = createBus();
+      const received = [];
+      listener.on('broadcast-test', p => received.push(p));
+      broadcast.emit('broadcast-test', { data: 'hello' });
+      expect(received).toEqual([{ data: 'hello' }]);
+      broadcast.destroy();
+      listener.destroy();
+    });
+
+    it('多次调用返回不同实例（非单例），各自独立 destroy', () => {
+      const a = createBroadcastBus();
+      const b = createBroadcastBus();
+      expect(a).not.toBe(b);
+      a.destroy();
+      // b 不受影响
+      const received = [];
+      b.on('still-alive', p => received.push(p));
+      b.emit('still-alive', 'ok');
+      expect(received).toEqual(['ok']);
+      b.destroy();
+    });
+
+    it('emit 的事件类型为 bi-widget-bus:<type>（全局前缀）', () => {
+      const dispatchSpy = vi.spyOn(window, 'dispatchEvent').mockImplementation(() => true);
+      const bus = createBroadcastBus();
+      bus.emit('check-prefix');
+      const event = dispatchSpy.mock.calls[0][0];
+      expect(event.type).toBe('bi-widget-bus:check-prefix');
+      dispatchSpy.mockRestore();
+      bus.destroy();
     });
   });
 });

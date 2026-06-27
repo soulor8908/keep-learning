@@ -380,6 +380,184 @@ if (!customElements.get('${widgetName}')) {
 `;
 }
 
+// ─── Dev-Preview HTML 模板 ───
+function generateDevPreviewHtml(widgetName, props = []) {
+  const propInputs = props.map(p =>
+    `<label style="display:block;margin:4px 0">${p}: <input data-prop="${p}" value="" style="width:200px"></label>`
+  ).join('\n      ');
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${widgetName} - Dev Preview</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; display: flex; }
+    #preview { flex: 1; padding: 20px; }
+    #panel { width: 280px; padding: 16px; background: #f5f5f5; border-left: 1px solid #ddd; overflow-y: auto; }
+    #panel h3 { margin-top: 0; }
+    #panel label { font-size: 13px; }
+    #panel input { font-size: 13px; padding: 2px 6px; }
+  </style>
+</head>
+<body>
+  <div id="preview">
+    <${widgetName} id="widget"></${widgetName}>
+  </div>
+  <div id="panel">
+    <h3>Props Editor</h3>
+    <p style="font-size:12px;color:#888">${widgetName}</p>
+    ${propInputs}
+  </div>
+  <script type="module" src="/src/__dev_preview_entry__.js"></script>
+</body>
+</html>`;
+}
+
+// ─── Dev-Preview 入口脚本模板 ───
+function generateDevPreviewEntry(widgetName, entryPath, mode, uiDeps) {
+  if (mode === 'h5') {
+    return `
+import widgetEntry from '${entryPath}';
+
+function camelToKebab(str) {
+  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+const widgetOpts = typeof widgetEntry === 'function'
+  ? { render: widgetEntry }
+  : (widgetEntry && typeof widgetEntry === 'object' ? widgetEntry : {});
+
+const { render, onMount, onUnmount, onPropsChange, props: declaredProps } = widgetOpts;
+const propNames = Array.isArray(declaredProps) ? declaredProps : [];
+
+class DevWidgetElement extends HTMLElement {
+  constructor() { super(); this._props = {}; this._cleanup = null; }
+  static get observedAttributes() { return propNames.map(camelToKebab); }
+  _collectProps() {
+    const result = {};
+    for (const p of propNames) {
+      const attr = camelToKebab(p);
+      if (this.hasAttribute(attr)) {
+        const raw = this.getAttribute(attr);
+        try { result[p] = JSON.parse(raw); } catch { result[p] = raw; }
+      }
+    }
+    return result;
+  }
+  connectedCallback() {
+    this._props = this._collectProps();
+    this._render();
+    if (typeof onMount === 'function') this._cleanup = onMount(this, this._props, { meta: { name: '${widgetName}' } }) || null;
+  }
+  disconnectedCallback() {
+    if (typeof onUnmount === 'function') onUnmount(this);
+    if (typeof this._cleanup === 'function') this._cleanup();
+  }
+  attributeChangedCallback() {
+    this._props = this._collectProps();
+    this._render();
+    if (typeof onPropsChange === 'function') onPropsChange(this, this._props, {}, { meta: { name: '${widgetName}' } });
+  }
+  _render() { if (typeof render === 'function') { const h = render(this._props, { meta: { name: '${widgetName}' } }); if (typeof h === 'string') this.innerHTML = h; } }
+}
+if (!customElements.get('${widgetName}')) customElements.define('${widgetName}', DevWidgetElement);
+
+// Props editor 交互
+const widget = document.getElementById('widget');
+document.querySelectorAll('#panel input[data-prop]').forEach(input => {
+  input.addEventListener('input', () => {
+    const attr = camelToKebab(input.dataset.prop);
+    if (input.value) widget.setAttribute(attr, input.value);
+    else widget.removeAttribute(attr);
+  });
+});
+`;
+  }
+  // Vue3 mode
+  return `
+import { createApp, h, ref } from 'vue';
+import Component from '${entryPath}';
+
+function camelToKebab(str) {
+  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+function getDeclaredPropNames(Component) {
+  const props = Component && Component.props;
+  if (!props) return [];
+  if (Array.isArray(props)) return props.filter(p => typeof p === 'string');
+  return Object.keys(props);
+}
+
+function getPropType(Component, name) {
+  const props = Component && Component.props;
+  if (!props || Array.isArray(props)) return null;
+  const def = props[name];
+  if (!def) return null;
+  if (Array.isArray(def)) return def;
+  if (typeof def === 'function') return def;
+  return def.type || null;
+}
+
+function parseAttrValue(raw, type) {
+  if (type === Boolean) {
+    if (raw === '' || raw === 'true') return true;
+    if (raw === 'false') return false;
+    return true;
+  }
+  if (raw === null) return undefined;
+  try { return JSON.parse(raw); } catch (_) { return raw; }
+}
+
+const propNames = getDeclaredPropNames(Component).filter(n => n !== 'scope');
+const attrToProp = new Map(propNames.map(n => [camelToKebab(n), n]));
+const observedAttrs = [...new Set(propNames.map(camelToKebab))];
+
+class DevWidgetElement extends HTMLElement {
+  constructor() { super(); this.app = null; this._propsRef = null; }
+  static get observedAttributes() { return observedAttrs; }
+  _collectProps() {
+    const result = {};
+    for (const [attr, prop] of attrToProp) {
+      if (this.hasAttribute(attr)) result[prop] = parseAttrValue(this.getAttribute(attr), getPropType(Component, prop));
+    }
+    return result;
+  }
+  connectedCallback() {
+    this._propsRef = ref(this._collectProps());
+    this.app = createApp({ render: () => h(Component, this._propsRef.value) });
+    ${uiDeps && uiDeps.length > 0 ? `const uiDeps = ${JSON.stringify(uiDeps)};
+    if (typeof window !== 'undefined' && window.ElementPlus && uiDeps.length > 0) {
+      uiDeps.forEach(function(compName) {
+        var pascalName = 'El' + compName.split('-').map(function(s) { return s.charAt(0).toUpperCase() + s.slice(1); }).join('');
+        var comp = window.ElementPlus[pascalName];
+        if (comp) { this.app.component(comp.name || pascalName, comp); this.app.component('el-' + compName, comp); }
+      }, this);
+    }` : ''}
+    this.app.mount(this);
+  }
+  disconnectedCallback() { if (this.app) { this.app.unmount(); this.app = null; } }
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (oldValue === newValue || !this._propsRef) return;
+    const prop = attrToProp.get(name);
+    if (prop) this._propsRef.value = { ...this._propsRef.value, [prop]: parseAttrValue(newValue, getPropType(Component, prop)) };
+  }
+}
+if (!customElements.get('${widgetName}')) customElements.define('${widgetName}', DevWidgetElement);
+
+// Props editor 交互
+const widget = document.getElementById('widget');
+document.querySelectorAll('#panel input[data-prop]').forEach(input => {
+  input.addEventListener('input', () => {
+    const attr = camelToKebab(input.dataset.prop);
+    if (input.value) widget.setAttribute(attr, input.value);
+    else widget.removeAttribute(attr);
+  });
+});
+`;
+}
+
 // ─── 简单 UI 依赖提取（从源码中提取 el-xxx 组件名）───
 function extractUiDependencies(source) {
   const deps = new Set();
@@ -469,49 +647,121 @@ export default function widgetVitePlugin(options = {}) {
         'axios': 'axios'
       };
 
+  // ─── 提取 prop 名列表（用于 dev-preview props 编辑面板）───
+  let devPropNames = [];
+  if (!isH5) {
+    // Vue3: 从源码静态分析 props
+    const source = fs.readFileSync(entryPath, 'utf-8');
+    // 匹配 props: ['a', 'b'] 或 props: { a: ..., b: ... }
+    const arrayMatch = source.match(/props\s*:\s*\[([^\]]*)\]/);
+    if (arrayMatch) {
+      devPropNames = arrayMatch[1].match(/['"](\w+)['"]/g)?.map(s => s.replace(/['"]/g, '')) || [];
+    } else {
+      const objMatch = source.match(/props\s*:\s*\{([^}]*)\}/);
+      if (objMatch) {
+        devPropNames = objMatch[1].match(/^\s*(\w+)\s*[:{,]/gm)?.map(s => s.trim().split(/[\s:{,]/)[0]) || [];
+      }
+    }
+  } else {
+    // H5: 从源码提取 props 数组
+    const source = fs.readFileSync(entryPath, 'utf-8');
+    const match = source.match(/props\s*:\s*\[([^\]]*)\]/);
+    if (match) {
+      devPropNames = match[1].match(/['"](\w+)['"]/g)?.map(s => s.replace(/['"]/g, '')) || [];
+    }
+  }
+
+  // dev-preview 模式标志，在 config hook 中根据 command 判定
+  let isDevPreview = false;
+  let devEntryFile = null;
+
   return {
     name: isH5 ? 'h5-widget-wrapper-plugin' : 'widget-wrapper-plugin',
     enforce: 'pre',
     resolveId(source) {
+      // dev-preview 模式不 external 依赖（直接用本地模块）
+      if (isDevPreview) return null;
       if (externalIds.has(source)) {
         return { id: source, external: true };
       }
       return null;
     },
-    config: () => ({
-      build: {
-        sourcemap: true,
-        cssCodeSplit: false,
-        lib: {
-          entry: tmpFile,
-          name,
-          fileName: () => `${name}.js`,
-          formats: ['umd'],
-          ...(isH5 ? { cssFileName } : {})
-        },
-        rollupOptions: {
-          external: (id) => externalIds.has(id),
-          output: { globals }
+    config(userConfig, env) {
+      const command = env && env.command;
+      isDevPreview = command === 'serve';
+
+      if (isDevPreview) {
+        // ─── Dev-Preview 模式：生成预览入口，跳过 lib 构建配置 ───
+        const devEntryCode = generateDevPreviewEntry(name, entryPath, mode, uiDeps);
+        devEntryFile = path.join(os.tmpdir(), `widget-dev-entry-${name}-${Date.now()}.js`);
+        fs.writeFileSync(devEntryFile, devEntryCode);
+
+        // 生成 dev-preview index.html（如果项目根目录不存在）
+        const htmlPath = path.resolve(process.cwd(), 'index.html');
+        if (!fs.existsSync(htmlPath)) {
+          fs.writeFileSync(htmlPath, generateDevPreviewHtml(name, devPropNames));
         }
-      },
-      resolve: {
-        alias: {
-          __WIDGET_ENTRY__: entryPath
-        }
-      },
-      ...(namespacePlugin ? {
-        css: {
-          postcss: {
-            plugins: [namespacePlugin]
+
+        return {
+          resolve: {
+            alias: {
+              __WIDGET_ENTRY__: entryPath
+            }
+          },
+          ...(namespacePlugin ? {
+            css: { postcss: { plugins: [namespacePlugin] } }
+          } : {})
+        };
+      }
+
+      // ─── Build 模式：标准 lib 构建 ───
+      return {
+        build: {
+          sourcemap: true,
+          cssCodeSplit: false,
+          lib: {
+            entry: tmpFile,
+            name,
+            fileName: () => `${name}.js`,
+            formats: ['umd'],
+            ...(isH5 ? { cssFileName } : {})
+          },
+          rollupOptions: {
+            external: (id) => externalIds.has(id),
+            output: { globals }
           }
-        }
-      } : {})
-    }),
+        },
+        resolve: {
+          alias: {
+            __WIDGET_ENTRY__: entryPath
+          }
+        },
+        ...(namespacePlugin ? {
+          css: {
+            postcss: {
+              plugins: [namespacePlugin]
+            }
+          }
+        } : {})
+      };
+    },
+    configureServer(server) {
+      // dev-preview: 将 dev entry 文件注册为虚拟模块
+      if (isDevPreview && devEntryFile) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url === '/src/__dev_preview_entry__.js') {
+            const code = fs.readFileSync(devEntryFile, 'utf-8');
+            res.setHeader('Content-Type', 'application/javascript');
+            res.end(code);
+            return;
+          }
+          next();
+        });
+      }
+    },
     closeBundle() {
       // ─── CSS 文件重命名（Vite 5.4 兼容）───
-      // Vue3 模式：Vite 5.4 lib 不支持 cssFileName，CSS 默认输出 style.css
-      // H5 模式：cssFileName 在 Vite 6+ 才生效，5.4 仍输出 style.css
-      if (!isH5) {
+      if (!isH5 && !isDevPreview) {
         try {
           const outputDir = path.resolve(process.cwd(), 'dist');
           const defaultCssPath = path.join(outputDir, 'style.css');
@@ -524,8 +774,11 @@ export default function widgetVitePlugin(options = {}) {
         }
       }
 
-      // 清理临时 wrapper 文件
+      // 清理临时文件
       try { fs.unlinkSync(tmpFile); } catch (_) {}
+      if (devEntryFile) {
+        try { fs.unlinkSync(devEntryFile); } catch (_) {}
+      }
     }
   };
 }

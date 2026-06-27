@@ -14,15 +14,15 @@
  */
 import zh from './locales/zh.js';
 import en from './locales/en.js';
+// ─── 内部广播 bus（替代 window.widgetBus 全局变量依赖）───
+import { createBroadcastBus } from '../widget-bus/index.js';
 
+const _broadcastBus = createBroadcastBus();
 const messages = { zh, en };
 const listeners = new Set();
 let currentLocale = 'zh';
 
 const _fallbackChainCache = new Map();
-
-// O11 对齐：widgetBus 缺失一次性告警标志，避免每次 setLocale 都刷屏
-let _widgetBusMissingWarned = false;
 
 /**
  * 解析 locale 的回退链
@@ -117,16 +117,9 @@ let setLocale = function setLocale(locale, force = false) {
   for (const cb of listeners) {
     try { cb(locale); } catch (e) { console.error('[wc/i18n] locale change listener error:', e); }
   }
-  // 通过 widget-bus 广播，物料可监听 'locale-change' 重渲染
-  if (typeof window !== 'undefined' && window.widgetBus) {
-    window.widgetBus.emit('locale-change', { locale });
-  } else if (!_widgetBusMissingWarned) {
-    // O11 对齐：widgetBus 缺失时静默跳过广播会导致物料收不到 locale-change 事件
-    _widgetBusMissingWarned = true;
-    console.warn(
-      '[wc/i18n] window.widgetBus 未就绪，setLocale 的广播将被跳过。' +
-      '请确保基座已初始化 widgetBus（widget-bus 模块加载后自动挂载到 window.widgetBus）。'
-    );
+  // 通过内部广播 bus 广播，物料可监听 'locale-change' 重渲染（不依赖 window.widgetBus）
+  if (typeof window !== 'undefined') {
+    _broadcastBus.emit('locale-change', { locale });
   }
 }
 

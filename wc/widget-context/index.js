@@ -26,12 +26,13 @@
  *   onContextChange('user', (newUser) => { /* 更新物料 *\/ });
  */
 
+// ─── 内部广播 bus（替代 window.widgetBus 全局变量依赖）───
+import { createBroadcastBus } from '../widget-bus/index.js';
+const _broadcastBus = createBroadcastBus();
+
 // ─── 全局上下文存储 ───
 // 使用模块级单例 + window 挂载，确保跨技术栈（Vue2/Vue3/原生）共享同一实例
 const GLOBAL_KEY = '__wcContext__';
-
-// O11：widgetBus 缺失一次性告警标志，避免每次 setContext 都刷屏
-let _widgetBusMissingWarned = false;
 
 function getStore() {
   if (typeof window === 'undefined') return null;
@@ -109,19 +110,9 @@ export function setContext(partial, opts = {}) {
   // 有变更时递增版本号（用于 injectContext 序列化缓存失效判定）
   if (changedKeys.length > 0) store.version++;
 
-  // 通过 widget-bus 广播（让跨技术栈物料都能收到）
-  if (broadcast && changedKeys.length > 0) {
-    if (typeof window !== 'undefined' && window.widgetBus) {
-      window.widgetBus.emit('context-change', { keys: changedKeys, context: { ...store.data } });
-    } else if (!_widgetBusMissingWarned) {
-      // O11：widgetBus 缺失时静默跳过广播会导致物料收不到 context-change 事件，
-      // 一次性告警提示基座未初始化 widgetBus
-      _widgetBusMissingWarned = true;
-      console.warn(
-        '[widget-context] window.widgetBus 未就绪，setContext 的广播将被跳过。' +
-        '请确保基座已初始化 widgetBus（widget-bus 模块加载后自动挂载到 window.widgetBus）。'
-      );
-    }
+  // 通过内部广播 bus 广播（让跨技术栈物料都能收到，不依赖 window.widgetBus 全局变量）
+  if (broadcast && changedKeys.length > 0 && typeof window !== 'undefined') {
+    _broadcastBus.emit('context-change', { keys: changedKeys, context: { ...store.data } });
   }
 }
 
@@ -216,8 +207,8 @@ export function createContext() {
           });
         }
       });
-      if (broadcast && changedKeys.length > 0 && typeof window !== 'undefined' && window.widgetBus) {
-        window.widgetBus.emit('context-change', { keys: changedKeys, context: { ...data } });
+      if (broadcast && changedKeys.length > 0 && typeof window !== 'undefined') {
+        _broadcastBus.emit('context-change', { keys: changedKeys, context: { ...data } });
       }
     },
     get(key) {

@@ -389,4 +389,42 @@ describe('widget-scope 基础', () => {
       expect(() => scope.t('loader.retry')).not.toThrow();
     });
   });
+
+  describe('scope.emit / scope.on / scope.off 快捷方法', () => {
+    it('scope.emit/on/off 是函数', () => {
+      const scope = createWidgetScope({ name: 'bi-shortcut' });
+      expect(typeof scope.emit).toBe('function');
+      expect(typeof scope.on).toBe('function');
+      expect(typeof scope.off).toBe('function');
+    });
+
+    it('scope.emit + scope.on 收发事件（委托到 scope.bus）', () => {
+      const scope = createWidgetScope({ name: 'bi-shortcut-fire', busInstance: createBus('bi-shortcut-fire') });
+      const received = [];
+      scope.on('test-evt', p => received.push(p));
+      scope.emit('test-evt', { data: 42 });
+      expect(received).toEqual([{ data: 42 }]);
+    });
+
+    it('scope.off 取消已注册的监听', () => {
+      const scope = createWidgetScope({ name: 'bi-shortcut-off', busInstance: createBus('bi-shortcut-off') });
+      const handler = vi.fn();
+      scope.on('evt', handler);
+      scope.emit('evt');
+      expect(handler).toHaveBeenCalledTimes(1);
+      scope.off('evt', handler);
+      scope.emit('evt');
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('scope.on 返回取消订阅函数', () => {
+      const scope = createWidgetScope({ name: 'bi-shortcut-unsub', busInstance: createBus('bi-shortcut-unsub') });
+      const handler = vi.fn();
+      const off = scope.on('evt', handler);
+      expect(typeof off).toBe('function');
+      off();
+      scope.emit('evt');
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
 });
