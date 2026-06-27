@@ -20,7 +20,7 @@
 
 ## 核心文件
 
-- `loader.js` —— `import()` + URL 缓存 + 错误降级，同时支持 Vue 组件和 `{ mount }` 对象
+- `loader.js` —— `import()` + URL 缓存 + 错误降级 + locale 自动注册
 - `WidgetHost.vue` —— 基座渲染组件
 - `h5-wrapper.js` —— 原生 H5 物料转 `{ mount }` 对象的 helper
 
@@ -31,15 +31,26 @@
 ```js
 // src/index.js
 export { default } from './Widget.vue';
+
+// 可选：导出 locale，loader 加载时自动注册到 i18n
+export const locale = {
+  zh: { chart: { title: '图表面板', empty: '等待数据...' } },
+  en: { chart: { title: 'Chart Panel', empty: 'Waiting for data...' } }
+};
 ```
+
+物料内直接使用 `t()` 翻译，无需手动调用 `addMessages`：
 
 ```vue
 <!-- src/Widget.vue -->
 <script setup>
-const props = defineProps({ title: String });
+const props = defineProps({ t: Function });
 </script>
 <template>
-  <div class="my-widget">{{ title }}</div>
+  <div class="my-widget">
+    <h3>{{ t('chart.title') }}</h3>
+    <p>{{ t('chart.empty') }}</p>
+  </div>
 </template>
 ```
 
@@ -94,3 +105,18 @@ HTML 中需要配置 import map 共享 `vue`：
 ## 通信 / i18n
 
 基座通过 `widgetProps` 直接传入 `bus`（mitt 实例）、`t`（vue-i18n 函数）等，物料像普通 Vue 组件一样使用 props。
+
+### i18n 自动注册
+
+物料导出 `locale` 对象后，loader 加载时自动调用 `addMessages` 注册翻译。物料开发者无需手动调用 `addMessages`：
+
+```js
+// 物料 src/index.js
+export { default } from './Widget.vue';
+export const locale = {
+  zh: { myWidget: { title: '我的面板' } },
+  en: { myWidget: { title: 'My Panel' } }
+};
+```
+
+基座无需任何额外配置，loader 在 `import()` 后自动检测并注册。

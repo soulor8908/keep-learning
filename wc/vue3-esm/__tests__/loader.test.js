@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountWidget } from '../loader.js';
 import fixture from './fixtures/test-widget.js';
 
@@ -46,5 +46,63 @@ describe('loader', () => {
     expect(c2.textContent).toContain('Cached Widget');
     u1();
     u2();
+  });
+});
+
+describe('locale 自动注册', () => {
+  let originalI18n;
+
+  beforeEach(() => {
+    originalI18n = window.__wcI18n__;
+  });
+
+  afterEach(() => {
+    if (originalI18n) {
+      window.__wcI18n__ = originalI18n;
+    } else {
+      delete window.__wcI18n__;
+    }
+  });
+
+  it('物料导出 locale 时应自动注册到 i18n', async () => {
+    const addMessagesCalls = [];
+    window.__wcI18n__ = {
+      addMessages: (locale, msgs) => addMessagesCalls.push({ locale, msgs })
+    };
+
+    const localeUrl = 'test://fixture/locale-widget.js';
+    const locale = {
+      zh: { chart: { title: '图表面板' } },
+      en: { chart: { title: 'Chart Panel' } }
+    };
+    const importer = createImporter({ default: fixture, locale });
+
+    const container = document.createElement('div');
+    const unmount = await mountWidget(container, localeUrl, {}, importer);
+
+    expect(addMessagesCalls).toHaveLength(2);
+    expect(addMessagesCalls[0]).toEqual({ locale: 'zh', msgs: { chart: { title: '图表面板' } } });
+    expect(addMessagesCalls[1]).toEqual({ locale: 'en', msgs: { chart: { title: 'Chart Panel' } } });
+    unmount();
+  });
+
+  it('物料未导出 locale 时不报错', async () => {
+    window.__wcI18n__ = { addMessages: () => {} };
+    const noLocaleUrl = 'test://fixture/no-locale-widget.js';
+    const importer = createImporter({ default: fixture });
+    const container = document.createElement('div');
+    const unmount = await mountWidget(container, noLocaleUrl, {}, importer);
+    expect(container.textContent).toContain('Test Widget');
+    unmount();
+  });
+
+  it('window.__wcI18n__ 不存在时静默跳过', async () => {
+    delete window.__wcI18n__;
+    const noI18nUrl = 'test://fixture/no-i18n-widget.js';
+    const importer = createImporter({ default: fixture, locale: { zh: { x: '1' } } });
+    const container = document.createElement('div');
+    const unmount = await mountWidget(container, noI18nUrl, {}, importer);
+    expect(container.textContent).toContain('Test Widget');
+    unmount();
   });
 });
