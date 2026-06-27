@@ -22,6 +22,7 @@
  */
 import { createApp, h, ref } from 'vue';
 import { createWidgetScope } from '../widget-scope/index.js';
+import { onLocaleChange } from '../i18n/index.js';
 
 // camelCase → kebab-case，用于把 prop 名映射为可观察的 attribute 名
 function camelToKebab(str) {
@@ -94,6 +95,12 @@ export function createWidgetWrapper(Component, widgetName) {
       this.app = null;
       // 独立 props 的响应式容器：变化时整体替换 value 触发重渲染
       this._propsRef = null;
+      // 物料组件实例（public proxy）：locale 变化时对其 $forceUpdate 触发重渲染
+      this._widgetInstance = null;
+      // 稳定的 ref 回调（同一函数引用，避免每次渲染都触发 ref 重设）
+      this._captureWidget = (el) => { this._widgetInstance = el; };
+      // locale 变化取消订阅函数
+      this._offLocale = null;
       // 每个物料实例创建独立的 widgetScope 软隔离对象，
       // 物料组件通过 props.scope 接收，而非直接访问 window。
       this._scope = createWidgetScope({ name: widgetName });
@@ -128,21 +135,32 @@ export function createWidgetWrapper(Component, widgetName) {
         render: () => {
           const props = { ...this._propsRef.value };
           if (hasScopeProp) props.scope = this._scope;
-          return h(Component, props);
+          return h(Component, {
+            ref: this._captureWidget,
+            ...props
+          });
         }
       });
-      // 注册基座提供的 element-plus 组件到物料 app（Vue3 app 隔离，基座注册的组件对物料 app 不可见）
-      // window.ElementPlus 由基座 setupElementPlus 挂载，含物料用到的 ElCard/ElButton 等
-      if (typeof window !== 'undefined' && window.ElementPlus) {
-        Object.keys(window.ElementPlus).forEach(name => {
-          const comp = window.ElementPlus[name];
-          if (comp && (comp.name || comp.install)) {
-            // 优先用组件自身的 name（如 'ElCard'），也注册 kebab 别名（如 'el-card'）兼容
-            this.app.component(comp.name || name, comp);
+      // P4: 仅注册物料实际使用的 ElementPlus 组件（构建期通过 __WIDGET_UI_DEPS__ 注入）
+      // 未注入时跳过注册（无 UI 依赖的物料或 H5 物料）
+      const uiDeps = typeof __WIDGET_UI_DEPS__ !== 'undefined' ? __WIDGET_UI_DEPS__ : [];
+      if (typeof window !== 'undefined' && window.ElementPlus && Array.isArray(uiDeps) && uiDeps.length > 0) {
+        uiDeps.forEach(compName => {
+          const pascalName = 'El' + compName.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('');
+          const comp = window.ElementPlus[pascalName];
+          if (comp) {
+            this.app.component(comp.name || pascalName, comp);
+            this.app.component('el-' + compName, comp);
           }
         });
       }
       this.app.mount(this);
+      // locale 变化时对物料组件实例本身调用 $forceUpdate 触发重渲染
+      this._offLocale = onLocaleChange(() => {
+        if (this._widgetInstance && this._widgetInstance.$forceUpdate) {
+          this._widgetInstance.$forceUpdate();
+        }
+      });
     }
 
     // 收集所有已设置的独立 prop 属性，按声明类型解析为值
@@ -168,10 +186,14 @@ export function createWidgetWrapper(Component, widgetName) {
     }
 
     disconnectedCallback() {
+      if (this._offLocale) { this._offLocale(); this._offLocale = null; }
       if (this.app) {
         this.app.unmount();
         this.app = null;
         this._propsRef = null;
+        this._widgetInstance = null;
+        // 清理 scope bus 上所有 window 事件监听器，防止泄漏
+        if (this._scope && typeof this._scope.destroy === 'function') this._scope.destroy();
         this._scope = null;
         this._widgetScope = null;
       }

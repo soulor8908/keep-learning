@@ -21,12 +21,12 @@ import { createRequire } from 'module';
 import { createNamespacePlugin } from './postcss-namespace.js';
 
 const require = createRequire(import.meta.url);
-const { writeSchema } = require('../schema-generator');
+const { writeSchema, extractUiDependencies } = require('../schema-generator');
 const { scanTarget, formatFindings } = require('../js-risk-scanner');
 const { checkScopedDir, formatScopedResults } = require('../scoped-style-checker');
 const { checkTarget: checkCssNamespace, formatIssues: formatCssIssues } = require('../css-namespace-checker');
 
-export function generateVue3Wrapper(widgetName, vueGlobal) {
+export function generateVue3Wrapper(widgetName, vueGlobal, uiDeps = []) {
   return `
 import { createApp, h, ref } from 'vue';
 import Component from '__WIDGET_COMPONENT__';
@@ -74,6 +74,11 @@ function parseAttrValue(raw, type) {
   try { return JSON.parse(raw); } catch (_) { return raw; }
 }
 
+// 预计算 prop 映射（R2-4：避免每次属性变化都重算数组 + 线性查找，与模板对齐）
+const individualPropNames = getDeclaredPropNames(Component).filter(n => n !== 'scope');
+const attrToProp = new Map(individualPropNames.map(n => [camelToKebab(n), n]));
+const observedAttrs = [...new Set(individualPropNames.map(camelToKebab))];
+
 class WidgetElement extends HTMLElement {
   constructor() {
     super();
@@ -95,10 +100,7 @@ class WidgetElement extends HTMLElement {
   }
 
   static get observedAttributes() {
-    // 仅观察组件声明的独立 prop 的 kebab attribute（剔除 scope）
-    return getDeclaredPropNames(Component)
-      .filter(n => n !== 'scope')
-      .map(camelToKebab);
+    return observedAttrs;
   }
 
   connectedCallback() {
@@ -129,16 +131,20 @@ class WidgetElement extends HTMLElement {
         });
       }
     });
-    // 注册基座提供的 element-plus 组件到物料 app（Vue3 app 隔离，基座注册的组件对物料 app 不可见）
-    // window.ElementPlus 由基座 setupElementPlus 挂载，含物料用到的 ElCard/ElButton 等
-    if (typeof window !== 'undefined' && window.ElementPlus) {
-      Object.keys(window.ElementPlus).forEach(name => {
-        const comp = window.ElementPlus[name];
-        if (comp && (comp.name || comp.install)) {
-          // 优先用组件自身的 name（如 'ElCard'），也注册 kebab 别名（如 'el-card'）兼容
-          this.app.component(comp.name || name, comp);
+    // P4: 仅注册物料实际使用的 ElementPlus 组件（构建期从源码提取 uiDeps）
+    // 避免 N 个物料每次挂载都全量注册 ElementPlus 所有组件
+    const __WIDGET_UI_DEPS__ = ${JSON.stringify(uiDeps)};
+    if (typeof window !== 'undefined' && window.ElementPlus && __WIDGET_UI_DEPS__.length > 0) {
+      __WIDGET_UI_DEPS__.forEach(function(compName) {
+        var pascalName = 'El' + compName.split('-').map(function(s) {
+          return s.charAt(0).toUpperCase() + s.slice(1);
+        }).join('');
+        var comp = window.ElementPlus[pascalName];
+        if (comp) {
+          this.app.component(comp.name || pascalName, comp);
+          this.app.component('el-' + compName, comp);
         }
-      });
+      }, this);
     }
     this.app.mount(this);
     // locale 变化时对物料组件实例本身调用 $forceUpdate 触发重渲染，
@@ -155,9 +161,7 @@ class WidgetElement extends HTMLElement {
   // 收集所有已设置的独立 prop 属性，按声明类型解析为值
   _collectProps() {
     const result = {};
-    const names = getDeclaredPropNames(Component).filter(n => n !== 'scope');
-    for (const propName of names) {
-      const attrName = camelToKebab(propName);
+    for (const [attrName, propName] of attrToProp) {
       if (this.hasAttribute(attrName)) {
         result[propName] = parseAttrValue(this.getAttribute(attrName), getPropType(Component, propName));
       }
@@ -181,6 +185,7 @@ class WidgetElement extends HTMLElement {
       this.app = null;
       this._propsRef = null;
       this._widgetInstance = null;
+      if (this._scope && typeof this._scope.destroy === 'function') this._scope.destroy();
       this._scope = null;
       this._widgetScope = null;
     }
@@ -189,8 +194,7 @@ class WidgetElement extends HTMLElement {
   attributeChangedCallback(name, oldValue, newValue) {
     // 首次挂载前 connectedCallback 会统一收集，这里只处理挂载后的变化
     if (oldValue === newValue) return;
-    const names = getDeclaredPropNames(Component).filter(n => n !== 'scope');
-    const propName = names.find(n => camelToKebab(n) === name);
+    const propName = attrToProp.get(name);
     if (propName && this.app) {
       this._updateProp(propName, newValue);
     }
@@ -208,7 +212,15 @@ export default function widgetVitePlugin(options = {}) {
   }
 
   const componentPath = path.resolve(process.cwd(), component);
-  const wrapperCode = generateVue3Wrapper(name, vueGlobal);
+  // P4: 构建期从源码提取 UI 依赖列表，注入 wrapper 实现按需注册 ElementPlus 组件
+  let uiDeps = [];
+  try {
+    const source = fs.readFileSync(componentPath, 'utf-8');
+    uiDeps = extractUiDependencies(source);
+  } catch (e) {
+    console.warn(`[widget-vite-plugin] 物料 ${name} UI 依赖提取失败（不影响构建）:`, e.message);
+  }
+  const wrapperCode = generateVue3Wrapper(name, vueGlobal, uiDeps);
   const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
   fs.writeFileSync(tmpFile, wrapperCode);
 

@@ -315,4 +315,78 @@ describe('widget-scope 基础', () => {
       expect(scope.context.get('user')).toEqual(getContext('user'));
     });
   });
+
+  // R2-7：scope.destroy() 集成测试
+  // wrapper disconnectedCallback 调用 scope.destroy() 批量清理 bus 上所有 window 事件监听器，
+  // 避免物料卸载后监听器泄漏。物料无需手动清理每个 on() 返回的取消函数。
+  describe('scope.destroy（R2-7 批量清理 bus 监听器）', () => {
+    beforeEach(() => {
+      delete window.__wcContext__;
+      delete window.widgetBus;
+    });
+
+    afterEach(() => {
+      delete window.__wcContext__;
+      delete window.widgetBus;
+    });
+
+    it('scope.destroy 是函数', () => {
+      const scope = createWidgetScope({ name: 'bi-destroy-exists' });
+      expect(typeof scope.destroy).toBe('function');
+    });
+
+    it('destroy 后 scope.bus 注册的监听器不再触发', () => {
+      const scope = createWidgetScope({ name: 'bi-destroy-fire', busInstance: createBus('bi-destroy-fire') });
+      const calls = [];
+      scope.bus.on('event-a', () => calls.push('a'));
+      scope.bus.on('event-b', () => calls.push('b'));
+      scope.bus.emit('event-a');
+      scope.bus.emit('event-b');
+      expect(calls).toEqual(['a', 'b']);
+      scope.destroy();
+      scope.bus.emit('event-a');
+      scope.bus.emit('event-b');
+      // destroy 后 bus 监听器已清理，不再触发
+      expect(calls).toEqual(['a', 'b']);
+    });
+
+    it('destroy 幂等：多次调用不抛错', () => {
+      const scope = createWidgetScope({ name: 'bi-destroy-idempotent', busInstance: createBus('bi-destroy-idempotent') });
+      scope.bus.on('e', () => {});
+      scope.destroy();
+      expect(() => scope.destroy()).not.toThrow();
+      expect(() => scope.destroy()).not.toThrow();
+    });
+
+    it('destroy 一个 scope 不影响其他 scope', () => {
+      const busA = createBus('bi-destroy-iso-a');
+      const busB = createBus('bi-destroy-iso-b');
+      const scopeA = createWidgetScope({ name: 'bi-destroy-iso-a', busInstance: busA });
+      const scopeB = createWidgetScope({ name: 'bi-destroy-iso-b', busInstance: busB });
+      const bCalls = [];
+      scopeB.bus.on('shared', () => bCalls.push('b'));
+      scopeA.destroy();
+      scopeB.bus.emit('shared');
+      // A 的 destroy 不影响 B 的 bus 监听器
+      expect(bCalls).toEqual(['b']);
+    });
+
+    it('destroy 后 once 注册的监听器也不再触发', () => {
+      const scope = createWidgetScope({ name: 'bi-destroy-once', busInstance: createBus('bi-destroy-once') });
+      const calls = [];
+      scope.bus.once('one', () => calls.push('one'));
+      scope.destroy();
+      scope.bus.emit('one');
+      expect(calls).toEqual([]);
+    });
+
+    it('destroy 后 scope 其他能力仍可用（meta/context/t 不受影响）', () => {
+      const scope = createWidgetScope({ name: 'bi-destroy-residual', busInstance: createBus('bi-destroy-residual') });
+      scope.destroy();
+      // destroy 仅清理 bus 监听器，不冻结其他能力
+      expect(scope.meta.name).toBe('bi-destroy-residual');
+      expect(typeof scope.t).toBe('function');
+      expect(() => scope.t('loader.retry')).not.toThrow();
+    });
+  });
 });

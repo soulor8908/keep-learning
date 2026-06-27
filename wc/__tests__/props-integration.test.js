@@ -17,7 +17,8 @@ vi.mock('../i18n/index.js', () => ({
       (s, k) => s.replace(`{${k}}`, params[k]),
       key
     );
-  }
+  },
+  onLocaleChange: () => () => {}
 }));
 vi.mock('../widget-context/index.js', () => ({
   injectContext: () => {}

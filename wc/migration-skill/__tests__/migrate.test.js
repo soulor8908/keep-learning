@@ -13,8 +13,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(__dirname, 'fixtures');
 
 // migration-skill/index.js 为 CommonJS（require），vitest 通过 CJS interop 桥接
-// 扁平化 props 协议：导出 { migrate, addRootClass, generateBuildConfig, toKebab, inferWidgetName }
-const { migrate, addRootClass } = await import('../index.js');
+// 扁平化 props 协议：导出 { migrate, addRootClass, generateBuildConfig, toKebab, inferWidgetName, scanMigrationPatterns }
+const { migrate, addRootClass, scanMigrationPatterns } = await import('../index.js');
 
 const PROPS_VUE = path.join(FIXTURES, 'props-component.vue');
 const NO_PROPS_VUE = path.join(FIXTURES, 'no-props-component.vue');
@@ -175,5 +175,87 @@ describe('migration-skill migrate - 命名空间与风险扫描分支', () => {
     // warning 分支：发现 N 个 JS 风险（其中 1 个高危）
     expect(report.warnings.some(w => /发现 \d+ 个 JS 风险/.test(w))).toBe(true);
     expect(report.warnings.some(w => /其中 1 个高危/.test(w))).toBe(true);
+  });
+});
+
+describe('migration-skill scanMigrationPatterns（M1）', () => {
+  it('检测 this.$store / this.$router / this.$route 高危模式', () => {
+    const source = [
+      '<template><div>x</div></template>',
+      '<script>',
+      'export default {',
+      '  mounted() {',
+      '    this.$store.dispatch("a");',
+      '    this.$router.push("/b");',
+      '    const r = this.$route.params;',
+      '  }',
+      '};',
+      '</script>'
+    ].join('\n');
+    const findings = scanMigrationPatterns(source);
+    const highFindings = findings.filter(f => f.level === 'high');
+    expect(highFindings.length).toBeGreaterThanOrEqual(3);
+    expect(findings.some(f => f.message.includes('this.$store'))).toBe(true);
+    expect(findings.some(f => f.message.includes('this.$router'))).toBe(true);
+    expect(findings.some(f => f.message.includes('this.$route'))).toBe(true);
+  });
+
+  it('检测 Vue.use() 全局注册高危模式', () => {
+    const source = '<script>Vue.use(SomePlugin);</script>';
+    const findings = scanMigrationPatterns(source);
+    expect(findings.some(f => f.level === 'high' && f.message.includes('Vue.use'))).toBe(true);
+  });
+
+  it('检测 this.$emit / this.$t 中危模式', () => {
+    const source = [
+      '<script>',
+      'export default {',
+      '  methods: {',
+      '    onClick() { this.$emit("click"); },',
+      '    label() { return this.$t("ok"); }',
+      '  }',
+      '};',
+      '</script>'
+    ].join('\n');
+    const findings = scanMigrationPatterns(source);
+    expect(findings.some(f => f.level === 'medium' && f.message.includes('this.$emit'))).toBe(true);
+    expect(findings.some(f => f.level === 'medium' && f.message.includes('this.$t'))).toBe(true);
+  });
+
+  it('findings 含行号（line 字段）', () => {
+    const source = [
+      '<template><div>x</div></template>',
+      '<script>',
+      'export default {',
+      '  mounted() { this.$store.dispatch("a"); }',
+      '};',
+      '</script>'
+    ].join('\n');
+    const findings = scanMigrationPatterns(source);
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings.every(f => typeof f.line === 'number' && f.line > 0)).toBe(true);
+  });
+
+  it('无迁移模式的源码返回空数组', () => {
+    const source = '<template><div>hi</div></template><script>export default { name: "X" };</script>';
+    const findings = scanMigrationPatterns(source);
+    expect(findings).toEqual([]);
+  });
+
+  it('migrate 集成：report.migrationPatterns 含检测到的迁移点', () => {
+    const source = [
+      '<template><div class="root">x</div></template>',
+      '<script>',
+      'export default {',
+      '  mounted() { this.$store.dispatch("a"); }',
+      '};',
+      '</script>'
+    ].join('\n');
+    const file = writeTmpVue(source);
+    const { report } = migrate('bi-mig-pattern', file, '3');
+    expect(report.migrationPatterns).toBeDefined();
+    expect(report.migrationPatterns.length).toBeGreaterThan(0);
+    expect(report.migrationPatterns.some(f => f.message.includes('this.$store'))).toBe(true);
+    expect(report.warnings.some(w => /迁移点需人工确认/.test(w))).toBe(true);
   });
 });

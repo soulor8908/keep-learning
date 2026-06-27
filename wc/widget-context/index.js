@@ -30,6 +30,9 @@
 // 使用模块级单例 + window 挂载，确保跨技术栈（Vue2/Vue3/原生）共享同一实例
 const GLOBAL_KEY = '__wcContext__';
 
+// O11：widgetBus 缺失一次性告警标志，避免每次 setContext 都刷屏
+let _widgetBusMissingWarned = false;
+
 function getStore() {
   if (typeof window === 'undefined') return null;
   if (!window[GLOBAL_KEY]) {
@@ -107,8 +110,18 @@ export function setContext(partial, opts = {}) {
   if (changedKeys.length > 0) store.version++;
 
   // 通过 widget-bus 广播（让跨技术栈物料都能收到）
-  if (broadcast && changedKeys.length > 0 && typeof window !== 'undefined' && window.widgetBus) {
-    window.widgetBus.emit('context-change', { keys: changedKeys, context: { ...store.data } });
+  if (broadcast && changedKeys.length > 0) {
+    if (typeof window !== 'undefined' && window.widgetBus) {
+      window.widgetBus.emit('context-change', { keys: changedKeys, context: { ...store.data } });
+    } else if (!_widgetBusMissingWarned) {
+      // O11：widgetBus 缺失时静默跳过广播会导致物料收不到 context-change 事件，
+      // 一次性告警提示基座未初始化 widgetBus
+      _widgetBusMissingWarned = true;
+      console.warn(
+        '[widget-context] window.widgetBus 未就绪，setContext 的广播将被跳过。' +
+        '请确保基座已初始化 widgetBus（widget-bus 模块加载后自动挂载到 window.widgetBus）。'
+      );
+    }
   }
 }
 
@@ -253,14 +266,15 @@ function safeStringify(obj) {
   });
 }
 
-// ─── injectContext 序列化缓存（K3）───
+// ─── injectContext 序列化缓存（K3 + R2-5）───
 // renderWidget 每次挂载物料都调 injectContext，每次都 JSON.stringify 全量上下文。
 // N 个物料 = N 次序列化。这里用三重缓存键（store 引用 + version + keys 指纹）
-// 缓存序列化结果：上下文未变时复用同一字符串，避免重复 stringify。
+// 缓存序列化结果 + filtered 对象：上下文未变时复用，避免重复 stringify 与浅拷贝。
 let _injectCacheStore = null;
 let _injectCacheVersion = -1;
 let _injectCacheKeysFp = undefined;
 let _injectCacheSerialized = null;
+let _injectCacheFiltered = null;
 
 /**
  * 将全局上下文注入到物料元素
@@ -270,30 +284,31 @@ let _injectCacheSerialized = null;
 export function injectContext(element, keys) {
   if (!element) return;
   const store = getStore();
-  const ctx = getContext();
-  const filtered = keys ? {} : ctx;
-  if (keys) {
-    keys.forEach(k => { if (k in ctx) filtered[k] = ctx[k]; });
-  }
-  // 注入到元素属性（供 attributeChangedCallback 读取）
-  // 优先用普通 stringify（快）；循环引用等导致失败时降级为 safeStringify，
-  // 既保证不抛错，又让 data-context 携带去环后的可用数据而非整体缺失
 
   // 计算当前调用的 keys 指纹：keys 存在则用其 JSON 字符串，否则为 null
   const keysFp = keys ? JSON.stringify(keys) : null;
 
   // 三重缓存键命中判定：store 引用 + version + keys 指纹 一致且已缓存过
+  // R2-5：缓存命中时跳过 getContext() 浅拷贝 + filtered 对象分配，直接复用缓存
   const cacheHit = store
     && store === _injectCacheStore
     && store.version === _injectCacheVersion
     && _injectCacheKeysFp === keysFp
     && _injectCacheSerialized !== null;
 
-  let serialized;
+  let serialized, filtered;
   if (cacheHit) {
-    // 命中缓存，直接复用已序列化的字符串，跳过 JSON.stringify
+    // 命中缓存：复用已序列化的字符串 + filtered 对象，跳过 getContext 浅拷贝与 stringify
     serialized = _injectCacheSerialized;
+    filtered = _injectCacheFiltered;
   } else {
+    // 未命中：计算 filtered + 序列化
+    const ctx = getContext();
+    filtered = keys ? {} : ctx;
+    if (keys) {
+      keys.forEach(k => { if (k in ctx) filtered[k] = ctx[k]; });
+    }
+    // 优先用普通 stringify（快）；循环引用等导致失败时降级为 safeStringify
     try {
       serialized = JSON.stringify(filtered);
     } catch (e) {
@@ -305,6 +320,7 @@ export function injectContext(element, keys) {
       _injectCacheVersion = store.version;
       _injectCacheKeysFp = keysFp;
       _injectCacheSerialized = serialized;
+      _injectCacheFiltered = filtered;
     }
   }
   try {

@@ -59,6 +59,7 @@ export function generateH5Wrapper(widgetName) {
   return `
 import widgetEntry from '__WIDGET_ENTRY__';
 import { createWidgetScope } from 'wc-widget-scope';
+import { onLocaleChange } from 'wc-i18n';
 
 // ─── 重要：禁止使用 Shadow DOM ───
 // H5 物料挂载到 light DOM，与基座共享全局样式（主题、字体图标等）。
@@ -67,6 +68,8 @@ import { createWidgetScope } from 'wc-widget-scope';
 // ─── 内建最小 scope（wc-widget-scope 不可用时的兜底）───
 // 结构与 wc/widget-scope 一致，仅提供 meta + log + no-op 的 context/bus/t/request。
 // 物料项目若需完整能力，基座应注入 window.__wcWidgetScope__ = { createWidgetScope }。
+// 语义对齐（M2）：context.get/onChange、bus.emit/on/once、t 均为同步，
+// 与 wc/widget-scope 的同步语义一致，消除"同一 scope 两套异步语义"的心智负担。
 function createMinimalScope(widgetName) {
   const meta = Object.freeze({
     name: widgetName,
@@ -75,23 +78,23 @@ function createMinimalScope(widgetName) {
     __isWidgetScope: true,
     __minimal: true
   });
-  const noopAsync = () => Promise.resolve();
+  const noop = function() {};
   return Object.freeze({
     meta,
     log: {
       info: (...a) => console.log('[' + widgetName + ']', ...a),
       warn: (...a) => console.warn('[' + widgetName + ']', ...a),
       error: (...a) => console.error('[' + widgetName + ']', ...a),
-      debug: () => {}
+      debug: function() {}
     },
-    context: { get: () => Promise.resolve({}), onChange: () => Promise.resolve(() => {}) },
-    bus: { emit: noopAsync, on: () => Promise.resolve(() => {}), once: () => Promise.resolve(() => {}) },
-    t: (k) => Promise.resolve(k),
-    request: (url, options) => {
+    context: { get: function() { return {}; }, onChange: function() { return noop; } },
+    bus: { emit: noop, on: function() { return noop; }, once: function() { return noop; } },
+    t: function(k) { return k; },
+    request: function(url, options) {
       if (typeof globalThis.fetch !== 'function') {
         return Promise.reject(new Error('[h5-widget-scope] fetch unavailable'));
       }
-      return Promise.resolve(globalThis.fetch(url, options));
+      return globalThis.fetch(url, options);
     },
     __noGlobalAccess: true
   });
@@ -113,9 +116,13 @@ function camelToKebab(str) {
   return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
-// 按属性值解析为最终值：优先 JSON.parse，失败回退原始字符串
+// 按属性值解析为最终值
+// R2-6：与 vue2/vue3 wrapper 的 Boolean 语义对齐——
+// 空 attribute（is-visible）与 "true" → true，"false" → false
 function parseAttrValue(raw) {
   if (raw === null) return undefined;
+  if (raw === '' || raw === 'true') return true;
+  if (raw === 'false') return false;
   try { return JSON.parse(raw); } catch (_) { return raw; }
 }
 
@@ -129,6 +136,7 @@ class H5WidgetElement extends HTMLElement {
     super();
     this._props = null;
     this._cleanup = null;
+    this._offLocale = null;
     // 每个物料实例创建独立的 widgetScope 软隔离对象。
     // 优先用完整 scope（基座提供 wc-widget-scope），否则用最小 scope 兜底。
     // scope 含 context/bus/log/t/request/loader（嵌套加载带循环检测）
@@ -169,9 +177,13 @@ class H5WidgetElement extends HTMLElement {
     if (typeof onMount === 'function') {
       this._cleanup = onMount(this, this._props, this._scope) || null;
     }
+    // 订阅 locale 变化重渲染（M2：与 vue2/vue3 wrapper 行为对齐）
+    // scope.t() 会读取最新 locale 文案，_render 重绘即可刷新
+    this._offLocale = onLocaleChange(() => this._render());
   }
 
   disconnectedCallback() {
+    if (this._offLocale) { this._offLocale(); this._offLocale = null; }
     if (typeof onUnmount === 'function') {
       onUnmount(this, this._scope);
     }
@@ -179,6 +191,7 @@ class H5WidgetElement extends HTMLElement {
       this._cleanup();
       this._cleanup = null;
     }
+    if (this._scope && typeof this._scope.destroy === 'function') this._scope.destroy();
     this._props = null;
     this._scope = null;
     this._widgetScope = null;
@@ -275,10 +288,12 @@ export default function h5WidgetVitePlugin(options = {}) {
         rollupOptions: {
           // H5 物料无 Vue 依赖；wc-widget-scope 由基座提供（window.__wcWidgetScope__）
           // 高频第三方库（lodash/axios）同样 external 化，基座统一加载一份
-          external: ['wc-widget-scope', 'lodash', 'axios'],
+          external: ['wc-widget-scope', 'wc-i18n', 'lodash', 'axios'],
           output: {
             globals: {
               'wc-widget-scope': '__wcWidgetScope__',
+              // 国际化运行时：基座提供 window.__wcI18n__，物料共享同一实例与 locale 状态
+              'wc-i18n': '__wcI18n__',
               // 高频库全局变量：lodash → window._，axios → window.axios
               'lodash': '_',
               'axios': 'axios'

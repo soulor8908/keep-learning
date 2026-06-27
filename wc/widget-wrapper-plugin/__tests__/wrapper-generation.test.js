@@ -109,8 +109,8 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
     });
 
     it('attributeChangedCallback 在声明 prop 变化时调用 _updateProp（非 config）', () => {
-      // 扁平化 props 协议：反查 prop 名后调用 _updateProp(propName, newValue)
-      expect(code).toContain('camelToKebab(n) === name');
+      // R2-4：用 attrToProp.get(name) O(1) 反查 prop 名（替代线性查找）
+      expect(code).toContain('attrToProp.get(name)');
       expect(code).toContain('this._updateProp(propName, newValue)');
       // 不再硬编码 name === 'config'
       expect(code).not.toContain("name === 'config'");

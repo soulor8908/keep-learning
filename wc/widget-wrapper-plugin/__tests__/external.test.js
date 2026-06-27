@@ -198,9 +198,11 @@ describe('widget-wrapper-plugin external 映射', () => {
       });
       const cfg = plugin.config();
       const external = cfg.build.rollupOptions.external;
-      expect(external).toEqual(['wc-widget-scope', 'lodash', 'axios']);
+      // R2-2：wc-i18n 加入 external（onLocaleChange 订阅需要）
+      expect(external).toEqual(['wc-widget-scope', 'wc-i18n', 'lodash', 'axios']);
       const globals = cfg.build.rollupOptions.output.globals;
       expect(globals['wc-widget-scope']).toBe('__wcWidgetScope__');
+      expect(globals['wc-i18n']).toBe('__wcI18n__');
       // 高频第三方库全局变量映射
       expect(globals['lodash']).toBe('_');
       expect(globals['axios']).toBe('axios');

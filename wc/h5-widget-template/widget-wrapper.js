@@ -29,6 +29,10 @@
  * 仅提供 meta + log + no-op 的 context/bus/t/request，结构与 wc/widget-scope 一致。
  * 物料项目若需完整能力（上下文/事件总线/i18n/请求拦截），应通过 opts.scope
  * 注入由 wc/widget-scope 的 createWidgetScope() 创建的实例。
+ *
+ * 语义对齐（M2）：context.get/onChange、bus.emit/on/once、t 均为同步，
+ * 与 wc/widget-scope 的同步语义一致，消除"同一 scope 两套异步语义"的心智负担。
+ * request 保持 async（fetch 本身是异步操作）。
  */
 function createMinimalScope(widgetName) {
   const meta = Object.freeze({
@@ -38,7 +42,7 @@ function createMinimalScope(widgetName) {
     __isWidgetScope: true,
     __minimal: true
   });
-  const noopAsync = () => Promise.resolve();
+  const noop = () => {};
   return Object.freeze({
     meta,
     log: {
@@ -47,14 +51,14 @@ function createMinimalScope(widgetName) {
       error: (...a) => console.error(`[${widgetName}]`, ...a),
       debug: () => {}
     },
-    context: { get: () => Promise.resolve({}), onChange: () => Promise.resolve(() => {}) },
-    bus: { emit: noopAsync, on: () => Promise.resolve(() => {}), once: () => Promise.resolve(() => {}) },
-    t: (k) => Promise.resolve(k),
+    context: { get: () => ({}), onChange: () => noop },
+    bus: { emit: noop, on: () => noop, once: () => noop },
+    t: (k) => k,
     request: (url, options) => {
       if (typeof globalThis.fetch !== 'function') {
         return Promise.reject(new Error('[h5-widget-scope] fetch unavailable'));
       }
-      return Promise.resolve(globalThis.fetch(url, options));
+      return globalThis.fetch(url, options);
     },
     __noGlobalAccess: true
   });
@@ -66,10 +70,14 @@ function camelToKebab(str) {
 }
 
 /**
- * 按属性值解析为最终值：优先 JSON.parse，失败回退原始字符串
+ * 按属性值解析为最终值
+ * R2-6：与 vue2/vue3 wrapper 的 Boolean 语义对齐——
+ * 空 attribute（is-visible）与 "true" → true，"false" → false
  */
 function parseAttrValue(raw) {
   if (raw === null) return undefined;
+  if (raw === '' || raw === 'true') return true;
+  if (raw === 'false') return false;
   try {
     return JSON.parse(raw);
   } catch (_) {
@@ -110,6 +118,7 @@ function createH5Widget(opts) {
       super();
       this._props = null;
       this._cleanup = null;
+      this._offLocale = null;
       // 每个物料实例创建独立的 widgetScope 软隔离对象，
       // 通过回调参数注入给物料，而非让物料直接访问 window
       // 优先用 opts.scope（多 Host 场景或注入完整 widget-scope 实例）；
@@ -136,12 +145,25 @@ function createH5Widget(opts) {
     }
 
     connectedCallback() {
+      // 防御性守卫：若未来误引入 attachShadow，立即告警（与 vue2/vue3 wrapper 对齐）
+      if (this.shadowRoot) {
+        console.error(
+          `[widget-wrapper] 物料 ${name} 检测到 shadowRoot，` +
+          '基座全局样式将无法穿透。请勿使用 attachShadow。'
+        );
+      }
       this._props = this._collectProps();
       this._render();
 
       // 挂载后回调：绑定事件、初始化交互等；注入 scope 作为第三参数
       if (typeof onMount === 'function') {
         this._cleanup = onMount(this, this._props, this._scope) || null;
+      }
+      // 订阅 locale 变化重渲染（M2：与 vue2/vue3 wrapper 行为对齐）
+      // 独立运行时通过 window.__wcI18n__ 全局实例订阅（若存在）；
+      // scope.t() 会读取最新 locale 文案，_render 重绘即可刷新
+      if (typeof window !== 'undefined' && window.__wcI18n__ && typeof window.__wcI18n__.onLocaleChange === 'function') {
+        this._offLocale = window.__wcI18n__.onLocaleChange(() => this._render());
       }
     }
 
@@ -150,10 +172,13 @@ function createH5Widget(opts) {
       if (typeof onUnmount === 'function') {
         onUnmount(this, this._scope);
       }
+      if (this._offLocale) { this._offLocale(); this._offLocale = null; }
       if (typeof this._cleanup === 'function') {
         this._cleanup();
         this._cleanup = null;
       }
+      // 清理 scope bus 上所有 window 事件监听器，防止泄漏
+      if (this._scope && typeof this._scope.destroy === 'function') this._scope.destroy();
       this._props = null;
       this._scope = null;
       this._widgetScope = null;

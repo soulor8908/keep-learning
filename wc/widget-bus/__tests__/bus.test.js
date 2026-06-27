@@ -227,4 +227,52 @@ describe('widget-bus', () => {
       Vue3BusPlugin.uninstall(app);
     });
   });
+
+  describe('destroy 方法', () => {
+    it('destroy 后所有 on 注册的 handler 不再触发', () => {
+      const bus = createBus('destroy-test');
+      const calls = [];
+      bus.on('event-a', () => calls.push('a'));
+      bus.on('event-b', () => calls.push('b'));
+      bus.emit('event-a');
+      bus.emit('event-b');
+      expect(calls).toEqual(['a', 'b']);
+      bus.destroy();
+      bus.emit('event-a');
+      bus.emit('event-b');
+      // destroy 后不再触发
+      expect(calls).toEqual(['a', 'b']);
+    });
+
+    it('destroy 后 once 注册的 handler 不再触发', () => {
+      const bus = createBus('destroy-once');
+      const calls = [];
+      bus.once('one', () => calls.push('one'));
+      bus.destroy();
+      bus.emit('one');
+      expect(calls).toEqual([]);
+    });
+
+    it('destroy 幂等：多次调用不抛错', () => {
+      const bus = createBus('destroy-idempotent');
+      bus.on('e', () => {});
+      bus.destroy();
+      expect(() => bus.destroy()).not.toThrow();
+    });
+
+    it('destroy 不影响其他 bus 实例', () => {
+      const busA = createBus('destroy-isolation-a');
+      const busB = createBus('destroy-isolation-b');
+      const bCalls = [];
+      busB.on('shared', () => bCalls.push('b'));
+      busA.destroy();
+      busB.emit('shared');
+      expect(bCalls).toEqual(['b']);
+    });
+
+    it('createBus 返回的实例含 destroy 方法', () => {
+      const bus = createBus('has-destroy');
+      expect(typeof bus.destroy).toBe('function');
+    });
+  });
 });

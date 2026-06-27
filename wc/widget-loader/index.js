@@ -35,6 +35,56 @@ export const SUPPORTED_DEPS = {
 // 物料可选声明的高频第三方库名集合（与 SUPPORTED_DEPS 的非 vue 键对应）
 const RUNTIME_DEP_KEYS = ['lodash', 'axios'];
 
+// UI 库默认版本（O21：uiDependencies.version 缺失时回退，避免拼出 @undefined URL）
+const UI_VERSION_DEFAULTS = {
+  'element-ui': '2.15.14',
+  'element-plus': '2.7.6'
+};
+
+// ─── 基座运行时自检（U2）───
+// 魔法全局变量散落（__wcI18n__/__wcWidgetScope__/Vue2/Vue3/ElementPlus）缺乏统一初始化入口，
+// 基座漏加载某个模块时物料会静默失败。ensureBaseReady 在首次挂载物料时自检核心全局变量，
+// 一次性告警缺失项，让问题尽早暴露而非表现为晦涩的 runtime error。
+let _baseReadyChecked = false;
+
+/**
+ * 检查基座运行时全局变量是否就绪，缺失时一次性告警
+ * 自动在首次 attemptMount 时调用，也可由基座显式调用提前排查
+ */
+export function ensureBaseReady() {
+  if (_baseReadyChecked) return;
+  _baseReadyChecked = true;
+  if (typeof window === 'undefined') return;
+
+  const required = [
+    { key: '__wcI18n__', desc: '国际化运行时（物料 t() 依赖，由 wc-i18n 模块自动挂载）' },
+    { key: '__wcWidgetScope__', desc: '软隔离 scope 工厂（物料 scope 依赖，由 wc-widget-scope 模块自动挂载）' },
+  ];
+  const optional = [
+    { key: 'Vue2', desc: 'Vue2 运行时（Vue2 物料依赖）' },
+    { key: 'Vue3', desc: 'Vue3 运行时（Vue3 物料依赖）' },
+    { key: 'ElementPlus', desc: 'ElementPlus 组件库（Vue3 物料的 el-* 组件依赖）' },
+    { key: 'ELEMENT', desc: 'ElementUI 组件库（Vue2 物料的 el-* 组件依赖）' },
+  ];
+
+  const missing = required.filter(g => !window[g.key]);
+  const optionalMissing = optional.filter(g => !window[g.key]);
+
+  if (missing.length > 0) {
+    console.warn(
+      '[widget-loader] 基座核心运行时未就绪，以下必需全局变量缺失:\n' +
+      missing.map(g => `  - window.${g.key}: ${g.desc}`).join('\n') +
+      '\n请确保基座已加载 wc-i18n 和 wc-widget-scope 模块。'
+    );
+  }
+  if (optionalMissing.length > 0) {
+    console.warn(
+      '[widget-loader] 以下可选全局变量未检测到（对应类型物料加载时会失败）:\n' +
+      optionalMissing.map(g => `  - window.${g.key}: ${g.desc}`).join('\n')
+    );
+  }
+}
+
 // ─── 轻量 semver 实现（避免引入外部依赖）───
 // 支持 ^、~、>=、>、<=、<、= 与精确版本、||（或范围）、*（通配符）、预发布版本。
 function parseVersion(v) {
@@ -927,6 +977,7 @@ class WidgetLoader {
    * @returns {Promise<HTMLElement>}
    */
   async attemptMount(container, widget) {
+    ensureBaseReady(); // U2：首次挂载时自检基座运行时全局变量
     this.emitLifecycle('loading', { name: widget.name, container });
     await this.loadWidget(widget);
     const element = this.renderWidget(container, widget);
@@ -965,9 +1016,14 @@ class WidgetLoader {
    * - 挂载同步抛错：移除崩溃元素并渲染降级占位（可重试）
    * - 运行时崩溃（setTimeout/Promise/事件回调）：全局监听归因后自动降级（可重试）
    * - 重试只重新加载该物料，不影响看板其它区域
+   *
+   * API 语义（U3）：mountWidget 已自动降级渲染占位，故 resolve（不 throw）。
+   * 调用方无需 try/catch——失败时返回 null，降级占位已在容器内显示。
+   * 需要显式捕获错误的调用方请用 attemptMount（失败直接 throw，无降级）。
+   *
    * @param {HTMLElement} container
    * @param {Object} widget
-   * @returns {Promise<HTMLElement>}
+   * @returns {Promise<HTMLElement|null>} 成功返回物料元素；失败返回 null（降级占位已渲染）
    */
   async mountWidget(container, widget) {
     log('mounting widget:', widget.name);
@@ -984,7 +1040,9 @@ class WidgetLoader {
         ? null
         : () => this.mountWithFallback(container, widget);
       renderFallback(container, message, widget, onRetry);
-      throw error;
+      // 已降级渲染占位，不再向上抛错（U3：收敛 API 语义）
+      console.error(`[widget-loader] 物料 "${widget.name}" 挂载失败，已渲染降级占位:`, error);
+      return null;
     }
   }
 
@@ -1051,8 +1109,11 @@ class WidgetLoader {
       this.widgetResources.delete(name);
     }
     // 清理该物料的已挂载实例（N10：防内存泄漏）
+    // O16：卸载前触发 unmount 生命周期，与 unmountWidget 行为对齐，
+    // 基座订阅 onWidgetLifecycle('unmount') 可统一感知 unloadWidget 卸载事件
     for (const [el, entry] of this.mountedWidgets) {
       if (entry.widget && entry.widget.name === name) {
+        this.emitLifecycle('unmount', { name, element: el, container: entry.container });
         if (el && el.parentNode) el.parentNode.removeChild(el);
         this.mountedWidgets.delete(el);
       }
@@ -1196,9 +1257,17 @@ export async function preloadUiDependencies(widgets, options = {}) {
     }
 
     if (!groups[lib]) {
+      // O21：version 缺失时回退到 UI_VERSION_DEFAULTS，避免拼出 @undefined URL
+      let version = stripRange(ui.version);
+      if (!version) {
+        version = UI_VERSION_DEFAULTS[lib];
+        console.warn(
+          `[widget-loader] 物料 ${widget.name} 的 uiDependencies.version 缺失，回退到默认 ${lib}@${version}`
+        );
+      }
       // base 样式（reset/变量）始终纳入加载集合：基座统一加载一次，
       // 物料不再自带 base CSS，避免 N 个物料重复打包同一份 reset/变量。
-      groups[lib] = { version: stripRange(ui.version), full: !!ui.full, components: new Set(), styles: new Set(['base']) };
+      groups[lib] = { version, full: !!ui.full, components: new Set(), styles: new Set(['base']) };
     }
     // full 一旦为 true，整组走全量包
     if (ui.full) groups[lib].full = true;

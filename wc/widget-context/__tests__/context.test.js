@@ -350,5 +350,41 @@ describe('widget-context', () => {
       expect(JSON.parse(after).count).toBe(2);
       expect(JSON.parse(before).count).toBe(1);
     });
+
+    // R2-5：缓存命中时跳过 getContext() 浅拷贝 + filtered 对象分配，直接复用缓存对象
+    it('R2-5：缓存命中时 _wcContext 复用同一引用（跳过 getContext 浅拷贝）', () => {
+      setContext({ user: { id: 1 }, theme: 'dark' });
+      const el1 = document.createElement('div');
+      const el2 = document.createElement('div');
+      injectContext(el1);
+      injectContext(el2);
+      // 缓存命中：两次注入的 _wcContext 应为同一引用（未重新浅拷贝）
+      expect(el2._wcContext).toBe(el1._wcContext);
+    });
+
+    it('R2-5：指定 keys 缓存命中时复用同一 filtered 对象引用', () => {
+      setContext({ user: { id: 1 }, theme: 'dark', secret: 'x' });
+      const el1 = document.createElement('div');
+      const el2 = document.createElement('div');
+      const keys = ['user', 'theme'];
+      injectContext(el1, keys);
+      injectContext(el2, keys);
+      // 相同 keys 指纹 + 同 version → 缓存命中，filtered 引用复用
+      expect(el2._wcContext).toBe(el1._wcContext);
+      // 且 filtered 仍只含指定 keys
+      expect(Object.keys(el2._wcContext).sort()).toEqual(['theme', 'user']);
+    });
+
+    it('R2-5：不同 keys 指纹不命中缓存（重新构建 filtered）', () => {
+      setContext({ user: { id: 1 }, theme: 'dark', secret: 'x' });
+      const el1 = document.createElement('div');
+      const el2 = document.createElement('div');
+      injectContext(el1, ['user']);
+      injectContext(el2, ['theme']);
+      // keys 指纹不同 → 不命中缓存 → 不同 filtered 对象
+      expect(el2._wcContext).not.toBe(el1._wcContext);
+      expect(el1._wcContext).toEqual({ user: { id: 1 } });
+      expect(el2._wcContext).toEqual({ theme: 'dark' });
+    });
   });
 });

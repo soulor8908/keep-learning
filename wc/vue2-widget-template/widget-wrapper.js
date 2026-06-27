@@ -15,6 +15,17 @@
  */
 import Vue from 'vue';
 import { createWidgetScope } from '../widget-scope/index.js';
+import { onLocaleChange } from '../i18n/index.js';
+
+// 告诉 Vue2 编译器 el-* 是自定义元素，不要当 Vue 组件解析
+// 使用合并而非覆盖，避免污染基座或其他物料的 ignoredElements 配置
+// 去重检查：同页多物料加载时避免重复添加 /^el-/
+// 防御：Vue.config 可能不存在（如测试环境 mock），此时跳过
+if (Vue && Vue.config) {
+  const _existing = Array.isArray(Vue.config.ignoredElements) ? Vue.config.ignoredElements : [];
+  const _hasEl = _existing.some(re => re instanceof RegExp && re.source === '^el-');
+  if (!_hasEl) Vue.config.ignoredElements = [..._existing, /^el-/];
+}
 
 // camelCase → kebab-case，用于把 prop 名映射为可观察的 attribute 名
 function camelToKebab(str) {
@@ -85,6 +96,7 @@ export function createWidgetWrapper(Component, widgetName) {
     constructor() {
       super();
       this.vm = null;
+      this._offLocale = null;
       // 每个物料实例创建独立的 widgetScope 软隔离对象，
       // 物料组件通过 props.scope 接收，而非直接访问 window
       this._scope = createWidgetScope({ name: widgetName });
@@ -96,6 +108,13 @@ export function createWidgetWrapper(Component, widgetName) {
     }
 
     connectedCallback() {
+      // 防御性守卫：若未来误引入 attachShadow，立即告警（与 vue3/h5 wrapper 对齐）
+      if (this.shadowRoot) {
+        console.error(
+          `[widget-wrapper] 物料 ${widgetName} 检测到 shadowRoot，` +
+          'ElementUI 全局样式将无法穿透。请勿使用 attachShadow。'
+        );
+      }
       // 使用 reactive data 承载已解析的独立 props，
       // attributeChangedCallback 中更新即可触发响应式重渲染，无需依赖 $children 内部 API
       // 同时把 scope 作为 data 暴露给 render，注入到业务组件 props
@@ -110,6 +129,14 @@ export function createWidgetWrapper(Component, widgetName) {
       });
       this.vm.$mount();
       this.appendChild(this.vm.$el);
+      // locale 变化时对物料组件实例本身调用 $forceUpdate 触发重渲染，
+      // 组件内 t() 自然返回新语言文案（与 vue-cli-plugin / vue3-wrapper 行为对齐）
+      // 必须 forceUpdate 物料组件（this.vm.$children[0]），而非外壳——
+      // Vue2 在子组件 props 未变时不会重渲染子组件（已用真实 Vue2 验证）
+      this._offLocale = onLocaleChange(() => {
+        const widget = this.vm && this.vm.$children && this.vm.$children[0];
+        if (widget) widget.$forceUpdate();
+      });
     }
 
     // 收集所有已设置的独立 prop 属性，按声明类型解析为值
@@ -125,9 +152,12 @@ export function createWidgetWrapper(Component, widgetName) {
     }
 
     disconnectedCallback() {
+      if (this._offLocale) { this._offLocale(); this._offLocale = null; }
       if (this.vm) {
         this.vm.$destroy();
         this.vm = null;
+        // 清理 scope bus 上所有 window 事件监听器，防止泄漏
+        if (this._scope && typeof this._scope.destroy === 'function') this._scope.destroy();
         this._scope = null;
         this._widgetScope = null;
       }

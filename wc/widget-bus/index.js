@@ -89,7 +89,21 @@ export function createBus(namespace) {
     if (set.size === 0) handlers.delete(eventType);
   }
 
-  return { emit, on, once, off };
+  // 销毁总线：移除所有 window 事件监听器，防止物料卸载后监听器泄漏
+  // wrapper disconnectedCallback 中调用 scope.destroy() 触发此方法
+  let _destroyed = false;
+  function destroy() {
+    if (_destroyed) return;
+    _destroyed = true;
+    for (const [eventType, set] of handlers) {
+      for (const entry of set) {
+        try { window.removeEventListener(eventType, entry.wrapped); } catch (e) { /* ignore */ }
+      }
+    }
+    handlers.clear();
+  }
+
+  return { emit, on, once, off, destroy };
 }
 
 // 默认全局总线实例（向后兼容现有 emit/on/once 导出）

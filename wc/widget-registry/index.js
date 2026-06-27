@@ -36,6 +36,9 @@
 
 const DEFAULT_TIMEOUT = 10000;
 
+// O24：空注册表一次性告警标志，避免每次 fetch 刷屏
+let _emptyRegistryWarned = false;
+
 /**
  * 创建注册表实例
  * @param {object} opts
@@ -139,6 +142,14 @@ export function createRegistry(opts = {}) {
     if (!targetUrl) {
       // 无 URL，直接用 fallback
       cachedWidgets = validateWidgets(fallback);
+      // O24：fallback 为空时告警，避免静默返回空数组让调用方误以为"无物料"
+      if (cachedWidgets.length === 0 && !_emptyRegistryWarned) {
+        _emptyRegistryWarned = true;
+        console.warn(
+          '[widget-registry] 注册表未配置 url 且 fallback 为空，fetch() 返回空数组。' +
+          '请通过 createRegistry({ url, fallback }) 配置远程注册表地址或本地兜底清单。'
+        );
+      }
       return cachedWidgets;
     }
 

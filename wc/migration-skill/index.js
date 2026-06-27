@@ -36,6 +36,43 @@ function inferWidgetName(filePath) {
   return `bi-${toKebab(base)}`;
 }
 
+/**
+ * 扫描 Vue2/Vue3 业务组件源码中与物料环境不兼容的 API 模式（M1）
+ *
+ * 物料运行在独立 Custom Element 内，无 Vue 根实例、无 router/store/parent。
+ * 以下模式在原业务组件中可用，但迁移为物料后会失效或产生副作用：
+ * - this.$store / this.$router / this.$route：Vue 根实例注入，物料无根实例
+ * - this.$emit：物料无父组件，事件应走 scope.bus
+ * - Vue.use()：全局注册污染基座
+ * - this.$t：vue-i18n 全局实例，物料应改用 scope.t()
+ * - this.t()：自定义翻译方法，确认是否应迁移到 scope.t()
+ *
+ * @param {string} source .vue 源码
+ * @returns {Array<{level:string,message:string,line:number}>}
+ */
+function scanMigrationPatterns(source) {
+  const patterns = [
+    { regex: /this\.\$store\b/g, level: 'high', message: 'this.$store：物料无 Vuex store，改用 scope.context.get() 读取基座上下文' },
+    { regex: /this\.\$router\b/g, level: 'high', message: 'this.$router：物料无路由实例，基座应通过 scope 提供导航能力' },
+    { regex: /this\.\$route\b/g, level: 'high', message: 'this.$route：物料无路由对象，改用 scope.context.get("route") 获取路由信息' },
+    { regex: /\bVue\.use\s*\(/g, level: 'high', message: 'Vue.use()：全局注册会污染基座 Vue 实例，物料应局部引入组件而非全局注册' },
+    { regex: /this\.\$emit\s*\(/g, level: 'medium', message: 'this.$emit：物料无父组件接收事件，改用 scope.bus.emit() 进行跨物料通信' },
+    { regex: /this\.\$t\b/g, level: 'medium', message: 'this.$t：vue-i18n 全局实例在物料中不可用，改用 scope.t()' },
+    { regex: /this\.t\s*\(/g, level: 'low', message: 'this.t()：若为自定义翻译方法，确认是否应迁移到 scope.t()' },
+    { regex: /this\.\$nextTick/g, level: 'low', message: 'this.$nextTick：可用但注意物料卸载后回调不再生效，建议在 onUnmount 中清理' },
+  ];
+  const findings = [];
+  for (const { regex, level, message } of patterns) {
+    regex.lastIndex = 0;
+    let m;
+    while ((m = regex.exec(source)) !== null) {
+      const line = source.slice(0, m.index).split('\n').length;
+      findings.push({ level, message, line });
+    }
+  }
+  return findings;
+}
+
 function addRootClass(source, widgetName) {
   // 匹配 <template> 中的第一个标签
   const templateRegex = /(<template[^>]*>)([\s\S]*?)(<\/template>)/;
@@ -107,7 +144,8 @@ function migrate(widgetName, filePath, vueVersion) {
     filePath,
     vueVersion,
     changes: [],
-    warnings: []
+    warnings: [],
+    migrationPatterns: []
   };
 
   let migrated = source;
@@ -145,6 +183,16 @@ function migrate(widgetName, filePath, vueVersion) {
   if (jsRisks.length > 0) {
     const highRisks = jsRisks.filter(r => r.level === 'high').length;
     report.warnings.push(`发现 ${jsRisks.length} 个 JS 风险（其中 ${highRisks} 个高危）`);
+  }
+
+  // 5. 迁移模式扫描（M1）：检测 this.$store/Vue.use 等物料环境不兼容的 API
+  const migrationPatterns = scanMigrationPatterns(source);
+  if (migrationPatterns.length > 0) {
+    const highCount = migrationPatterns.filter(p => p.level === 'high').length;
+    report.migrationPatterns = migrationPatterns;
+    report.warnings.push(
+      `发现 ${migrationPatterns.length} 个迁移点需人工确认（${highCount} 个高危，详见下方"迁移模式"）`
+    );
   }
 
   return { migrated, report };
@@ -191,6 +239,15 @@ function main() {
     console.log('\n✅ 未发现 CSS/JS 风险');
   }
 
+  // 迁移模式详情（M1）
+  if (report.migrationPatterns && report.migrationPatterns.length > 0) {
+    console.log('\n迁移模式（需人工确认）:');
+    report.migrationPatterns.forEach(p => {
+      const icon = p.level === 'high' ? '🔴' : (p.level === 'medium' ? '🟡' : '⚪');
+      console.log(`  ${icon} [行${p.line}] ${p.message}`);
+    });
+  }
+
   console.log('\n========== 推荐打包配置 ==========');
   console.log(generateBuildConfig(widgetName, filePath, vueVersion));
 
@@ -203,4 +260,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { migrate, addRootClass, generateBuildConfig, toKebab, inferWidgetName };
+module.exports = { migrate, addRootClass, generateBuildConfig, toKebab, inferWidgetName, scanMigrationPatterns };

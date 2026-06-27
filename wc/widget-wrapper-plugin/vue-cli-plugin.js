@@ -70,6 +70,11 @@ function parseAttrValue(raw, type) {
   try { return JSON.parse(raw); } catch (_) { return raw; }
 }
 
+// 预计算 prop 映射（R2-4：避免每次属性变化都重算数组 + 线性查找，与模板对齐）
+const individualPropNames = getDeclaredPropNames(Component).filter(n => n !== 'scope');
+const attrToProp = new Map(individualPropNames.map(n => [camelToKebab(n), n]));
+const observedAttrs = [...new Set(individualPropNames.map(camelToKebab))];
+
 class WidgetElement extends HTMLElement {
   constructor() {
     super();
@@ -83,18 +88,13 @@ class WidgetElement extends HTMLElement {
   }
 
   static get observedAttributes() {
-    // 仅观察组件声明的独立 prop 的 kebab attribute（剔除 scope）
-    return getDeclaredPropNames(Component)
-      .filter(n => n !== 'scope')
-      .map(camelToKebab);
+    return observedAttrs;
   }
 
   // 收集所有已设置的独立 prop 属性，按声明类型解析为值
   _collectProps() {
     const result = {};
-    const names = getDeclaredPropNames(Component).filter(n => n !== 'scope');
-    for (const propName of names) {
-      const attrName = camelToKebab(propName);
+    for (const [attrName, propName] of attrToProp) {
       if (this.hasAttribute(attrName)) {
         result[propName] = parseAttrValue(this.getAttribute(attrName), getPropType(Component, propName));
       }
@@ -103,6 +103,13 @@ class WidgetElement extends HTMLElement {
   }
 
   connectedCallback() {
+    // 防御性守卫：若未来误引入 attachShadow，立即告警（与 vue3/h5 wrapper 对齐）
+    if (this.shadowRoot) {
+      console.error(
+        '[widget-wrapper] 物料 ${widgetName} 检测到 shadowRoot，' +
+        'ElementUI 全局样式将无法穿透。请勿使用 attachShadow。'
+      );
+    }
     // 不使用 Shadow DOM，直接挂载到 light DOM，让 ElementUI 全局样式能穿透
     // 使用 reactive data 承载 props 与 scope，attributeChangedCallback 中更新
     // this.vm.widgetProps 即可触发响应式重渲染
@@ -129,6 +136,7 @@ class WidgetElement extends HTMLElement {
     if (this.vm) {
       this.vm.$destroy();
       this.vm = null;
+      if (this._scope && typeof this._scope.destroy === 'function') this._scope.destroy();
       this._scope = null;
       this._widgetScope = null;
     }
@@ -136,9 +144,8 @@ class WidgetElement extends HTMLElement {
 
   attributeChangedCallback(name, oldValue, newValue) {
     if (!this.vm || oldValue === newValue) return;
-    // 独立 prop 属性变化：反查 prop 名，整体替换 widgetProps 触发重渲染
-    const names = getDeclaredPropNames(Component).filter(n => n !== 'scope');
-    const propName = names.find(n => camelToKebab(n) === name);
+    // 独立 prop 属性变化：O(1) 反查 prop 名，整体替换 widgetProps 触发重渲染
+    const propName = attrToProp.get(name);
     if (propName) {
       this.vm.widgetProps = {
         ...this.vm.widgetProps,

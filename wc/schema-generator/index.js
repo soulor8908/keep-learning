@@ -729,36 +729,80 @@ function mapConstructorName(name) {
 }
 
 /**
- * 扫描 .vue 源码中 <template> 内的 <el-*> 标签，收集去前缀、去重的组件名列表。
+ * PascalCase 组件名转 kebab-case（去前缀用）
+ * ElButton → button，ElTableColumn → table-column
+ */
+function pascalToKebab(name) {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase();
+}
+
+/**
+ * 扫描 .vue 源码中使用的 ElementPlus/ElementUI 组件，收集去前缀、去重的组件名列表。
  *
- * 用于自动生成 schema.uiDependencies.components，让基座按声明精准加载 UI 组件。
+ * 扫描范围（M3 增强）：
+ * 1. <template> 内的 <el-xxx> kebab-case 标签
+ * 2. <template> 内的 <ElXxx> PascalCase 标签
+ * 3. <template> 内的 <component :is="'el-xxx'"> / <component :is="'ElXxx'"> 动态组件
+ * 4. <script> 内的 h('el-xxx') / h('ElXxx') 渲染函数调用
+ * 5. <script> 内的 resolveComponent('el-xxx') / resolveComponent('ElXxx')
  *
- * 已知局限（不在此扫描，需物料作者手动补 uiDependencies）：
- * - 动态组件 <component :is="'el-button'">
- * - 字符串渲染 h('el-button') / render(h => h('el-button'))
- * - 通过 Vue.component 注册后用字符串模板引用
+ * 用于自动生成 schema.uiDependencies.components 和构建期 __WIDGET_UI_DEPS__ 注入，
+ * 让基座按声明精准加载 UI 组件，wrapper 按需注册。
  *
  * @param {string} source .vue 文件源码
  * @returns {string[]} 去前缀（去 el-）、去重的组件名数组，如 ['card','button','table-column']
  */
 function extractUiDependencies(source) {
   if (!source) return [];
-
-  // 仅扫描 <template> 块，避免误命中 <script> 中的字符串
-  const tplMatch = source.match(/<template[^>]*>([\s\S]*?)<\/template>/);
-  const tpl = tplMatch ? tplMatch[1] : source;
-
-  // 移除 HTML 注释，避免注释中的标签被计入
-  const cleaned = tpl.replace(/<!--[\s\S]*?-->/g, '');
-
-  // 匹配开标签 <el-xxx，不匹配闭合标签 </el-xxx>，不匹配自引用后的 >
-  // 组件名仅含小写字母与短横线
-  const re = /<el-([a-z][a-z0-9-]*)\b/g;
   const set = new Set();
   let m;
-  while ((m = re.exec(cleaned)) !== null) {
+
+  // ─── 1. 扫描 <template> 块 ───
+  const tplMatch = source.match(/<template[^>]*>([\s\S]*?)<\/template>/);
+  const tpl = tplMatch ? tplMatch[1] : source;
+  // 移除 HTML 注释，避免注释中的标签被计入
+  const cleanedTpl = tpl.replace(/<!--[\s\S]*?-->/g, '');
+
+  // 1a. <el-xxx> kebab-case 开标签
+  const kebabRe = /<el-([a-z][a-z0-9-]*)\b/g;
+  while ((m = kebabRe.exec(cleanedTpl)) !== null) {
     set.add(m[1]);
   }
+
+  // 1b. <ElXxx> PascalCase 开标签（不匹配 </El 闭合标签）
+  const pascalRe = /<El([A-Z][a-zA-Z0-9]*)\b/g;
+  while ((m = pascalRe.exec(cleanedTpl)) !== null) {
+    set.add(pascalToKebab(m[1]));
+  }
+
+  // 1c. <component :is="'el-xxx'"> 或 :is="'ElXxx'" 动态组件
+  // :is 的值是 Vue 表达式，字符串字面量含内层引号（如 :is="'el-button'"）
+  // ['"]? 匹配可选的内层引号，使 el-xxx / ElXxx 直接跟在引号后也能命中
+  const dynRe = /:is\s*=\s*["']\s*['"]?\s*(?:el-([a-z][a-z0-9-]*)|El([A-Z][a-zA-Z0-9]*))\s*['"]?\s*["']/g;
+  while ((m = dynRe.exec(cleanedTpl)) !== null) {
+    set.add(m[1] || pascalToKebab(m[2]));
+  }
+
+  // ─── 2. 扫描 <script> 块 ───
+  const scriptMatch = source.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+  const script = scriptMatch ? scriptMatch[1] : '';
+
+  // 2a. h('el-xxx') / h("ElXxx") 渲染函数调用
+  // 匹配 h( 后跟引号包裹的组件名（kebab 或 PascalCase）
+  const hRe = /\bh\s*\(\s*['"](?:el-([a-z][a-z0-9-]*)|El([A-Z][a-zA-Z0-9]*))['"]/g;
+  while ((m = hRe.exec(script)) !== null) {
+    set.add(m[1] || pascalToKebab(m[2]));
+  }
+
+  // 2b. resolveComponent('el-xxx') / resolveDynamicComponent('ElXxx')
+  const rcRe = /(?:resolveComponent|resolveDynamicComponent)\s*\(\s*['"](?:el-([a-z][a-z0-9-]*)|El([A-Z][a-zA-Z0-9]*))['"]/g;
+  while ((m = rcRe.exec(script)) !== null) {
+    set.add(m[1] || pascalToKebab(m[2]));
+  }
+
   return Array.from(set);
 }
 

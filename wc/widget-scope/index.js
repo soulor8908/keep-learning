@@ -339,6 +339,11 @@ export function createWidgetScope(opts = {}) {
     t,
     request,
     loader,
+    // 销毁 scope：移除 bus 上所有 window 事件监听器，防止物料卸载后监听器泄漏
+    // wrapper disconnectedCallback 中调用，无需物料手动清理每个 on() 返回的取消函数
+    destroy: () => {
+      if (typeof busInstance.destroy === 'function') busInstance.destroy();
+    },
     // 显式声明：scope 不提供 window/document 直接访问（软隔离约束）
     // 物料若强引用 window 会被 js-risk-scanner 在构建期告警
     __noGlobalAccess: true

@@ -24,7 +24,8 @@ const PROMPT_DIR = path.join(__dirname, 'prompts');
 const WIDGET_NAME_RE = /^[a-z0-9-]+$/;
 
 // AI 接口请求超时（毫秒），避免大模型接口卡死时 CLI 挂起
-const AI_REQUEST_TIMEOUT = 60000;
+// 可通过环境变量 AI_REQUEST_TIMEOUT 调整（与 AI_API_KEY 等配置模式一致）
+const AI_REQUEST_TIMEOUT = Number(process.env.AI_REQUEST_TIMEOUT) || 60000;
 
 function loadPrompt(name) {
   return fs.readFileSync(path.join(PROMPT_DIR, `${name}.txt`), 'utf-8');

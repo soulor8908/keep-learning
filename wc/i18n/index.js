@@ -21,6 +21,9 @@ let currentLocale = 'zh';
 
 const _fallbackChainCache = new Map();
 
+// O11 对齐：widgetBus 缺失一次性告警标志，避免每次 setLocale 都刷屏
+let _widgetBusMissingWarned = false;
+
 /**
  * 解析 locale 的回退链
  * 例如 'zh-CN' -> ['zh-CN', 'zh', 'en']，'zh-TW' -> ['zh-TW', 'zh', 'en']
@@ -117,6 +120,13 @@ let setLocale = function setLocale(locale, force = false) {
   // 通过 widget-bus 广播，物料可监听 'locale-change' 重渲染
   if (typeof window !== 'undefined' && window.widgetBus) {
     window.widgetBus.emit('locale-change', { locale });
+  } else if (!_widgetBusMissingWarned) {
+    // O11 对齐：widgetBus 缺失时静默跳过广播会导致物料收不到 locale-change 事件
+    _widgetBusMissingWarned = true;
+    console.warn(
+      '[wc/i18n] window.widgetBus 未就绪，setLocale 的广播将被跳过。' +
+      '请确保基座已初始化 widgetBus（widget-bus 模块加载后自动挂载到 window.widgetBus）。'
+    );
   }
 }
 

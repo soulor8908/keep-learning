@@ -284,9 +284,14 @@ export class PageManager {
           throw new Error(`slot "${slot.slotId}" has no container`);
         }
         const element = await this.loader.mountWidget(slot.container, slot.widget);
+        // U3 后 mountWidget 失败返回 null（已渲染降级占位，不 throw）。
+        // 此时 element 为 null，需记录到 failedSlots 让页面级错误跟踪生效
+        if (!element) {
+          throw new Error(`mountWidget 返回 null（物料 "${slot.widget.name}" 已降级渲染占位）`);
+        }
         page._setElement(slot.slotId, element);
         // 记录物料归属权：该元素属于此页面
-        if (element) this._elementOwner.set(element, page.id);
+        this._elementOwner.set(element, page.id);
       } catch (err) {
         console.error(`[widget-page] mount slot "${slot.slotId}" of page "${page.id}" failed:`, err);
         failedSlots.push({ slotId: slot.slotId, error: err });
