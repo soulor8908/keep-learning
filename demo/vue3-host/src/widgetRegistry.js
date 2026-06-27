@@ -154,3 +154,14 @@ export function findWidget(name) {
 }
 
 export { registry };
+
+/**
+ * 语言切换时刷新物料定义
+ * 清除注册表内存缓存，重新拉取物料清单（force=true 绕过缓存），
+ * 使 getWidgetDefs() 能根据新 locale 生成新的 props。
+ * @returns {Promise<Array>} 刷新后的物料清单
+ */
+export async function refreshWidgetsForLocale() {
+  registry.clearCache();
+  return loadWidgets(true);
+}

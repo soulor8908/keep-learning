@@ -10,10 +10,16 @@
  *   3. "发送测试事件"按钮 → emit('test-event', { time, from })。
  *   4. "清空日志"按钮 → 清空日志列表。
  *   5. disconnectedCallback 时取消所有监听，验证 unmountWidget 的清理。
+ *   6. 通过 window.__wcI18n__ 接入 i18n，监听 locale-change 事件自动重渲染。
  *
  * 不依赖任何框架，直接被基座作为静态 JS 加载。
  */
 (function () {
+  // 通过全局 i18n 运行时获取翻译，语言切换时自动生效
+  function t(key) {
+    return (window.__wcI18n__ && window.__wcI18n__.t) ? window.__wcI18n__.t(key) : key;
+  }
+
   class BiEventTester extends HTMLElement {
     static get observedAttributes() {
       return ['config'];
@@ -61,13 +67,17 @@
         'filter-change',
         'data-updated',
         'widget:loaded',
-        'locale-change',
         'test-event'
       ];
       events.forEach(function (evt) {
         self._handlers[evt] = window.widgetBus.on(evt, function (payload) {
           self._addLog(evt, payload);
         });
+      });
+      // 监听 locale-change 事件，语言切换时自动重渲染
+      self._handlers['locale-change'] = window.widgetBus.on('locale-change', function () {
+        self._render();
+        self._renderLogs();
       });
     }
 
@@ -180,10 +190,10 @@
         '}' +
         '</style>' +
         '<div class="bi-event-tester">' +
-          '<div class="evt-header">' + (config.title || '事件测试器') + '</div>' +
+          '<div class="evt-header">' + (config.title || t('event_tester.title')) + '</div>' +
           '<div class="evt-buttons">' +
-            '<button class="evt-btn evt-btn-primary" id="evt-send">发送测试事件</button>' +
-            '<button class="evt-btn" id="evt-clear">清空日志</button>' +
+            '<button class="evt-btn evt-btn-primary" id="evt-send">' + t('event_tester.send_test') + '</button>' +
+            '<button class="evt-btn" id="evt-clear">' + t('event_tester.clear_log') + '</button>' +
           '</div>' +
           '<div class="evt-logs" id="evt-logs"></div>' +
         '</div>';
@@ -214,7 +224,7 @@
       var container = this.querySelector('#evt-logs');
       if (!container) return;
       if (this._logs.length === 0) {
-        container.innerHTML = '<div class="evt-empty">暂无事件日志</div>';
+        container.innerHTML = '<div class="evt-empty">' + t('event_tester.no_logs') + '</div>';
         return;
       }
       container.innerHTML = this._logs

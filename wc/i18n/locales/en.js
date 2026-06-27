@@ -20,6 +20,12 @@ export default {
     period_year: 'This Year',
     period_label: 'Period'
   },
+  event_tester: {
+    title: 'Event Tester',
+    send_test: 'Send Test Event',
+    clear_log: 'Clear Log',
+    no_logs: 'No event logs'
+  },
   finance: {
     title: 'Finance Dashboard',
     income_label: 'Total Income',

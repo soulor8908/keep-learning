@@ -20,6 +20,12 @@ export default {
     period_year: '本年',
     period_label: '周期'
   },
+  event_tester: {
+    title: '事件测试器',
+    send_test: '发送测试事件',
+    clear_log: '清空日志',
+    no_logs: '暂无事件日志'
+  },
   finance: {
     title: '财务看板',
     income_label: '总收入',

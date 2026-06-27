@@ -90,7 +90,7 @@ import { createBus } from '@wc/widget-bus';
 // 创建全局总线实例，物料通过 scope.bus 使用同一个总线
 const bus = createBus();
 const { on, emit } = bus;
-import { loadWidgets } from './widgetRegistry';
+import { loadWidgets, refreshWidgetsForLocale } from './widgetRegistry';
 import { changeLocale } from './i18n';
 
 // 物料清单：通过 widget-registry 模块异步加载（远程优先，本地兜底）
@@ -174,7 +174,42 @@ function refreshWidgets() {
 }
 
 function toggleLocale() {
-  changeLocale(locale.value === 'zh' ? 'en' : 'zh');
+  const newLocale = locale.value === 'zh' ? 'en' : 'zh';
+  changeLocale(newLocale);
+  // 语言切换时增量更新物料 props，无需卸载重挂
+  updateWidgetsProps();
+}
+
+/**
+ * 语言切换时增量更新已挂载物料的 props
+ * 清除注册表缓存，重新拉取物料定义，更新 DOM 属性
+ */
+async function updateWidgetsProps() {
+  try {
+    const freshWidgets = await refreshWidgetsForLocale();
+    // 更新内存中的物料清单
+    widgets = freshWidgets;
+    // 遍历所有已挂载物料，更新其 DOM 属性
+    for (const [widgetName, containerRef] of Object.entries(widgetContainerMap)) {
+      const widget = freshWidgets.find(w => w.name === widgetName);
+      if (!widget || !widget.props || !containerRef.value) continue;
+      const el = containerRef.value.firstElementChild;
+      if (!el) continue;
+      // 更新 props 对应的 DOM 属性
+      for (const [propName, value] of Object.entries(widget.props)) {
+        if (propName === 'scope') continue;
+        const attrName = propName.replace(/([A-Z])/g, '-$1').toLowerCase();
+        if (value == null) {
+          el.removeAttribute(attrName);
+        } else {
+          el.setAttribute(attrName, typeof value === 'string' ? value : JSON.stringify(value));
+        }
+      }
+    }
+    addLog('action', `Props updated for locale: ${locale.value}`);
+  } catch (err) {
+    addLog('error', `[props-update-fail] ${(err.message || '').split('\n')[0]}`);
+  }
 }
 
 function toggleEventTester() {
