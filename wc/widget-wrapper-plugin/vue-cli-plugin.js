@@ -17,6 +17,23 @@ const fs = require('fs');
 const os = require('os');
 const { createNamespacePlugin } = require('./postcss-namespace');
 
+/**
+ * 读取 shared/props.js 源码并去除 export 关键字，
+ * 供 wrapper 生成时内联注入，确保工具函数单一来源。
+ * @returns {string}
+ */
+function readSharedPropsCode() {
+  const src = fs.readFileSync(
+    path.resolve(__dirname, '..', 'shared', 'props.js'),
+    'utf-8'
+  );
+  return src
+    .replace(/\bexport\s+function\b/g, 'function')
+    .trim();
+}
+
+const _sharedPropsCode = readSharedPropsCode();
+
 function generateVue2Wrapper(widgetName, vueGlobal) {
   return `
 import Vue from 'vue';
@@ -29,40 +46,7 @@ const _existing = Array.isArray(Vue.config.ignoredElements) ? Vue.config.ignored
 const _hasEl = _existing.some(re => re instanceof RegExp && re.source === '^el-');
 if (!_hasEl) Vue.config.ignoredElements = [..._existing, /^el-/];
 
-// camelCase → kebab-case
-function camelToKebab(str) {
-  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-
-// 提取业务组件声明的 prop 名列表
-function getDeclaredPropNames(Component) {
-  const props = Component && Component.props;
-  if (!props) return [];
-  if (Array.isArray(props)) return props.filter(p => typeof p === 'string');
-  return Object.keys(props);
-}
-
-// 取某个 prop 的声明类型构造器
-function getPropType(Component, name) {
-  const props = Component && Component.props;
-  if (!props || Array.isArray(props)) return null;
-  const def = props[name];
-  if (!def) return null;
-  if (Array.isArray(def)) return def;
-  if (typeof def === 'function') return def;
-  return def.type || null;
-}
-
-// 按属性值与 prop 类型解析为最终值
-function parseAttrValue(raw, type) {
-  if (type === Boolean) {
-    if (raw === '' || raw === 'true') return true;
-    if (raw === 'false') return false;
-    return true;
-  }
-  if (raw === null) return undefined;
-  try { return JSON.parse(raw); } catch (_) { return raw; }
-}
+${_sharedPropsCode}
 
 // 预计算 prop 映射
 const individualPropNames = getDeclaredPropNames(Component).filter(n => n !== 'scope');

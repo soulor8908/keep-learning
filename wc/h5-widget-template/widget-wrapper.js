@@ -24,6 +24,8 @@
  * - 可选接入 widget-bus 实现跨物料通信
  */
 
+import { camelToKebab, parseAttrValue } from '../shared/props.js';
+
 /**
  * 内建最小 scope（H5 模板独立运行时的兜底）
  * 仅提供 meta + log + no-op 的 context/bus/t/request，结构与 wc/widget-scope 一致。
@@ -72,27 +74,6 @@ function createMinimalScope(widgetName) {
     },
     __noGlobalAccess: true
   });
-}
-
-// camelCase → kebab-case
-function camelToKebab(str) {
-  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-
-/**
- * 按属性值解析为最终值
- * R2-6：与 vue2/vue3 wrapper 的 Boolean 语义对齐——
- * 空 attribute（is-visible）与 "true" → true，"false" → false
- */
-function parseAttrValue(raw) {
-  if (raw === null) return undefined;
-  if (raw === '' || raw === 'true') return true;
-  if (raw === 'false') return false;
-  try {
-    return JSON.parse(raw);
-  } catch (_) {
-    return raw;
-  }
 }
 
 /**

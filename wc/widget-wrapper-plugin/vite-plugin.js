@@ -47,6 +47,23 @@ import fs from 'fs';
 import os from 'os';
 import { createNamespacePlugin } from './postcss-namespace.js';
 
+/**
+ * 读取 shared/props.js 源码并去除 export 关键字，
+ * 供 wrapper 生成时内联注入，确保工具函数单一来源。
+ * @returns {string}
+ */
+function readSharedPropsCode() {
+  const src = fs.readFileSync(
+    path.resolve(__dirname, '..', 'shared', 'props.js'),
+    'utf-8'
+  );
+  return src
+    .replace(/\bexport\s+function\b/g, 'function')
+    .trim();
+}
+
+const _sharedPropsCode = readSharedPropsCode();
+
 // ─── external 模块集合（基座统一提供 window 全局变量）───
 // 用 Set + 函数形式 external：lib 模式下数组形式 external 在 config hook 合并阶段
 // 可能被自动外部化覆盖，导致 wc-i18n 等非 npm 包导入无法外部化。函数形式逐个判定更稳健。
@@ -75,40 +92,7 @@ import { onLocaleChange } from 'wc-i18n';
 // 本包装层手写 HTMLElement + createApp().mount(this)，挂载到 light DOM，
 // 与"不开启 Shadow DOM"的架构决策保持一致。
 
-// camelCase → kebab-case，把 prop 名映射为可观察的 attribute 名
-function camelToKebab(str) {
-  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-
-// 提取业务组件声明的 prop 名列表（数组 / 对象 / <script setup> defineProps 产物）
-function getDeclaredPropNames(Component) {
-  const props = Component && Component.props;
-  if (!props) return [];
-  if (Array.isArray(props)) return props.filter(p => typeof p === 'string');
-  return Object.keys(props);
-}
-
-// 取某个 prop 的声明类型构造器
-function getPropType(Component, name) {
-  const props = Component && Component.props;
-  if (!props || Array.isArray(props)) return null;
-  const def = props[name];
-  if (!def) return null;
-  if (Array.isArray(def)) return def;
-  if (typeof def === 'function') return def;
-  return def.type || null;
-}
-
-// 按属性值与 prop 类型解析为最终值
-function parseAttrValue(raw, type) {
-  if (type === Boolean) {
-    if (raw === '' || raw === 'true') return true;
-    if (raw === 'false') return false;
-    return true;
-  }
-  if (raw === null) return undefined;
-  try { return JSON.parse(raw); } catch (_) { return raw; }
-}
+${_sharedPropsCode}
 
 // 预计算 prop 映射
 const individualPropNames = getDeclaredPropNames(Component).filter(n => n !== 'scope');
@@ -272,18 +256,7 @@ if (typeof render !== 'function') {
   throw new Error('[h5-widget-wrapper] 物料入口必须 default 导出 render 函数或含 render 的配置对象');
 }
 
-// camelCase → kebab-case
-function camelToKebab(str) {
-  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-
-// 按属性值解析为最终值
-function parseAttrValue(raw) {
-  if (raw === null) return undefined;
-  if (raw === '' || raw === 'true') return true;
-  if (raw === 'false') return false;
-  try { return JSON.parse(raw); } catch (_) { return raw; }
-}
+${_sharedPropsCode}
 
 const propAttrMap = new Map(
   (Array.isArray(declaredProps) ? declaredProps : []).map(p => [camelToKebab(p), p])
@@ -420,9 +393,7 @@ function generateDevPreviewEntry(widgetName, entryPath, mode, uiDeps) {
     return `
 import widgetEntry from '${entryPath}';
 
-function camelToKebab(str) {
-  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
+${_sharedPropsCode}
 
 const widgetOpts = typeof widgetEntry === 'function'
   ? { render: widgetEntry }
@@ -479,36 +450,7 @@ document.querySelectorAll('#panel input[data-prop]').forEach(input => {
 import { createApp, h, ref } from 'vue';
 import Component from '${entryPath}';
 
-function camelToKebab(str) {
-  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-
-function getDeclaredPropNames(Component) {
-  const props = Component && Component.props;
-  if (!props) return [];
-  if (Array.isArray(props)) return props.filter(p => typeof p === 'string');
-  return Object.keys(props);
-}
-
-function getPropType(Component, name) {
-  const props = Component && Component.props;
-  if (!props || Array.isArray(props)) return null;
-  const def = props[name];
-  if (!def) return null;
-  if (Array.isArray(def)) return def;
-  if (typeof def === 'function') return def;
-  return def.type || null;
-}
-
-function parseAttrValue(raw, type) {
-  if (type === Boolean) {
-    if (raw === '' || raw === 'true') return true;
-    if (raw === 'false') return false;
-    return true;
-  }
-  if (raw === null) return undefined;
-  try { return JSON.parse(raw); } catch (_) { return raw; }
-}
+${_sharedPropsCode}
 
 const propNames = getDeclaredPropNames(Component).filter(n => n !== 'scope');
 const attrToProp = new Map(propNames.map(n => [camelToKebab(n), n]));

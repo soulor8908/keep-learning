@@ -62,7 +62,7 @@ describe('widget-wrapper wrapper 文件结构生成', () => {
       expect(code).toContain('if (type === Boolean)');
       expect(code).toContain("raw === ''");
       expect(code).toContain("raw === 'false'");
-      expect(code).toContain('try { return JSON.parse(raw); } catch (_) { return raw; }');
+      expect(code).toContain('return JSON.parse(raw)');
       // 不再有 parseConfig 函数
       expect(code).not.toContain('function parseConfig');
     });

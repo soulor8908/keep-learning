@@ -23,62 +23,7 @@
 import { createApp, h, ref } from 'vue';
 import { createWidgetScope } from '../widget-scope/index.js';
 import { onLocaleChange } from '../i18n/index.js';
-
-// camelCase → kebab-case，用于把 prop 名映射为可观察的 attribute 名
-function camelToKebab(str) {
-  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-
-/**
- * 提取业务组件声明的 prop 名列表
- * 支持 Options API 的 props（数组 / 对象）与 <script setup> 编译后的 defineProps 产物
- */
-function getDeclaredPropNames(Component) {
-  const props = Component && Component.props;
-  if (!props) return [];
-  if (Array.isArray(props)) return props.filter(p => typeof p === 'string');
-  return Object.keys(props);
-}
-
-/**
- * 取某个 prop 的声明类型构造器（或构造器数组），用于按类型解析属性值
- * 仅对对象式 props 有效；数组式 props 返回 null（按 JSON 推断）
- * 支持三种声明形式：
- *   - 简写：  props: { a: String }            → def 是构造器，直接返回
- *   - 简写数组：props: { a: [String, Number] }  → def 是数组，直接返回
- *   - 完整：  props: { a: { type: String } }   → def 是对象，返回 def.type
- */
-function getPropType(Component, name) {
-  const props = Component && Component.props;
-  if (!props || Array.isArray(props)) return null;
-  const def = props[name];
-  if (!def) return null;
-  // 简写数组形式：a: [String, Number]
-  if (Array.isArray(def)) return def;
-  // 简写形式：a: String（构造器本身）。函数的 .type 属性为 undefined，需直接返回构造器
-  if (typeof def === 'function') return def;
-  // 完整形式：a: { type: String }
-  return def.type || null;
-}
-
-/**
- * 按属性值与 prop 类型解析为最终传入组件的值
- * - Boolean 类型：遵循 HTML 布尔属性语义（存在即 true，"false" 为 false）
- * - 其它类型：优先 JSON.parse（与 config 协议一致，无歧义），失败则回退为原始字符串
- */
-function parseAttrValue(raw, type) {
-  if (type === Boolean) {
-    if (raw === '' || raw === 'true') return true;
-    if (raw === 'false') return false;
-    return true; // 任何非 "false" 的值都视为 true（属性存在即启用）
-  }
-  if (raw === null) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch (_) {
-    return raw;
-  }
-}
+import { camelToKebab, getDeclaredPropNames, getPropType, parseAttrValue } from '../shared/props.js';
 
 export function createWidgetWrapper(Component, widgetName) {
   // 声明的 prop 名：剔除 scope（框架注入，非宿主传入）

@@ -16,6 +16,7 @@
 import Vue from 'vue';
 import { createWidgetScope } from '../widget-scope/index.js';
 import { onLocaleChange } from '../i18n/index.js';
+import { camelToKebab, getDeclaredPropNames, getPropType, parseAttrValue } from '../shared/props.js';
 
 // 告诉 Vue2 编译器 el-* 是自定义元素，不要当 Vue 组件解析
 // 使用合并而非覆盖，避免污染基座或其他物料的 ignoredElements 配置
@@ -25,55 +26,6 @@ if (Vue && Vue.config) {
   const _existing = Array.isArray(Vue.config.ignoredElements) ? Vue.config.ignoredElements : [];
   const _hasEl = _existing.some(re => re instanceof RegExp && re.source === '^el-');
   if (!_hasEl) Vue.config.ignoredElements = [..._existing, /^el-/];
-}
-
-// camelCase → kebab-case，用于把 prop 名映射为可观察的 attribute 名
-function camelToKebab(str) {
-  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-}
-
-/**
- * 提取业务组件声明的 prop 名列表
- * 支持 Options API 的 props（数组 / 对象）
- */
-function getDeclaredPropNames(Component) {
-  const props = Component && Component.props;
-  if (!props) return [];
-  if (Array.isArray(props)) return props.filter(p => typeof p === 'string');
-  return Object.keys(props);
-}
-
-/**
- * 取某个 prop 的声明类型构造器（或构造器数组），用于按类型解析属性值
- * 支持三种声明形式：简写（a: String）、简写数组（a: [String, Number]）、完整（a: { type: String }）
- */
-function getPropType(Component, name) {
-  const props = Component && Component.props;
-  if (!props || Array.isArray(props)) return null;
-  const def = props[name];
-  if (!def) return null;
-  if (Array.isArray(def)) return def;
-  if (typeof def === 'function') return def;
-  return def.type || null;
-}
-
-/**
- * 按属性值与 prop 类型解析为最终传入组件的值
- * - Boolean 类型：遵循 HTML 布尔属性语义（存在即 true，"false" 为 false）
- * - 其它类型：优先 JSON.parse，失败则回退为原始字符串
- */
-function parseAttrValue(raw, type) {
-  if (type === Boolean) {
-    if (raw === '' || raw === 'true') return true;
-    if (raw === 'false') return false;
-    return true;
-  }
-  if (raw === null) return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch (_) {
-    return raw;
-  }
 }
 
 export function createWidgetWrapper(Component, widgetName) {
