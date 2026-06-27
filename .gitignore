@@ -3,6 +3,12 @@ dist/
 *.log
 .DS_Store
 
+# pnpm workspace 统一用 pnpm-lock.yaml，忽略 npm 产生的 lock 文件
+package-lock.json
+
+# Netlify 部署残留
+.netlify/
+
 # Playwright E2E 产物
 /test-results/
 /playwright-report/
