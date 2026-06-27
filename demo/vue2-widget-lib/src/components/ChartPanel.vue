@@ -26,10 +26,13 @@ addMessages('en', { chart: { title: 'Chart Panel', empty: 'Waiting for data...' 
 export default {
   name: 'ChartPanel',
   props: {
-    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
     title: {
       type: String,
       default: ''
+    },
+    scope: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -46,15 +49,13 @@ export default {
     }
   },
   mounted() {
-    if (window.widgetBus) {
-      // 监听数据更新
-      this._offBus = window.widgetBus.on('data-updated', (payload) => {
+    if (this.scope && this.scope.bus) {
+      this._offBus = this.scope.bus.on('data-updated', (payload) => {
         if (payload && payload.metrics) {
           this.metrics = payload.metrics;
         }
       });
-      // 通知基座：物料已加载
-      window.widgetBus.emit('widget:loaded', { widget: 'bi-chart-panel' });
+      this.scope.bus.emit('widget:loaded', { widget: 'bi-chart-panel' });
     }
   },
   beforeDestroy() {

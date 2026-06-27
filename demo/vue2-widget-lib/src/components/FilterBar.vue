@@ -33,10 +33,13 @@ addMessages('en', { filter: { title: 'Filter Bar', refresh: 'Refresh' } });
 export default {
   name: 'FilterBar',
   props: {
-    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
     filters: {
       type: Array,
       default: () => []
+    },
+    scope: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -63,8 +66,8 @@ export default {
   },
   methods: {
     onFilterChange(field, value) {
-      if (window.widgetBus) {
-        window.widgetBus.emit('filter-change', { field, value });
+      if (this.scope && this.scope.bus) {
+        this.scope.bus.emit('filter-change', { field, value });
       }
     }
   }

@@ -32,6 +32,10 @@ export default {
     period: {
       type: String,
       default: 'month'
+    },
+    scope: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -70,8 +74,8 @@ export default {
   mounted() {
     this.$emit('widget:loaded', { widget: 'bi-sales-panel', props: this.$props });
     // 演示跨技术栈通信：监听全局刷新指令
-    if (window.widgetBus) {
-      this._offBus = window.widgetBus.on('refresh-data', () => {
+    if (this.scope && this.scope.bus) {
+      this._offBus = this.scope.bus.on('refresh-data', () => {
         this.summary.amount += Math.floor(Math.random() * 5000);
         this.summary.orderCount += Math.floor(Math.random() * 10);
       });

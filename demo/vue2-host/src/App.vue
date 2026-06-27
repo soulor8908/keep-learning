@@ -83,7 +83,10 @@
 
 <script>
 import { mountWidget, unmountWidget, onWidgetLifecycle } from '../../../wc/widget-loader';
-import { on, emit } from '../../../wc/widget-bus';
+import { createBus } from '../../../wc/widget-bus';
+
+const bus = createBus();
+const { on, emit } = bus;
 import { loadWidgets } from './widgetRegistry';
 import { changeLocale } from './i18n';
 

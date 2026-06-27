@@ -1,70 +1,77 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createBus, emit, on, once, off, Vue2BusPlugin, Vue3BusPlugin } from '../index.js';
+import { createBus } from '../index.js';
 
 describe('widget-bus', () => {
   describe('emit / on 基本收发', () => {
     it('on 的 handler 收到 emit 的 payload', () => {
+      const bus = createBus();
       const received = [];
-      on('test-event', payload => received.push(payload));
-      emit('test-event', { value: 42 });
+      bus.on('test-event', payload => received.push(payload));
+      bus.emit('test-event', { value: 42 });
       expect(received).toEqual([{ value: 42 }]);
     });
 
     it('payload 为 undefined 时也能收到', () => {
+      const bus = createBus();
       let called = false;
-      on('ping', () => { called = true; });
-      emit('ping');
+      bus.on('ping', () => { called = true; });
+      bus.emit('ping');
       expect(called).toBe(true);
     });
 
     it('多次 emit 多次触发', () => {
+      const bus = createBus();
       const count = { n: 0 };
-      on('count', () => { count.n++; });
-      emit('count');
-      emit('count');
-      emit('count');
+      bus.on('count', () => { count.n++; });
+      bus.emit('count');
+      bus.emit('count');
+      bus.emit('count');
       expect(count.n).toBe(3);
     });
   });
 
   describe('取消订阅', () => {
     it('on 返回的函数调用后不再触发', () => {
+      const bus = createBus();
       const received = [];
-      const off = on('once-test', p => received.push(p));
-      emit('once-test', 1);
+      const off = bus.on('once-test', p => received.push(p));
+      bus.emit('once-test', 1);
       off();
-      emit('once-test', 2);
+      bus.emit('once-test', 2);
       expect(received).toEqual([1]);
     });
   });
 
   describe('once 语义', () => {
     it('once 仅触发一次', () => {
+      const bus = createBus();
       const received = [];
-      once('one-shot', p => received.push(p));
-      emit('one-shot', 'a');
-      emit('one-shot', 'b');
+      bus.once('one-shot', p => received.push(p));
+      bus.emit('one-shot', 'a');
+      bus.emit('one-shot', 'b');
       expect(received).toEqual(['a']);
     });
 
     it('once 返回取消订阅函数', () => {
+      const bus = createBus();
       const received = [];
-      const off = once('one-shot-2', p => received.push(p));
+      const off = bus.once('one-shot-2', p => received.push(p));
       expect(typeof off).toBe('function');
       off();
-      emit('one-shot-2', 'a');
+      bus.emit('one-shot-2', 'a');
       expect(received).toEqual([]);
     });
   });
 
   describe('handler 异常隔离', () => {
     it('第一个 handler 抛错不阻断第二个，且 console.error 输出 [widget-bus] listener error', () => {
+      const bus = createBus();
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const order = [];
-      on('err-test', () => { order.push('first'); throw new Error('boom'); });
-      on('err-test', () => { order.push('second'); });
-      emit('err-test');
+      bus.on('err-test', () => { order.push('first'); throw new Error('boom'); });
+      bus.on('err-test', () => { order.push('second'); });
+      bus.emit('err-test');
       expect(order).toEqual(['first', 'second']);
       expect(errSpy).toHaveBeenCalled();
       const errArg = errSpy.mock.calls[0][0];
@@ -87,19 +94,20 @@ describe('widget-bus', () => {
       expect(bReceived).toEqual(['from-b']);
     });
 
-    it('默认全局总线与 createBus() 行为一致，前缀为 bi-widget-bus:', () => {
-      // 全局总线 emit('x') 等价于 createBus().emit('x')
-      const bus = createBus();
+    it('createBus() 与 createBus() 共享全局通道', () => {
+      const bus1 = createBus();
+      const bus2 = createBus();
       const received = [];
-      on('global-sync', p => received.push(p));
-      bus.emit('global-sync', 'hello');
+      bus1.on('global-sync', p => received.push(p));
+      bus2.emit('global-sync', 'hello');
       expect(received).toEqual(['hello']);
     });
 
     it('命名空间总线不影响全局总线', () => {
       const busA = createBus('A');
+      const busGlobal = createBus();
       const globalReceived = [];
-      on('ns-test', p => globalReceived.push(p));
+      busGlobal.on('ns-test', p => globalReceived.push(p));
       busA.emit('ns-test', 'from-a');
       expect(globalReceived).toEqual([]);
     });
@@ -119,7 +127,8 @@ describe('widget-bus', () => {
 
     it('默认 bubbles=true / composed=true', () => {
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent').mockImplementation(() => true);
-      emit('default-opts', {});
+      const bus = createBus();
+      bus.emit('default-opts', {});
       const event = dispatchSpy.mock.calls[0][0];
       expect(event.bubbles).toBe(true);
       expect(event.composed).toBe(true);
@@ -130,7 +139,8 @@ describe('widget-bus', () => {
   describe('事件名前缀', () => {
     it('全局总线事件类型为 bi-widget-bus:<type>', () => {
       const dispatchSpy = vi.spyOn(window, 'dispatchEvent').mockImplementation(() => true);
-      emit('prefix-check');
+      const bus = createBus();
+      bus.emit('prefix-check');
       const event = dispatchSpy.mock.calls[0][0];
       expect(event.type).toBe('bi-widget-bus:prefix-check');
       dispatchSpy.mockRestore();
@@ -148,49 +158,52 @@ describe('widget-bus', () => {
 
   describe('off 方法', () => {
     it('off 取消指定 handler：on(e,h1) on(e,h2) off(e,h1) emit(e) 仅 h2 触发', () => {
+      const bus = createBus();
       const calls = [];
       const h1 = () => calls.push('h1');
       const h2 = () => calls.push('h2');
-      on('off-pick', h1);
-      on('off-pick', h2);
-      off('off-pick', h1);
-      emit('off-pick');
+      bus.on('off-pick', h1);
+      bus.on('off-pick', h2);
+      bus.off('off-pick', h1);
+      bus.emit('off-pick');
       expect(calls).toEqual(['h2']);
     });
 
     it('off 未注册 handler 不抛错、不影响其他 handler', () => {
+      const bus = createBus();
       const calls = [];
       const registered = () => calls.push('registered');
       const neverRegistered = () => calls.push('never');
-      on('off-missing', registered);
-      expect(() => off('off-missing', neverRegistered)).not.toThrow();
-      emit('off-missing');
+      bus.on('off-missing', registered);
+      expect(() => bus.off('off-missing', neverRegistered)).not.toThrow();
+      bus.emit('off-missing');
       expect(calls).toEqual(['registered']);
     });
 
     it('off 未注册事件类型不抛错', () => {
-      expect(() => off('off-no-such-event', () => {})).not.toThrow();
+      const bus = createBus();
+      expect(() => bus.off('off-no-such-event', () => {})).not.toThrow();
     });
 
     it('off 后再 on 仍正常工作', () => {
+      const bus = createBus();
       const calls = [];
       const h = () => calls.push('h');
-      on('off-regon', h);
-      off('off-regon', h);
-      // 重新注册同名事件
-      on('off-regon', h);
-      emit('off-regon');
+      bus.on('off-regon', h);
+      bus.off('off-regon', h);
+      bus.on('off-regon', h);
+      bus.emit('off-regon');
       expect(calls).toEqual(['h']);
     });
 
     it('off 也能移除 once 注册的监听（按原 handler）', () => {
+      const bus = createBus();
       const calls = [];
       const h = (p) => calls.push(p);
-      once('off-once', h);
-      off('off-once', h);
-      emit('off-once', 'a');
-      emit('off-once', 'b');
-      // 被 off 移除后不再触发
+      bus.once('off-once', h);
+      bus.off('off-once', h);
+      bus.emit('off-once', 'a');
+      bus.emit('off-once', 'b');
       expect(calls).toEqual([]);
     });
 
@@ -202,29 +215,6 @@ describe('widget-bus', () => {
       bus.off('e', h);
       bus.emit('e');
       expect(calls).toEqual([]);
-    });
-
-    it('window.widgetBus 暴露 off 方法', () => {
-      expect(typeof window.widgetBus.off).toBe('function');
-    });
-
-    it('default export 暴露 off 方法', async () => {
-      const mod = await import('../index.js');
-      expect(typeof mod.default.off).toBe('function');
-      expect(mod.off).toBe(mod.default.off);
-    });
-
-    it('Vue2BusPlugin / Vue3BusPlugin 暴露的 $widgetBus 含 off', () => {
-      const Vue2 = function () {};
-      Vue2.prototype = {};
-      Vue2BusPlugin.install(Vue2);
-      expect(typeof Vue2.prototype.$widgetBus.off).toBe('function');
-      Vue2BusPlugin.uninstall(Vue2);
-
-      const app = { config: { globalProperties: {} } };
-      Vue3BusPlugin.install(app);
-      expect(typeof app.config.globalProperties.$widgetBus.off).toBe('function');
-      Vue3BusPlugin.uninstall(app);
     });
   });
 
@@ -240,7 +230,6 @@ describe('widget-bus', () => {
       bus.destroy();
       bus.emit('event-a');
       bus.emit('event-b');
-      // destroy 后不再触发
       expect(calls).toEqual(['a', 'b']);
     });
 

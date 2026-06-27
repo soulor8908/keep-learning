@@ -45,7 +45,6 @@ addMessages('en', {
 export default {
   name: 'OrdersPanel',
   props: {
-    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
     title: {
       type: String,
       default: ''
@@ -53,6 +52,10 @@ export default {
     orders: {
       type: Array,
       default: () => []
+    },
+    scope: {
+      type: Object,
+      default: null
     }
   },
   computed: {
@@ -65,14 +68,14 @@ export default {
   methods: {
     onRowClick(row) {
       // 通过 widget-bus 发出业务事件，基座与其他物料可监听
-      if (window.widgetBus) {
-        window.widgetBus.emit('order:click', { id: row.id, amount: row.amount, name: row.name });
+      if (this.scope && this.scope.bus) {
+        this.scope.bus.emit('order:click', { id: row.id, amount: row.amount, name: row.name });
       }
     }
   },
   mounted() {
-    if (window.widgetBus) {
-      window.widgetBus.emit('widget:loaded', { widget: 'bi-orders-panel' });
+    if (this.scope && this.scope.bus) {
+      this.scope.bus.emit('widget:loaded', { widget: 'bi-orders-panel' });
     }
   }
 };

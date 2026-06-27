@@ -381,4 +381,9 @@ if (typeof window !== 'undefined') {
   if (!window.__wcWidgetScope__) {
     window.__wcWidgetScope__ = { createWidgetScope, isWidgetScope };
   }
+  // 暴露全局 bus 实例，供 widget-wrapper 在创建 scope 时注入
+  // 这样 scope.bus 与基座总线共享同一通道，物料 emit 的事件基座可直接 on 到
+  if (!window.__wcGlobalBus__) {
+    window.__wcGlobalBus__ = createBus();
+  }
 }

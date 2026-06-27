@@ -85,7 +85,11 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { mountWidget, unmountWidget, onWidgetLifecycle } from '../../../wc/widget-loader';
-import { on, emit } from '../../../wc/widget-bus';
+import { createBus } from '../../../wc/widget-bus';
+
+// 创建全局总线实例，物料通过 scope.bus 使用同一个总线
+const bus = createBus();
+const { on, emit } = bus;
 import { loadWidgets } from './widgetRegistry';
 import { changeLocale } from './i18n';
 

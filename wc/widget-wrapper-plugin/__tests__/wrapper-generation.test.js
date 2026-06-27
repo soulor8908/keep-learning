@@ -6,8 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'module';
 import widgetVueCliPlugin from '../vue-cli-plugin.js';
-import { generateVue3Wrapper } from '../vite-plugin.js';
-import { generateH5Wrapper } from '../h5-vite-plugin.js';
+import { generateVue3Wrapper, generateH5Wrapper } from '../vite-plugin.js';
 
 const { generateVue2Wrapper } = widgetVueCliPlugin;
 

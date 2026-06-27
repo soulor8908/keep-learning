@@ -25,8 +25,6 @@ addMessages('en', { dataSource: { title: 'Data Source', refresh: 'Refresh Data' 
 defineOptions({ name: 'BiDataSource' });
 
 const props = defineProps({
-  // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
-  // 形如：title, metrics: [{ id, name, value, unit }], refreshInterval
   title: {
     type: String,
     default: ''
@@ -38,6 +36,10 @@ const props = defineProps({
   refreshInterval: {
     type: Number,
     default: 0
+  },
+  scope: {
+    type: Object,
+    default: null
   }
 });
 
@@ -63,15 +65,15 @@ function refreshData() {
     ...m,
     value: Math.floor(Math.random() * 100000)
   }));
-  if (window.widgetBus) {
-    window.widgetBus.emit('data-updated', { metrics: localMetrics.value });
+  if (props.scope && props.scope.bus) {
+    props.scope.bus.emit('data-updated', { metrics: localMetrics.value });
   }
 }
 
 onMounted(() => {
-  if (!window.widgetBus) return;
-  window.widgetBus.emit('widget:loaded', { widget: 'bi-data-source' });
-  offFilter = window.widgetBus.on('filter-change', (payload) => {
+  if (!props.scope || !props.scope.bus) return;
+  props.scope.bus.emit('widget:loaded', { widget: 'bi-data-source' });
+  offFilter = props.scope.bus.on('filter-change', (payload) => {
     // payload: { keyword: string }；空载荷清空筛选
     activeFilter.value = payload && payload.keyword ? String(payload.keyword) : '';
   });

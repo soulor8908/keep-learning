@@ -49,7 +49,6 @@ addMessages('en', {
 export default {
   name: 'PaymentPanel',
   props: {
-    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
     title: {
       type: String,
       default: ''
@@ -61,6 +60,10 @@ export default {
     methods: {
       type: Array,
       default: () => []
+    },
+    scope: {
+      type: Object,
+      default: null
     }
   },
   setup(props) {
@@ -75,8 +78,8 @@ export default {
     function pay() {
       const m = methods.value.find(x => x.id === selected.value);
       if (!m) return;
-      if (window.widgetBus) {
-        window.widgetBus.emit('payment:success', { method: m.label, amount: amount.value });
+      if (props.scope && props.scope.bus) {
+        props.scope.bus.emit('payment:success', { method: m.label, amount: amount.value });
       }
     }
 

@@ -43,6 +43,16 @@ function createMinimalScope(widgetName) {
     __minimal: true
   });
   const noop = () => {};
+  // 尝试使用全局 bus 实例，确保与基座总线共享同一通道
+  const busInstance = (typeof window !== 'undefined' && window.__wcGlobalBus__) || null;
+  const bus = busInstance
+    ? {
+        emit: (type, payload, options) => { try { busInstance.emit(type, payload, options); } catch (_) {} },
+        on: (type, cb) => { try { return busInstance.on(type, cb); } catch (_) { return noop; } },
+        once: (type, cb) => { try { return busInstance.once(type, cb); } catch (_) { return noop; } },
+        off: (type, cb) => { try { busInstance.off(type, cb); } catch (_) {} }
+      }
+    : { emit: noop, on: () => noop, once: () => noop };
   return Object.freeze({
     meta,
     log: {
@@ -52,7 +62,7 @@ function createMinimalScope(widgetName) {
       debug: () => {}
     },
     context: { get: () => ({}), onChange: () => noop },
-    bus: { emit: noop, on: () => noop, once: () => noop },
+    bus,
     t: (k) => k,
     request: (url, options) => {
       if (typeof globalThis.fetch !== 'function') {

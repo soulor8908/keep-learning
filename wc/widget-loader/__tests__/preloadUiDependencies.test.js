@@ -8,9 +8,9 @@ vi.mock('../../widget-context/index.js', () => ({ injectContext: () => {} }));
 import {
   defaultResolveUiResource,
   defaultResolveFullResource,
-  preloadUiDependencies,
-  WidgetLoader
-} from '../index.js';
+  preloadUiDependencies
+} from '../../ui-loader/index.js';
+import { WidgetLoader } from '../index.js';
 
 describe('defaultResolveUiResource', () => {
   it('js URL 格式正确', () => {

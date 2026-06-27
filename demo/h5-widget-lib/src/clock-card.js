@@ -4,7 +4,7 @@
  * 演示配置对象入口模式——default 导出含 render + 生命周期回调的对象：
  *   export default { props: [...], render(props, scope) {...}, onMount(el, p, scope) {...}, ... }
  *
- * 构建插件（h5-vite-plugin）会自动把此对象包装为 Custom Element：
+ * 构建插件（vite-plugin mode='h5'）会自动把此对象包装为 Custom Element：
  * - 包装层创建 widgetScope（context/bus/log/t/request/loader）
  * - connectedCallback 调用 render(props, scope)，用 innerHTML 设置返回的 HTML
  * - onMount 在渲染后调用（绑定事件/启动定时器），返回的清理函数在卸载时自动调用

@@ -7,9 +7,8 @@ import fs from 'fs';
 const require = createRequire(import.meta.url);
 // vue-cli-plugin 是 CJS（module.exports = function），用 require 拿到最稳
 const widgetVueCliPlugin = require('../vue-cli-plugin.js');
-// vite-plugin / h5-vite-plugin 是 ESM（export default），用静态 import
+// vite-plugin 是 ESM（export default），用静态 import
 import widgetVitePlugin from '../vite-plugin.js';
-import h5WidgetVitePlugin from '../h5-vite-plugin.js';
 
 // 临时 wrapper 文件清理（vue-cli-plugin 会写 /tmp/widget-wrapper-*.js）
 const tmpFiles = [];
@@ -131,10 +130,13 @@ describe('widget-wrapper-plugin external 映射', () => {
   });
 
   describe('T1.3b vite-plugin (Vue3) external', () => {
+    // 用真实存在文件作为 entry（插件会检查 fs.existsSync）
+    const dummyComponent = path.resolve(process.cwd(), 'wc/widget-wrapper-plugin/postcss-namespace.js');
+
     it('external 函数对 vue/element-plus/wc-i18n/wc-widget-scope/lodash/axios 返回 true，globals 映射到 Vue/ElementPlus/全局变量', () => {
       const plugin = widgetVitePlugin({
         name: 'bi-finance-panel',
-        component: './does-not-exist.vue'
+        component: dummyComponent
       });
       const cfg = plugin.config();
       const external = cfg.build.rollupOptions.external;
@@ -161,7 +163,7 @@ describe('widget-wrapper-plugin external 映射', () => {
     it('自定义 vueGlobal=Vue3 时，vue 全局变量为 Vue3', () => {
       const plugin = widgetVitePlugin({
         name: 'bi-finance-panel',
-        component: './does-not-exist.vue',
+        component: dummyComponent,
         vueGlobal: 'Vue3'
       });
       const cfg = plugin.config();
@@ -171,7 +173,7 @@ describe('widget-wrapper-plugin external 映射', () => {
     it('UMD 输出格式与文件名', () => {
       const plugin = widgetVitePlugin({
         name: 'bi-finance-panel',
-        component: './does-not-exist.vue'
+        component: dummyComponent
       });
       const cfg = plugin.config();
       expect(cfg.build.lib.formats).toEqual(['umd']);
@@ -183,7 +185,7 @@ describe('widget-wrapper-plugin external 映射', () => {
     it('默认 vueGlobal 为 Vue3（与基座 window.Vue3 对齐）', () => {
       const plugin = widgetVitePlugin({
         name: 'bi-default-vueglobal-v3',
-        component: './does-not-exist.vue',
+        component: dummyComponent,
         autoNamespace: false,
         scanRisks: false,
         enforceScoped: 'off',
@@ -195,14 +197,15 @@ describe('widget-wrapper-plugin external 映射', () => {
     });
   });
 
-  describe('T1.3c h5-vite-plugin (无框架) external', () => {
+  describe('T1.3c vite-plugin mode=h5 (无框架) external', () => {
     // 用真实存在文件作为 entry（h5 插件会检查 fs.existsSync）
     const dummyEntry = path.resolve(process.cwd(), 'wc/widget-wrapper-plugin/postcss-namespace.js');
 
     it('不 external 任何 vue，仅 external wc-widget-scope + wc-i18n + 高频库 lodash/axios', () => {
-      const plugin = h5WidgetVitePlugin({
+      const plugin = widgetVitePlugin({
         name: 'bi-weather-card',
-        entry: dummyEntry
+        entry: dummyEntry,
+        mode: 'h5'
       });
       const cfg = plugin.config();
       const external = cfg.build.rollupOptions.external;
@@ -226,9 +229,10 @@ describe('widget-wrapper-plugin external 映射', () => {
     });
 
     it('UMD 输出 + 入口别名指向 __WIDGET_ENTRY__', () => {
-      const plugin = h5WidgetVitePlugin({
+      const plugin = widgetVitePlugin({
         name: 'bi-weather-card',
-        entry: dummyEntry
+        entry: dummyEntry,
+        mode: 'h5'
       });
       const cfg = plugin.config();
       expect(cfg.build.lib.formats).toEqual(['umd']);
@@ -237,14 +241,15 @@ describe('widget-wrapper-plugin external 映射', () => {
     });
 
     it('缺 name/entry 时抛错', () => {
-      expect(() => h5WidgetVitePlugin({ entry: dummyEntry })).toThrow();
-      expect(() => h5WidgetVitePlugin({ name: 'bi-x' })).toThrow();
+      expect(() => widgetVitePlugin({ entry: dummyEntry, mode: 'h5' })).toThrow();
+      expect(() => widgetVitePlugin({ name: 'bi-x', mode: 'h5' })).toThrow();
     });
 
     it('entry 文件不存在时抛错', () => {
-      expect(() => h5WidgetVitePlugin({
+      expect(() => widgetVitePlugin({
         name: 'bi-x',
-        entry: './not-exist.js'
+        entry: './not-exist.js',
+        mode: 'h5'
       })).toThrow();
     });
   });

@@ -1,43 +1,71 @@
 /**
- * Vite 物料自动包装插件
+ * 统一物料自动包装 Vite 插件
  *
- * 使用方式（vite.config.js）：
- * import widgetVitePlugin from '@your-scope/widget-wrapper-plugin/vite-plugin';
+ * 合并原 h5-vite-plugin 与 vite-plugin，通过 mode 区分：
+ *   - mode='h5'  — 原生 H5 物料（无框架依赖，导出 render 函数/配置对象）
+ *   - mode='vue3' — Vue3 物料（默认，导出 .vue 单文件组件）
  *
- * export default defineConfig({
- *   plugins: [
- *     widgetVitePlugin({
- *       name: 'bi-finance-panel',
- *       component: './src/components/FinancePanel.vue',
- *       vueGlobal: 'Vue' // 可选，默认 'Vue'
- *     })
- *   ]
- * });
+ * 入口约定（mode='h5'）：
+ *   方式 A：导出 render 函数
+ *     export default function render(props, scope) {
+ *       return `<div class="bi-weather-card">...</div>`;
+ *     }
+ *   方式 B：导出配置对象
+ *     export default {
+ *       props: ['title', 'items'],
+ *       render(props, scope) { return `<div>...</div>`; },
+ *       onMount(el, props, scope) {},
+ *       onUnmount(el, scope) {},
+ *       onPropsChange(el, newProps, oldProps, scope) {}
+ *     };
+ *
+ * 入口约定（mode='vue3'）：
+ *   export default { ... } // Vue3 SFC 组件
+ *
+ * 用法（vite.config.js）：
+ *   import widgetVitePlugin from 'wc/widget-wrapper-plugin/vite-plugin';
+ *   export default {
+ *     plugins: [
+ *       // Vue3 物料
+ *       widgetVitePlugin({
+ *         name: 'bi-finance-panel',
+ *         component: './src/components/FinancePanel.vue'
+ *       }),
+ *       // H5 物料
+ *       widgetVitePlugin({
+ *         name: 'bi-weather-card',
+ *         mode: 'h5',
+ *         entry: './src/weather-card.js'
+ *       })
+ *     ]
+ *   };
+ *
+ * 构建产物：dist/{name}.js（UMD）+ dist/{name}.css
  */
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { createRequire } from 'module';
 import { createNamespacePlugin } from './postcss-namespace.js';
 
-const require = createRequire(import.meta.url);
-const { writeSchema, extractUiDependencies } = require('../schema-generator');
-const { scanTarget, formatFindings } = require('../js-risk-scanner');
-const { checkScopedDir, formatScopedResults } = require('../scoped-style-checker');
-const { checkTarget: checkCssNamespace, formatIssues: formatCssIssues } = require('../css-namespace-checker');
+// ─── external 模块集合（基座统一提供 window 全局变量）───
+// 用 Set + 函数形式 external：lib 模式下数组形式 external 在 config hook 合并阶段
+// 可能被自动外部化覆盖，导致 wc-i18n 等非 npm 包导入无法外部化。函数形式逐个判定更稳健。
 
-// 需 external 化的模块集合（基座统一提供 window 全局变量）。
-// 用 Set + 函数形式 external：lib 模式 + @vitejs/plugin-vue 等前置插件时，
-// 数组形式的 external 在 config hook 合并阶段会被 lib 模式自动外部化覆盖，
-// 导致 wc-i18n 等非 npm 包导入无法外部化。函数形式逐个判定，不受合并影响。
-const EXTERNAL_IDS = new Set([
+// Vue3 物料的 external
+const VUE3_EXTERNAL_IDS = new Set([
   'vue', 'element-plus', 'wc-i18n', 'wc-widget-scope', 'lodash', 'axios'
 ]);
 
-export function generateVue3Wrapper(widgetName, vueGlobal, uiDeps = []) {
+// H5 物料的 external（无 Vue 依赖）
+const H5_EXTERNAL_IDS = new Set([
+  'wc-widget-scope', 'wc-i18n', 'lodash', 'axios'
+]);
+
+// ─── Vue3 Wrapper 生成 ───
+function generateVue3Wrapper(widgetName, vueGlobal, uiDeps = []) {
   return `
 import { createApp, h, ref } from 'vue';
-import Component from '__WIDGET_COMPONENT__';
+import Component from '__WIDGET_ENTRY__';
 import { createWidgetScope } from 'wc-widget-scope';
 import { onLocaleChange } from 'wc-i18n';
 
@@ -60,7 +88,7 @@ function getDeclaredPropNames(Component) {
   return Object.keys(props);
 }
 
-// 取某个 prop 的声明类型构造器（简写 / 简写数组 / 完整形式）
+// 取某个 prop 的声明类型构造器
 function getPropType(Component, name) {
   const props = Component && Component.props;
   if (!props || Array.isArray(props)) return null;
@@ -82,7 +110,7 @@ function parseAttrValue(raw, type) {
   try { return JSON.parse(raw); } catch (_) { return raw; }
 }
 
-// 预计算 prop 映射（R2-4：避免每次属性变化都重算数组 + 线性查找，与模板对齐）
+// 预计算 prop 映射
 const individualPropNames = getDeclaredPropNames(Component).filter(n => n !== 'scope');
 const attrToProp = new Map(individualPropNames.map(n => [camelToKebab(n), n]));
 const observedAttrs = [...new Set(individualPropNames.map(camelToKebab))];
@@ -93,16 +121,8 @@ class WidgetElement extends HTMLElement {
     this.app = null;
     this._propsRef = null;
     this._offLocale = null;
-    // 物料组件实例（public proxy）：locale 变化时对其 $forceUpdate 触发重渲染。
-    // 注意：必须 forceUpdate 物料组件本身，而非外壳 root——Vue3 的 shouldUpdateComponent
-    // 在 props 未变时会跳过子组件重渲染，仅替换 _propsRef.value 无法让物料重渲染。
     this._widgetInstance = null;
-    // 稳定的 ref 回调（同一函数引用，避免每次渲染都触发 ref 重设），
-    // 首次挂载时拿到物料组件实例，卸载时置 null。
     this._captureWidget = (el) => { this._widgetInstance = el; };
-    // 每个物料实例创建独立的 widgetScope 软隔离对象，
-    // 物料组件通过 props.scope 接收，而非直接访问 window。
-    // scope 含 context/bus/log/t/request/loader（嵌套加载带循环检测）
     this._scope = createWidgetScope({ name: '${widgetName}' });
     this._widgetScope = this._scope;
   }
@@ -112,7 +132,6 @@ class WidgetElement extends HTMLElement {
   }
 
   connectedCallback() {
-    // 防御性守卫：若未来误引入 attachShadow / defineCustomElement，立即告警
     if (this.shadowRoot) {
       console.error(
         '[widget-wrapper] 物料 ${widgetName} 检测到 shadowRoot，' +
@@ -122,11 +141,8 @@ class WidgetElement extends HTMLElement {
     this._mount();
   }
 
-  // 挂载：仅首次创建 app 与 reactive props ref
   _mount() {
-    if (this.app) return; // 已挂载，属性变化由 _updateProp 处理
-    // props 用 ref 承载，render 中访问 .value 建立响应式依赖；
-    // 任一 prop 变化时整体替换 ref.value，Vue3 自动触发重渲染，无需 unmount/remount
+    if (this.app) return;
     this._propsRef = ref(this._collectProps());
     const hasScopeProp = getDeclaredPropNames(Component).includes('scope');
     this.app = createApp({
@@ -139,8 +155,6 @@ class WidgetElement extends HTMLElement {
         });
       }
     });
-    // P4: 仅注册物料实际使用的 ElementPlus 组件（构建期从源码提取 uiDeps）
-    // 避免 N 个物料每次挂载都全量注册 ElementPlus 所有组件
     const __WIDGET_UI_DEPS__ = ${JSON.stringify(uiDeps)};
     if (typeof window !== 'undefined' && window.ElementPlus && __WIDGET_UI_DEPS__.length > 0) {
       __WIDGET_UI_DEPS__.forEach(function(compName) {
@@ -155,10 +169,6 @@ class WidgetElement extends HTMLElement {
       }, this);
     }
     this.app.mount(this);
-    // locale 变化时对物料组件实例本身调用 $forceUpdate 触发重渲染，
-    // 组件内 t() 自然返回新语言文案（物料组件无需自建 localeTick/onLocaleChange）。
-    // 不能只重赋值 _propsRef.value：props 值未变时 Vue3 的 shouldUpdateComponent 会跳过
-    // 子组件重渲染，物料模板里的 t() 不会被重新求值（已用真实 Vue3 验证）。
     this._offLocale = onLocaleChange(() => {
       if (this._widgetInstance && this._widgetInstance.$forceUpdate) {
         this._widgetInstance.$forceUpdate();
@@ -166,7 +176,6 @@ class WidgetElement extends HTMLElement {
     });
   }
 
-  // 收集所有已设置的独立 prop 属性，按声明类型解析为值
   _collectProps() {
     const result = {};
     for (const [attrName, propName] of attrToProp) {
@@ -177,7 +186,6 @@ class WidgetElement extends HTMLElement {
     return result;
   }
 
-  // 独立 prop 属性变化时更新对应键，整体替换 value 触发重渲染
   _updateProp(propName, newValue) {
     if (!this._propsRef) return;
     this._propsRef.value = {
@@ -200,7 +208,6 @@ class WidgetElement extends HTMLElement {
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    // 首次挂载前 connectedCallback 会统一收集，这里只处理挂载后的变化
     if (oldValue === newValue) return;
     const propName = attrToProp.get(name);
     if (propName && this.app) {
@@ -213,85 +220,285 @@ customElements.define('${widgetName}', WidgetElement);
 `;
 }
 
-export default function widgetVitePlugin(options = {}) {
-  const { name, component, vueGlobal = 'Vue3', autoNamespace = true, scanRisks = true, riskScanPaths, failOnHighRisk = false, enforceScoped = 'error', scopedScanPaths, enforceCssNamespace = 'warn', cssNamespaceScanPaths } = options;
-  if (!name || !component) {
-    throw new Error('[widget-vite-plugin] 请配置 name 和 component');
+// ─── H5 Wrapper 生成 ───
+function generateH5Wrapper(widgetName) {
+  return `
+import widgetEntry from '__WIDGET_ENTRY__';
+import { createWidgetScope } from 'wc-widget-scope';
+import { onLocaleChange } from 'wc-i18n';
+
+// ─── 重要：禁止使用 Shadow DOM ───
+// H5 物料挂载到 light DOM，与基座共享全局样式（主题、字体图标等）。
+
+// 内建最小 scope（wc-widget-scope 不可用时的兜底）
+function createMinimalScope(widgetName) {
+  const meta = Object.freeze({
+    name: widgetName,
+    version: '',
+    host: '',
+    __isWidgetScope: true,
+    __minimal: true
+  });
+  const noop = function() {};
+  return Object.freeze({
+    meta,
+    log: {
+      info: (...a) => console.log('[' + widgetName + ']', ...a),
+      warn: (...a) => console.warn('[' + widgetName + ']', ...a),
+      error: (...a) => console.error('[' + widgetName + ']', ...a),
+      debug: function() {}
+    },
+    context: { get: function() { return {}; }, onChange: function() { return noop; } },
+    bus: { emit: noop, on: function() { return noop; }, once: function() { return noop; } },
+    t: function(k) { return k; },
+    request: function(url, options) {
+      if (typeof globalThis.fetch !== 'function') {
+        return Promise.reject(new Error('[h5-widget-scope] fetch unavailable'));
+      }
+      return globalThis.fetch(url, options);
+    },
+    __noGlobalAccess: true
+  });
+}
+
+// 解析入口
+const widgetOpts = typeof widgetEntry === 'function'
+  ? { render: widgetEntry }
+  : (widgetEntry && typeof widgetEntry === 'object' ? widgetEntry : {});
+
+const { render, onMount, onUnmount, onPropsChange, props: declaredProps } = widgetOpts;
+
+if (typeof render !== 'function') {
+  throw new Error('[h5-widget-wrapper] 物料入口必须 default 导出 render 函数或含 render 的配置对象');
+}
+
+// camelCase → kebab-case
+function camelToKebab(str) {
+  return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+// 按属性值解析为最终值
+function parseAttrValue(raw) {
+  if (raw === null) return undefined;
+  if (raw === '' || raw === 'true') return true;
+  if (raw === 'false') return false;
+  try { return JSON.parse(raw); } catch (_) { return raw; }
+}
+
+const propAttrMap = new Map(
+  (Array.isArray(declaredProps) ? declaredProps : []).map(p => [camelToKebab(p), p])
+);
+
+class H5WidgetElement extends HTMLElement {
+  constructor() {
+    super();
+    this._props = null;
+    this._cleanup = null;
+    this._offLocale = null;
+    try {
+      this._scope = createWidgetScope({ name: '${widgetName}' });
+    } catch (e) {
+      this._scope = createMinimalScope('${widgetName}');
+    }
+    this._widgetScope = this._scope;
   }
 
-  const componentPath = path.resolve(process.cwd(), component);
-  // P4: 构建期从源码提取 UI 依赖列表，注入 wrapper 实现按需注册 ElementPlus 组件
-  let uiDeps = [];
-  try {
-    const source = fs.readFileSync(componentPath, 'utf-8');
-    uiDeps = extractUiDependencies(source);
-  } catch (e) {
-    console.warn(`[widget-vite-plugin] 物料 ${name} UI 依赖提取失败（不影响构建）:`, e.message);
+  static get observedAttributes() {
+    return [...propAttrMap.keys()];
   }
-  const wrapperCode = generateVue3Wrapper(name, vueGlobal, uiDeps);
+
+  _collectProps() {
+    const result = {};
+    for (const [attrName, propName] of propAttrMap) {
+      if (this.hasAttribute(attrName)) {
+        result[propName] = parseAttrValue(this.getAttribute(attrName));
+      }
+    }
+    return result;
+  }
+
+  connectedCallback() {
+    if (this.shadowRoot) {
+      console.error(
+        '[h5-widget-wrapper] 物料 ${widgetName} 检测到 shadowRoot，' +
+        '基座全局样式将无法穿透。请勿使用 attachShadow。'
+      );
+    }
+    this._props = this._collectProps();
+    this._render();
+    if (typeof onMount === 'function') {
+      this._cleanup = onMount(this, this._props, this._scope) || null;
+    }
+    this._offLocale = onLocaleChange(() => this._render());
+  }
+
+  disconnectedCallback() {
+    if (this._offLocale) { this._offLocale(); this._offLocale = null; }
+    if (typeof onUnmount === 'function') {
+      onUnmount(this, this._scope);
+    }
+    if (typeof this._cleanup === 'function') {
+      this._cleanup();
+      this._cleanup = null;
+    }
+    if (this._scope && typeof this._scope.destroy === 'function') this._scope.destroy();
+    this._props = null;
+    this._scope = null;
+    this._widgetScope = null;
+  }
+
+  attributeChangedCallback(attrName, oldValue, newValue) {
+    if (oldValue === newValue) return;
+    const oldProps = this._props;
+    this._props = this._collectProps();
+    this._render();
+    if (typeof onPropsChange === 'function') {
+      onPropsChange(this, this._props, oldProps, this._scope);
+    }
+  }
+
+  _render() {
+    if (typeof render !== 'function') return;
+    const html = render(this._props, this._scope);
+    if (typeof html === 'string') {
+      this.innerHTML = html;
+    }
+  }
+
+  getProps() {
+    return this._props ? Object.assign({}, this._props) : {};
+  }
+
+  getScope() {
+    return this._scope;
+  }
+}
+
+if (!customElements.get('${widgetName}')) {
+  customElements.define('${widgetName}', H5WidgetElement);
+}
+`;
+}
+
+// ─── 简单 UI 依赖提取（从源码中提取 el-xxx 组件名）───
+function extractUiDependencies(source) {
+  const deps = new Set();
+  const re = /<el-([\w-]+)/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    deps.add(m[1]);
+  }
+  // 也匹配 resolveComponent('ElXxx') / resolveComponent('el-xxx')
+  const re2 = /resolveComponent\(['"](?:el-|El)([\w-]+)['"]\)/g;
+  while ((m = re2.exec(source)) !== null) {
+    const name = m[1].replace(/([A-Z])/g, (c, i) => (i ? '-' : '') + c.toLowerCase());
+    deps.add(name);
+  }
+  return [...deps];
+}
+
+/**
+ * 统一物料 Vite 插件
+ * @param {object} options
+ * @param {string} options.name 物料名（Custom Element 标签名）
+ * @param {'h5'|'vue3'} [options.mode='vue3'] 物料模式
+ * @param {string} [options.component] Vue3 物料入口 .vue 文件路径（mode='vue3' 时必填）
+ * @param {string} [options.entry] H5 物料入口 .js 文件路径（mode='h5' 时必填）
+ * @param {string} [options.vueGlobal='Vue3'] Vue 全局变量名（mode='vue3'）
+ * @param {string} [options.cssFileName] CSS 输出文件名（默认同 name）
+ * @param {boolean} [options.autoNamespace=true] 是否开启 PostCSS 自动命名空间
+ */
+export default function widgetVitePlugin(options = {}) {
+  const {
+    name,
+    mode = 'vue3',
+    component,
+    entry,
+    vueGlobal = 'Vue3',
+    cssFileName = name,
+    autoNamespace = true
+  } = options;
+
+  const isH5 = mode === 'h5';
+
+  // 参数校验
+  if (!name) {
+    throw new Error('[widget-vite-plugin] 请配置 name');
+  }
+  if (isH5 && !entry) {
+    throw new Error('[widget-vite-plugin] H5 模式请配置 entry');
+  }
+  if (!isH5 && !component) {
+    throw new Error('[widget-vite-plugin] Vue3 模式请配置 component');
+  }
+
+  const entryPath = isH5
+    ? path.resolve(process.cwd(), entry)
+    : path.resolve(process.cwd(), component);
+
+  if (!fs.existsSync(entryPath)) {
+    throw new Error(`[widget-vite-plugin] 入口文件不存在: ${entryPath}`);
+  }
+
+  // 生成 wrapper 代码
+  const uiDeps = !isH5 ? extractUiDependencies(fs.readFileSync(entryPath, 'utf-8')) : [];
+  const wrapperCode = isH5
+    ? generateH5Wrapper(name)
+    : generateVue3Wrapper(name, vueGlobal, uiDeps);
+
   const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
   fs.writeFileSync(tmpFile, wrapperCode);
 
-  // PostCSS 自动命名空间插件实例（构建期为所有 CSS 选择器自动添加 .{name} 前缀）
   const namespacePlugin = autoNamespace ? createNamespacePlugin(name) : null;
 
+  const externalIds = isH5 ? H5_EXTERNAL_IDS : VUE3_EXTERNAL_IDS;
+
+  const globals = isH5
+    ? {
+        'wc-widget-scope': '__wcWidgetScope__',
+        'wc-i18n': '__wcI18n__',
+        'lodash': '_',
+        'axios': 'axios'
+      }
+    : {
+        vue: vueGlobal,
+        'element-plus': 'ElementPlus',
+        'wc-i18n': '__wcI18n__',
+        'wc-widget-scope': '__wcWidgetScope__',
+        'lodash': '_',
+        'axios': 'axios'
+      };
+
   return {
-    name: 'widget-wrapper-plugin',
-    // 用 enforce: 'pre' 确保我们的 resolveId 在 vite 内置的 vite:resolve 之前运行。
-    // 否则 vite:resolve 会先尝试解析，找不到 wc-i18n（非 npm 包）时返回 null
-    // 并触发"Rollup failed to resolve import"警告，导致构建失败。
+    name: isH5 ? 'h5-widget-wrapper-plugin' : 'widget-wrapper-plugin',
     enforce: 'pre',
-    // 在 resolution 层面标记框架模块为 external（rollup-native 方式）。
-    // 即使 vite lib 模式在 config hook 合并阶段覆盖了 rollupOptions.external，
-    // resolveId 仍能让 rollup 把这些 import 视为外部依赖，不打包进 bundle。
-    // 这是数组/函数形式 external 失效时的兜底方案。
     resolveId(source) {
-      if (EXTERNAL_IDS.has(source)) {
+      if (externalIds.has(source)) {
         return { id: source, external: true };
       }
       return null;
     },
     config: () => ({
       build: {
-        sourcemap: true, // 开启 source map，方便本地调试物料
+        sourcemap: true,
         cssCodeSplit: false,
         lib: {
           entry: tmpFile,
           name,
           fileName: () => `${name}.js`,
-          formats: ['umd']
-          // 注意：lib.cssFileName 是 Vite 6+ 才支持的选项，Vite 5.4 会静默忽略，
-          // CSS 默认输出为 style.css。此处不配置，改由下方 closeBundle 钩子重命名为 ${name}.css。
+          formats: ['umd'],
+          ...(isH5 ? { cssFileName } : {})
         },
         rollupOptions: {
-          // 高频第三方库（lodash/axios）external 化，基座统一加载一份，
-          // 避免 N 个物料各自打包导致体积膨胀与多版本冲突
-          // 用函数形式而非数组：lib 模式 + @vitejs/plugin-vue 等前置插件时，
-          // 数组形式的 external 在 config hook 合并阶段会被 lib 模式自动外部化覆盖，
-          // 导致 wc-i18n 等非 npm 包导入无法外部化。函数形式逐个判定，不受合并影响。
-          external: (id) => EXTERNAL_IDS.has(id),
-          output: {
-            globals: {
-              vue: vueGlobal,
-              'element-plus': 'ElementPlus',
-              // 国际化运行时：基座提供 window.__wcI18n__，物料共享同一实例与 locale 状态
-              'wc-i18n': '__wcI18n__',
-              // 软隔离 scope 运行时：基座提供 window.__wcWidgetScope__ = { createWidgetScope }
-              'wc-widget-scope': '__wcWidgetScope__',
-              // 高频库全局变量：lodash → window._，axios → window.axios
-              'lodash': '_',
-              'axios': 'axios'
-            }
-          }
+          external: (id) => externalIds.has(id),
+          output: { globals }
         }
       },
       resolve: {
         alias: {
-          __WIDGET_COMPONENT__: componentPath
+          __WIDGET_ENTRY__: entryPath
         }
       },
-      // PostCSS 自动命名空间：vite 内部用 postcss 处理 CSS，
-      // 通过 css.postcss.plugins 注入命名空间插件
       ...(namespacePlugin ? {
         css: {
           postcss: {
@@ -300,132 +507,28 @@ export default function widgetVitePlugin(options = {}) {
         }
       } : {})
     }),
-    // 构建完成后自动生成 schema.json
     closeBundle() {
-      const outputDir = path.resolve(process.cwd(), 'dist');
-
       // ─── CSS 文件重命名（Vite 5.4 兼容）───
-      // Vite 5.4 的 LibraryOptions 不支持 cssFileName（Vite 6+ 才支持），
-      // lib 模式下 CSS 默认输出为 style.css。多个物料构建到同一 dist 会互相覆盖，
-      // 且与 widget registry 约定的 ${name}.css 命名不一致。
-      // 此处在产物写入后重命名为 ${name}.css。
-      try {
-        const defaultCssPath = path.join(outputDir, 'style.css');
-        const targetCssPath = path.join(outputDir, `${name}.css`);
-        if (fs.existsSync(defaultCssPath)) {
-          fs.renameSync(defaultCssPath, targetCssPath);
-        }
-      } catch (e) {
-        console.warn(`[widget-vite-plugin] 物料 ${name} CSS 重命名失败:`, e.message);
-      }
-
-      try {
-        if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-        writeSchema(name, componentPath, path.join(outputDir, `${name}.schema.json`));
-      } catch (e) {
-        console.warn(`[widget-vite-plugin] 物料 ${name} 自动生成 schema.json 失败:`, e.message);
-      }
-
-      // ─── 强制 Vue scoped CSS 检测（构建期）───
-      // 物料 <style> 不加 scoped 会泄漏全局污染基座；
-      // policy: 'error' 报错(默认) / 'auto-add' 自动补 scoped / 'warn' 告警 / 'off' 关闭
-      if (enforceScoped && enforceScoped !== 'off') {
-        let scopedResults = [];
+      // Vue3 模式：Vite 5.4 lib 不支持 cssFileName，CSS 默认输出 style.css
+      // H5 模式：cssFileName 在 Vite 6+ 才生效，5.4 仍输出 style.css
+      if (!isH5) {
         try {
-          const scanPaths = (scopedScanPaths && scopedScanPaths.length)
-            ? scopedScanPaths
-            : [path.dirname(componentPath)];
-          scanPaths.forEach(p => {
-            const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-            const { results } = checkScopedDir(abs, { policy: enforceScoped });
-            scopedResults = scopedResults.concat(results);
-          });
-        } catch (scopedErr) {
-          console.warn('[widget-vite-plugin] scoped 检测失败（不影响构建）:', scopedErr.message);
-        }
-        if (scopedResults.length > 0) {
-          const report = formatScopedResults(scopedResults);
-          if (enforceScoped === 'error') {
-            throw new Error(
-              `[widget-vite-plugin] 物料 ${name} 存在未加 scoped 的 <style>，构建被中止（设置 enforceScoped:'auto-add' 可自动补全，'warn' 仅告警）:\n${report}`
-            );
-          } else if (enforceScoped === 'auto-add') {
-            console.warn(`\n[widget-vite-plugin] 物料 ${name} 已自动为 <style> 补上 scoped:\n${report}`);
-          } else {
-            console.warn(`\n[widget-vite-plugin] 物料 ${name} 存在未加 scoped 的 <style>（仅告警）:\n${report}`);
+          const outputDir = path.resolve(process.cwd(), 'dist');
+          const defaultCssPath = path.join(outputDir, 'style.css');
+          const targetCssPath = path.join(outputDir, `${name}.css`);
+          if (fs.existsSync(defaultCssPath)) {
+            fs.renameSync(defaultCssPath, targetCssPath);
           }
+        } catch (e) {
+          console.warn(`[widget-vite-plugin] 物料 ${name} CSS 重命名失败:`, e.message);
         }
       }
 
-      // ─── CSS 命名空间检查（构建期）───
-      // 检查 .vue 中选择器是否含 .{name} 命名空间前缀（物料级隔离），
-      // 与 postcss-namespace 自动加前缀互补：postcss 负责"自动修复"，
-      // 此检查负责"发现遗漏"（如 autoNamespace=false 或全局样式泄漏）。
-      // policy: 'error' 报错 / 'warn' 告警(默认) / 'off' 关闭
-      if (enforceCssNamespace && enforceCssNamespace !== 'off') {
-        let nsIssues = [];
-        try {
-          const scanPaths = (cssNamespaceScanPaths && cssNamespaceScanPaths.length)
-            ? cssNamespaceScanPaths
-            : [path.dirname(componentPath)];
-          scanPaths.forEach(p => {
-            const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-            const { issues } = checkCssNamespace(abs, name);
-            nsIssues = nsIssues.concat(issues);
-          });
-        } catch (nsErr) {
-          console.warn('[widget-vite-plugin] 命名空间检查失败（不影响构建）:', nsErr.message);
-        }
-        if (nsIssues.length > 0) {
-          const report = formatCssIssues(nsIssues);
-          if (enforceCssNamespace === 'error') {
-            throw new Error(
-              `[widget-vite-plugin] 物料 ${name} 存在 ${nsIssues.length} 个未加命名空间的选择器，构建被中止（设置 enforceCssNamespace:'warn' 降级，或确认 autoNamespace 已开启）:\n${report}`
-            );
-          } else {
-            console.warn(`\n[widget-vite-plugin] 物料 ${name} 存在未加命名空间的选择器（仅告警）:\n${report}`);
-          }
-        }
-      }
-
-      // ─── JS 危险 API 静态扫描（构建期）───
-      // 扫描物料源码中的危险模式（document.body 挂载、window 赋值、全局注册等），
-      // 默认仅告警；failOnHighRisk=true 时发现高风险则抛错让构建失败。
-      if (scanRisks) {
-        try {
-          const scanPaths = (riskScanPaths && riskScanPaths.length)
-            ? riskScanPaths
-            : [path.dirname(componentPath)];
-          const allFindings = [];
-          scanPaths.forEach(p => {
-            const abs = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-            const { findings } = scanTarget(abs);
-            allFindings.push(...findings);
-          });
-          if (allFindings.length > 0) {
-            const highCount = allFindings.filter(f => f.level === 'high').length;
-            const report = formatFindings(allFindings);
-            if (highCount > 0) {
-              console.warn(`\n[widget-vite-plugin] 物料 ${name} 危险 API 扫描发现高风险:\n${report}`);
-              if (failOnHighRisk) {
-                throw new Error(
-                  `[widget-vite-plugin] 物料 ${name} 存在 ${highCount} 个高风险 API 调用，构建被中止（设置 failOnHighRisk:false 可降级为告警）:\n${report}`
-                );
-              }
-            } else {
-              console.warn(`\n[widget-vite-plugin] 物料 ${name} 危险 API 扫描（仅中风险，告警）:\n${report}`);
-            }
-          }
-        } catch (scanErr) {
-          if (failOnHighRisk && scanErr && scanErr.message && scanErr.message.includes('高风险')) {
-            throw scanErr;
-          }
-          console.warn('[widget-vite-plugin] 危险 API 扫描失败（不影响构建）:', scanErr.message);
-        }
-      }
-
-      // 清理临时 wrapper 文件，避免 tmp 目录堆积
+      // 清理临时 wrapper 文件
       try { fs.unlinkSync(tmpFile); } catch (_) {}
     }
   };
 }
+
+// 导出 wrapper 生成函数，供外部复用
+export { generateVue3Wrapper, generateH5Wrapper };

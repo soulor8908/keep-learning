@@ -25,7 +25,6 @@ import { t } from 'wc-i18n';
 export default {
   name: 'FinancePanel',
   props: {
-    // 扁平化 props：宿主按 kebab-case attribute 逐项传入，包装层按声明类型解析
     title: {
       type: String,
       default: ''
@@ -37,6 +36,10 @@ export default {
     currency: {
       type: String,
       default: 'CNY'
+    },
+    scope: {
+      type: Object,
+      default: null
     }
   },
   setup() {
@@ -54,10 +57,9 @@ export default {
     ];
 
     onMounted(() => {
-      if (window.widgetBus) {
-        window.widgetBus.emit('widget:loaded', { widget: 'bi-finance-panel' });
-        // 演示跨技术栈通信：监听全局刷新指令
-        window.widgetBus.on('refresh-data', () => {
+      if (props.scope && props.scope.bus) {
+        props.scope.bus.emit('widget:loaded', { widget: 'bi-finance-panel' });
+        props.scope.bus.on('refresh-data', () => {
           summary.value.income += Math.floor(Math.random() * 5000);
           summary.value.expense += Math.floor(Math.random() * 2000);
         });

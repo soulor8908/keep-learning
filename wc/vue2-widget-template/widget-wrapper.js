@@ -99,7 +99,11 @@ export function createWidgetWrapper(Component, widgetName) {
       this._offLocale = null;
       // 每个物料实例创建独立的 widgetScope 软隔离对象，
       // 物料组件通过 props.scope 接收，而非直接访问 window
-      this._scope = createWidgetScope({ name: widgetName });
+      // 使用全局 bus 实例，确保 scope.bus 与基座总线共享同一通道
+      this._scope = createWidgetScope({
+        name: widgetName,
+        busInstance: window.__wcGlobalBus__ || undefined
+      });
       this._widgetScope = this._scope;
     }
 

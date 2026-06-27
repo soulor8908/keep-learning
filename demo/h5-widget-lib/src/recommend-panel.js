@@ -51,9 +51,9 @@ export default {
       const card = e.currentTarget;
       const id = card.getAttribute('data-id');
       const name = card.querySelector('.bi-recommend-panel__name').textContent;
-      // 通过 widget-bus 发出业务事件
-      if (window.widgetBus) {
-        window.widgetBus.emit('recommend:expose', { id, name });
+      // 通过 scope.bus 发出业务事件
+      if (scope && scope.bus) {
+        scope.bus.emit('recommend:expose', { id, name });
       }
     };
     cards.forEach(c => c.addEventListener('click', handler));
