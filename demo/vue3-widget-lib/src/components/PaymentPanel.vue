@@ -9,13 +9,13 @@
     </div>
     <div class="methods">
       <el-button
-        v-for="m in methods"
-        :key="m.id"
-        :type="m.id === selected ? 'primary' : 'default'"
+        v-for="m in methodIds"
+        :key="m"
+        :type="m === selected ? 'primary' : 'default'"
         size="small"
         @click="select(m)"
       >
-        {{ m.label }}
+        {{ t('payment.method_' + m) }}
       </el-button>
     </div>
     <el-button type="primary" class="pay-btn" @click="pay">{{ t('payment.pay_now') }}</el-button>
@@ -34,7 +34,10 @@ addMessages('zh', {
     title: '支付区域',
     team_tag: 'B 业务团队 · Vue3',
     pending: '待支付',
-    pay_now: '立即支付'
+    pay_now: '立即支付',
+    method_alipay: '支付宝',
+    method_wechat: '微信支付',
+    method_card: '银行卡'
   }
 });
 addMessages('en', {
@@ -42,7 +45,10 @@ addMessages('en', {
     title: 'Payment',
     team_tag: 'Team B · Vue3',
     pending: 'Pending',
-    pay_now: 'Pay Now'
+    pay_now: 'Pay Now',
+    method_alipay: 'Alipay',
+    method_wechat: 'WeChat Pay',
+    method_card: 'Bank Card'
   }
 });
 
@@ -68,24 +74,29 @@ export default {
   },
   setup(props) {
     const selected = ref(null);
-    const methods = computed(() => props.methods || []);
+    // methods prop 现在为字符串数组 ['alipay', 'wechat', 'card']
+    const methodIds = computed(() => {
+      const m = props.methods;
+      if (!Array.isArray(m)) return [];
+      return m.map(item => typeof item === 'string' ? item : (item && item.id) || '');
+    });
     const amount = computed(() => Number(props.amount || 0));
 
     function select(m) {
-      selected.value = m.id;
+      selected.value = m;
     }
 
     function pay() {
-      const m = methods.value.find(x => x.id === selected.value);
-      if (!m) return;
+      const methodId = selected.value;
+      if (!methodId) return;
       if (props.scope && props.scope.bus) {
-        props.scope.bus.emit('payment:success', { method: m.label, amount: amount.value });
+        props.scope.bus.emit('payment:success', { method: methodId, amount: amount.value });
       }
     }
 
     // 直接暴露 t：wrapper 在 locale 变化时 $forceUpdate 物料实例，
     // 模板重新求值 t('xxx') 即可拿到新语言文案
-    return { selected, methods, amount, select, pay, t };
+    return { selected, methodIds, amount, select, pay, t };
   }
 };
 </script>

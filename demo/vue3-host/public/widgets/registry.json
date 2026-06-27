@@ -2,254 +2,55 @@
   {
     "name": "bi-filter-bar",
     "vueVersion": "2",
-    "js": "/widgets/bi-filter-bar.js",
-    "props": {
-      "title": "Vue3 基座 · 筛选栏",
-      "filters": [
-        {
-          "field": "region",
-          "label": "地区",
-          "default": "all",
-          "options": [
-            {
-              "value": "all",
-              "label": "全部"
-            },
-            {
-              "value": "east",
-              "label": "华东"
-            },
-            {
-              "value": "west",
-              "label": "华西"
-            },
-            {
-              "value": "north",
-              "label": "华北"
-            },
-            {
-              "value": "south",
-              "label": "华南"
-            }
-          ]
-        },
-        {
-          "field": "period",
-          "label": "周期",
-          "default": "month",
-          "options": [
-            {
-              "value": "day",
-              "label": "日"
-            },
-            {
-              "value": "week",
-              "label": "周"
-            },
-            {
-              "value": "month",
-              "label": "月"
-            },
-            {
-              "value": "year",
-              "label": "年"
-            }
-          ]
-        }
-      ]
-    }
+    "js": "/widgets/bi-filter-bar.js"
   },
   {
     "name": "bi-data-source",
     "vueVersion": "3",
     "js": "/widgets/bi-data-source.js",
-    "props": {
-      "title": "Vue3 基座 · 数据源面板",
-      "metrics": [
-        {
-          "id": "sales",
-          "name": "销售额",
-          "value": 128000,
-          "unit": "元"
-        },
-        {
-          "id": "orders",
-          "name": "订单数",
-          "value": 342,
-          "unit": "单"
-        },
-        {
-          "id": "users",
-          "name": "活跃用户",
-          "value": 1560,
-          "unit": "人"
-        }
-      ],
-      "refreshInterval": 0
-    },
     "css": "/widgets/bi-data-source.css"
   },
   {
     "name": "bi-metric-cards",
     "vueVersion": "3",
     "js": "/widgets/bi-metric-cards.js",
-    "props": {
-      "title": "Vue3 基座 · 指标卡组",
-      "cards": [
-        {
-          "id": "growth",
-          "label": "增长率",
-          "value": "23.5%",
-          "trend": "up",
-          "trendValue": "5.2%",
-          "extra": "同比上月"
-        },
-        {
-          "id": "retention",
-          "label": "留存率",
-          "value": "68.2%",
-          "trend": "down",
-          "trendValue": "2.1%",
-          "extra": "7日留存"
-        },
-        {
-          "id": "conversion",
-          "label": "转化率",
-          "value": "4.8%",
-          "trend": "up",
-          "trendValue": "0.8%",
-          "extra": "下单转化"
-        },
-        {
-          "id": "revenue",
-          "label": "客单价",
-          "value": "¥374",
-          "trend": "up",
-          "trendValue": "12元",
-          "extra": "平均订单金额"
-        }
-      ]
-    },
     "css": "/widgets/bi-metric-cards.css"
   },
   {
     "name": "bi-chart-panel",
     "vueVersion": "3",
-    "js": "/widgets/bi-chart-panel.js",
-    "props": {
-      "title": "Vue3 基座 · 图表面板",
-      "chartType": "bar"
-    }
+    "js": "/widgets/bi-chart-panel.js"
   },
   {
     "name": "bi-event-tester",
     "vueVersion": "2",
-    "js": "/widgets/bi-event-tester.js",
-    "props": {
-      "title": "Vue3 基座 · 事件测试器"
-    }
+    "js": "/widgets/bi-event-tester.js"
   },
   {
     "name": "bi-crash-tester",
     "vueVersion": "3",
     "js": "/widgets/bi-crash-tester.js",
-    "props": {
-      "title": "Vue3 基座 · 崩溃测试器"
-    },
     "css": "/widgets/bi-crash-tester.css"
   },
   {
     "name": "bi-orders-panel",
     "vueVersion": "2",
-    "js": "/widgets/bi-orders-panel.js",
-    "props": {
-      "title": "订单区",
-      "orders": [
-        {
-          "id": "ORD-1001",
-          "name": "无线蓝牙耳机",
-          "amount": 299,
-          "status": "已支付"
-        },
-        {
-          "id": "ORD-1002",
-          "name": "机械键盘",
-          "amount": 588,
-          "status": "待发货"
-        },
-        {
-          "id": "ORD-1003",
-          "name": "4K 显示器",
-          "amount": 2199,
-          "status": "已发货"
-        },
-        {
-          "id": "ORD-1004",
-          "name": "人体工学椅",
-          "amount": 1299,
-          "status": "已完成"
-        }
-      ]
-    }
+    "js": "/widgets/bi-orders-panel.js"
   },
   {
     "name": "bi-payment-panel",
     "vueVersion": "3",
     "js": "/widgets/bi-payment-panel.js",
-    "props": {
-      "title": "支付区",
-      "amount": 4385,
-      "methods": [
-        {
-          "id": "alipay",
-          "label": "支付宝"
-        },
-        {
-          "id": "wechat",
-          "label": "微信支付"
-        },
-        {
-          "id": "card",
-          "label": "银行卡"
-        }
-      ]
-    },
     "css": "/widgets/bi-payment-panel.css"
   },
   {
     "name": "bi-recommend-panel",
     "vueVersion": "none",
-    "js": "/widgets/bi-recommend-panel.js",
-    "props": {
-      "title": "推荐区",
-      "items": [
-        {
-          "id": "REC-01",
-          "name": "USB-C 扩展坞",
-          "price": 159,
-          "tag": "热销"
-        },
-        {
-          "id": "REC-02",
-          "name": "降噪入耳耳机",
-          "price": 399,
-          "tag": "新品"
-        },
-        {
-          "id": "REC-03",
-          "name": "桌面理线器",
-          "price": 49,
-          "tag": "优惠"
-        }
-      ]
-    }
+    "js": "/widgets/bi-recommend-panel.js"
   },
   {
     "name": "bi-load-fail-test",
     "vueVersion": "2",
-    "js": "/widgets/bi-not-exist.js",
-    "props": {
-      "title": "加载失败测试（应降级）"
-    }
+    "js": "/widgets/bi-not-exist.js"
   }
 ]

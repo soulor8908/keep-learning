@@ -3,7 +3,7 @@
     <el-row :gutter="16">
       <el-col :span="8" v-for="m in displayMetrics" :key="m.id">
         <!-- el-statistic 的 suffix 通过 prop 传递，避免 isCustomElement 模式下 #suffix slot 编译问题 -->
-        <el-statistic :title="m.name" :value="m.value" :suffix="m.unit" />
+        <el-statistic :title="t('dataSource.metric_' + m.id + '_name')" :value="m.value" :suffix="t('dataSource.metric_' + m.id + '_unit')" />
       </el-col>
     </el-row>
     <div class="bi-ds-actions">
@@ -19,8 +19,30 @@ import { t, addMessages } from 'wc-i18n';
 // 模块顶层注册私有文案：确保首屏渲染前字典已就绪，避免初始显示 key。
 // 语言切换的响应式由 wrapper 基础设施层统一处理（对物料实例 $forceUpdate），
 // 组件只需在模板里直接调用 t()，无需自建 localeTick / onLocaleChange。
-addMessages('zh', { dataSource: { title: '数据源', refresh: '刷新数据' } });
-addMessages('en', { dataSource: { title: 'Data Source', refresh: 'Refresh Data' } });
+addMessages('zh', {
+  dataSource: {
+    title: '数据源',
+    refresh: '刷新数据',
+    metric_sales_name: '销售额',
+    metric_sales_unit: '元',
+    metric_orders_name: '订单数',
+    metric_orders_unit: '单',
+    metric_users_name: '活跃用户',
+    metric_users_unit: '人'
+  }
+});
+addMessages('en', {
+  dataSource: {
+    title: 'Data Source',
+    refresh: 'Refresh Data',
+    metric_sales_name: 'Revenue',
+    metric_sales_unit: 'CNY',
+    metric_orders_name: 'Orders',
+    metric_orders_unit: '',
+    metric_users_name: 'Active Users',
+    metric_users_unit: ''
+  }
+});
 
 defineOptions({ name: 'BiDataSource' });
 
@@ -56,7 +78,7 @@ const displayMetrics = computed(() => {
   const kw = activeFilter.value.trim();
   if (!kw) return localMetrics.value;
   return localMetrics.value.filter(
-    (m) => String(m.name).includes(kw) || String(m.id).includes(kw)
+    (m) => String(t('dataSource.metric_' + m.id + '_name')).includes(kw) || String(m.id).includes(kw)
   );
 });
 

@@ -65,7 +65,15 @@ function createMinimalScope(widgetName) {
     },
     context: { get: () => ({}), onChange: () => noop },
     bus,
-    t: (k) => k,
+    // 委托到全局 wc-i18n 实例（若存在），使 H5 物料可通过 scope.t(key) 获取翻译
+    // 每次调用时动态查找，确保 locale 切换后读取到最新翻译
+    // 独立运行时（无基座）回退到返回 key 本身
+    t: (k, params) => {
+      if (typeof window !== 'undefined' && window.__wcI18n__ && typeof window.__wcI18n__.t === 'function') {
+        return window.__wcI18n__.t(k, params);
+      }
+      return k;
+    },
     request: (url, options) => {
       if (typeof globalThis.fetch !== 'function') {
         return Promise.reject(new Error('[h5-widget-scope] fetch unavailable'));

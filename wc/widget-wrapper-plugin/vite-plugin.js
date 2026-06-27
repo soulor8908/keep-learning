@@ -234,7 +234,12 @@ function createMinimalScope(widgetName) {
     },
     context: { get: function() { return {}; }, onChange: function() { return noop; } },
     bus: { emit: noop, on: function() { return noop; }, once: function() { return noop; } },
-    t: function(k) { return k; },
+    t: function(k, params) {
+      if (typeof window !== 'undefined' && window.__wcI18n__ && typeof window.__wcI18n__.t === 'function') {
+        return window.__wcI18n__.t(k, params);
+      }
+      return k;
+    },
     request: function(url, options) {
       if (typeof globalThis.fetch !== 'function') {
         return Promise.reject(new Error('[h5-widget-scope] fetch unavailable'));

@@ -6,7 +6,7 @@
         <div class="chart-bar-track">
           <div class="chart-bar-fill" :style="{ height: barHeight(m.value) + '%' }"></div>
         </div>
-        <div class="chart-bar-label">{{ m.name }}</div>
+        <div class="chart-bar-label">{{ t('dataSource.metric_' + m.id + '_name') }}</div>
         <div class="chart-bar-value">{{ m.value }}</div>
       </div>
     </div>
