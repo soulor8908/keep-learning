@@ -124,16 +124,28 @@ function addLog(type, msg) {
   if (logs.value.length > 30) logs.value.pop();
 }
 
+// 物料名称 -> 容器 ref 映射表（新增/删除物料只需在此处加一行 + 模板中加对应 ref）
+const widgetContainerMap = {
+  'bi-filter-bar': filterBar,
+  'bi-data-source': dataSource,
+  'bi-metric-cards': metricCards,
+  'bi-chart-panel': chartPanel,
+  'bi-event-tester': eventTester,
+  'bi-crash-tester': crashTester,
+  'bi-load-fail-test': loadFailTest
+};
+
 async function mountAll() {
-  const refs = [filterBar, dataSource, metricCards, chartPanel, eventTester, crashTester, loadFailTest];
-  for (let i = 0; i < widgets.length && i < refs.length; i++) {
+  for (const [widgetName, containerRef] of Object.entries(widgetContainerMap)) {
+    const widget = widgets.find(w => w.name === widgetName);
+    if (!widget) continue;
     try {
-      const el = await mountWidget(refs[i].value, widgets[i]);
-      if (widgets[i].name === 'bi-event-tester') {
+      const el = await mountWidget(containerRef.value, widget);
+      if (widgetName === 'bi-event-tester') {
         eventTesterElement = el;
       }
     } catch (err) {
-      addLog('error', `[mount-fail] ${widgets[i].name}: ${(err.message || '').split('\n')[0]}`);
+      addLog('error', `[mount-fail] ${widgetName}: ${(err.message || '').split('\n')[0]}`);
     }
   }
 }

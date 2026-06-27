@@ -55,6 +55,9 @@ export function createBus(namespace) {
     };
   }
 
+  // 注意：off() 在 handler() 之前调用，与 Node.js EventEmitter.once 语义一致。
+  // 这确保 handler 内同步 emit 同类型事件时不会触发递归调用（因为已 off）。
+  // 若需 handler 执行期间仍能接收同类型事件，应使用 on() 而非 once()。
   function once(type, handler) {
     const off = on(type, (payload, event) => {
       off();

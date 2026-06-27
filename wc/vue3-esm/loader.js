@@ -1,3 +1,8 @@
+/**
+ * @deprecated 本模块是早期实验性方案，与主 widget-loader 体系脱节。
+ * 新物料请使用主 widget-loader + vue3-widget-template 方案。
+ */
+
 import { h, render, ref, onMounted, onUnmounted } from 'vue';
 
 const cache = new Map();
@@ -34,7 +39,13 @@ async function load(url, importer) {
 
 const defaultImporter = (url) => import(/* @vite-ignore */ url);
 
+let _deprecationWarned = false;
+
 export async function mountWidget(container, url, props = {}, importer) {
+  if (!_deprecationWarned) {
+    _deprecationWarned = true;
+    console.warn('[wc/vue3-esm] DEPRECATED: 本模块已废弃，请使用主 widget-loader + vue3-widget-template 方案');
+  }
   const doImport = importer || defaultImporter;
   const comp = await load(url, doImport).catch((err) => {
     console.error('[vue3-esm] load failed:', url, err);

@@ -170,6 +170,12 @@ module.exports = function widgetVueCliPlugin(options = {}) {
       const devEntryFile = path.join(os.tmpdir(), `widget-dev-entry-${name}-${Date.now()}.js`);
       fs.writeFileSync(devEntryFile, devEntryCode);
 
+      // ─── 异常退出时清理临时文件（Ctrl+C / kill）───
+      const onDevSigInt = () => { try { fs.unlinkSync(devEntryFile); } catch (_) {} process.exit(130); };
+      const onDevSigTerm = () => { try { fs.unlinkSync(devEntryFile); } catch (_) {} process.exit(143); };
+      process.on('SIGINT', onDevSigInt);
+      process.on('SIGTERM', onDevSigTerm);
+
       // 替换入口为 dev preview
       const entryStore = config.entryPoints.store;
       const entryNames = Array.from(entryStore.keys());
@@ -213,6 +219,8 @@ module.exports = function widgetVueCliPlugin(options = {}) {
           compiler.hooks.done.tap('widget-dev-cleanup', () => {
             if (compiler.options.watch) return;
             try { fs.unlinkSync(devEntryFile); } catch (_) {}
+            process.removeListener('SIGINT', onDevSigInt);
+            process.removeListener('SIGTERM', onDevSigTerm);
           });
         }
       });
@@ -223,6 +231,12 @@ module.exports = function widgetVueCliPlugin(options = {}) {
     const wrapperCode = generateVue2Wrapper(name, vueGlobal);
     const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
     fs.writeFileSync(tmpFile, wrapperCode);
+
+    // ─── 异常退出时清理临时文件（Ctrl+C / kill）───
+    const onBuildSigInt = () => { try { fs.unlinkSync(tmpFile); } catch (_) {} process.exit(130); };
+    const onBuildSigTerm = () => { try { fs.unlinkSync(tmpFile); } catch (_) {} process.exit(143); };
+    process.on('SIGINT', onBuildSigInt);
+    process.on('SIGTERM', onBuildSigTerm);
 
     // 替换入口为 wrapper
     const entryStore = config.entryPoints.store;
@@ -286,6 +300,8 @@ module.exports = function widgetVueCliPlugin(options = {}) {
         compiler.hooks.done.tap('widget-wrapper-cleanup', stats => {
           if (compiler.options.watch) return;
           try { fs.unlinkSync(tmpFile); } catch (_) {}
+          process.removeListener('SIGINT', onBuildSigInt);
+          process.removeListener('SIGTERM', onBuildSigTerm);
         });
       }
     });

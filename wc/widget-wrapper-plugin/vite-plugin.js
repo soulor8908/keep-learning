@@ -570,6 +570,22 @@ export default function widgetVitePlugin(options = {}) {
   const tmpFile = path.join(os.tmpdir(), `widget-wrapper-${name}-${Date.now()}.js`);
   fs.writeFileSync(tmpFile, wrapperCode);
 
+  // dev-preview 模式标志，在 config hook 中根据 command 判定
+  let isDevPreview = false;
+  let devEntryFile = null;
+
+  // ─── 异常退出时清理临时文件（Ctrl+C / kill）───
+  const cleanupTempFiles = () => {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    if (devEntryFile) {
+      try { fs.unlinkSync(devEntryFile); } catch (_) {}
+    }
+  };
+  const onSigInt = () => { cleanupTempFiles(); process.exit(130); };
+  const onSigTerm = () => { cleanupTempFiles(); process.exit(143); };
+  process.on('SIGINT', onSigInt);
+  process.on('SIGTERM', onSigTerm);
+
   const namespacePlugin = autoNamespace ? createNamespacePlugin(name) : null;
 
   const externalIds = isH5 ? H5_EXTERNAL_IDS : VUE3_EXTERNAL_IDS;
@@ -613,10 +629,6 @@ export default function widgetVitePlugin(options = {}) {
       devPropNames = match[1].match(/['"](\w+)['"]/g)?.map(s => s.replace(/['"]/g, '')) || [];
     }
   }
-
-  // dev-preview 模式标志，在 config hook 中根据 command 判定
-  let isDevPreview = false;
-  let devEntryFile = null;
 
   return {
     name: isH5 ? 'h5-widget-wrapper-plugin' : 'widget-wrapper-plugin',
@@ -722,6 +734,10 @@ export default function widgetVitePlugin(options = {}) {
       if (devEntryFile) {
         try { fs.unlinkSync(devEntryFile); } catch (_) {}
       }
+
+      // 移除信号监听，避免重复清理
+      process.removeListener('SIGINT', onSigInt);
+      process.removeListener('SIGTERM', onSigTerm);
     }
   };
 }

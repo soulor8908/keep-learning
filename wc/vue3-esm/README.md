@@ -1,6 +1,8 @@
 # wc/vue3-esm
 
-最简 Vue3 ESM 远程物料方案：基座通过 `import()` 加载远程物料，直接 `h(Component, props)` 渲染。
+> **DEPRECATED** -- 本模块是早期实验性方案，与主 `widget-loader` 体系脱节（不走 checkDependencies 版本校验、
+> widget-scope 软隔离、widget-context 上下文注入、i18n 国际化、错误边界/降级占位）。
+> 新物料请使用主 `widget-loader` + `vue3-widget-template` 方案。本模块保留仅供历史参考，后续可能移除。
 
 ## 核心文件
 
