@@ -12,6 +12,8 @@ const widgets = fs.readdirSync(widgetsDir)
 
 console.log(`Building ${widgets.length} vue3 widgets...`);
 
+const outDir = resolve(__dirname, 'dist');
+
 for (const name of widgets) {
   await build({
     configFile: false,
@@ -20,7 +22,7 @@ for (const name of widgets) {
     build: {
       lib: {
         entry: resolve(widgetsDir, name, 'index.js'),
-        name: `bi${name.charAt(0).toUpperCase() + name.slice(1).replace(/-([a-z])/g, (_, c) => c.toUpperCase())}`,
+        name,   // UMD 全局变量名 = 目录名，不再做 bi 前缀 + camelCase 转换
         formats: ['umd'],
         fileName: () => `${name}`,
       },
@@ -40,11 +42,20 @@ for (const name of widgets) {
           },
         },
       },
-      outDir: resolve(__dirname, 'dist'),
+      outDir,
       emptyOutDir: false,
     },
   });
   console.log(`  built: ${name}.js + ${name}.css`);
 }
+
+// 生成 manifest.json，消除运行时 name 猜测的脆弱性
+fs.writeFileSync(
+  resolve(outDir, 'manifest.json'),
+  JSON.stringify({
+    widgets: widgets.map(name => ({ name, js: `${name}.js`, css: `${name}.css` }))
+  }, null, 2)
+);
+console.log('  manifest.json generated.');
 
 console.log('Done.');

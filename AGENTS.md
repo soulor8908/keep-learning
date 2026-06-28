@@ -84,8 +84,8 @@ pnpm dev:widget:h5
 
 - 扫描 `src/widgets/` 下所有子目录
 - 每个目录生成独立的 `{name}.js` + `{name}.css`
-- UMD 全局名自动转换：`my-widget` → `biMyWidget`
-- 产物输出到 `dist/` 目录
+- UMD 全局名 = 目录名（如 `my-widget`），不再做转换
+- 产物输出到 `dist/` 目录，同时生成 `manifest.json`
 
 新增物料只需在 `src/widgets/` 下创建目录，无需修改构建配置。
 

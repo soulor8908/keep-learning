@@ -1,2 +1,2 @@
-export { default as biClockWidget } from './widgets/clock-widget/index.js';
-export { default as biChartWidget } from './widgets/chart-widget/index.js';
+export { default as clockWidget } from './widgets/clock-widget/index.js';
+export { default as chartWidget } from './widgets/chart-widget/index.js';

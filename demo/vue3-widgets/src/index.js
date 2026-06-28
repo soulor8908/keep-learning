@@ -1,2 +1,2 @@
-export { default as biFinancePanel } from './widgets/finance-panel/index.js';
-export { default as biUserPanel } from './widgets/user-panel/index.js';
+export { default as financePanel } from './widgets/finance-panel/index.js';
+export { default as userPanel } from './widgets/user-panel/index.js';

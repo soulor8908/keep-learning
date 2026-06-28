@@ -146,18 +146,18 @@ src/widgets/
     └─ ...
 ```
 
-### 4.2 UMD 全局名转换
+### 4.2 UMD 全局名
 
-目录名自动转换为 UMD 全局名：
+UMD 全局变量名直接等于目录名，不再做转换：
 
 | 目录名 | UMD 全局名 |
 |--------|-----------|
-| `finance-panel` | `biFinancePanel` |
-| `user-panel` | `biUserPanel` |
-| `sales-panel` | `biSalesPanel` |
-| `clock-widget` | `biClockWidget` |
+| `finance-panel` | `finance-panel` |
+| `user-panel` | `user-panel` |
+| `sales-panel` | `sales-panel` |
+| `clock-widget` | `clock-widget` |
 
-转换规则：`bi` + 首字母大写 + kebab 转 camelCase。
+构建完成后会在 `dist/` 目录生成 `manifest.json`，记录所有物料的 name 和文件路径，基座可直接读取配置，无需依赖命名约定。
 
 ### 4.3 产物结构
 

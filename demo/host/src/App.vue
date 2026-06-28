@@ -59,12 +59,12 @@ import { ref, computed } from 'vue';
 import WidgetHost from '@wc/core/WidgetHost.vue';
 
 const WIDGET_REGISTRY = {
-  biSalesPanel: { name: 'biSalesPanel', js: '/widgets/sales-panel.js', vueVersion: '2' },
-  biOrderPanel: { name: 'biOrderPanel', js: '/widgets/order-panel.js', vueVersion: '2' },
-  biFinancePanel: { name: 'biFinancePanel', js: '/widgets/finance-panel.js', vueVersion: '3' },
-  biUserPanel: { name: 'biUserPanel', js: '/widgets/user-panel.js', vueVersion: '3' },
-  biClockWidget: { name: 'biClockWidget', js: '/widgets/clock-widget.js', vueVersion: 'none' },
-  biChartWidget: { name: 'biChartWidget', js: '/widgets/chart-widget.js', vueVersion: 'none' }
+  biSalesPanel: { name: 'sales-panel', js: '/widgets/sales-panel.js', vueVersion: '2' },
+  biOrderPanel: { name: 'order-panel', js: '/widgets/order-panel.js', vueVersion: '2' },
+  biFinancePanel: { name: 'finance-panel', js: '/widgets/finance-panel.js', vueVersion: '3' },
+  biUserPanel: { name: 'user-panel', js: '/widgets/user-panel.js', vueVersion: '3' },
+  biClockWidget: { name: 'clock-widget', js: '/widgets/clock-widget.js', vueVersion: 'none' },
+  biChartWidget: { name: 'chart-widget', js: '/widgets/chart-widget.js', vueVersion: 'none' }
 };
 
 const locale = ref('zh-CN');

@@ -207,18 +207,25 @@ for (const name of widgets) {
 }
 ```
 
-### 4.2 UMD 全局名转换
+### 4.2 UMD 全局名
 
-```js
-// my-widget → biMyWidget
-const globalName = `bi${name.charAt(0).toUpperCase() + name.slice(1).replace(/-([a-z])/g, (_, c) => c.toUpperCase())}`;
-```
+UMD 全局变量名直接等于目录名，不再做 `bi` 前缀 + camelCase 转换：
+
+| 目录名 | UMD 全局名 |
+|--------|-----------|
+| `finance-panel` | `finance-panel` |
+| `user-panel` | `user-panel` |
+| `sales-panel` | `sales-panel` |
+| `clock-widget` | `clock-widget` |
+
+构建完成后会在 `dist/` 目录生成 `manifest.json`，记录所有物料的 name 和文件路径，基座可直接读取配置，无需依赖命名约定。
 
 ### 4.3 关键设计
 
 - **configFile: false**：避免加载已有的 vite.config.js
 - **emptyOutDir: false**：多次构建不清空目录
 - **assetFileNames**：CSS 文件按物料名命名
+- **manifest.json**：构建产物自描述，消除运行时 name 猜测的脆弱性
 
 ---
 

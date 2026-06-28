@@ -19,7 +19,7 @@
 ```vue
 <template>
   <WidgetHost
-    name="biSalesPanel"
+    name="sales-panel"
     js="/widgets/sales-panel.js"
     css="/widgets/sales-panel.css"
     vue-version="2"
@@ -38,7 +38,7 @@ import WidgetHost from '@wc/core/WidgetHost.vue';
 import { mountWidget, unmountWidget } from '@wc/core/loader';
 
 const api = await mountWidget(container, {
-  name: 'biSalesPanel',
+  name: 'sales-panel',
   js: '/widgets/sales-panel.js',
   css: '/widgets/sales-panel.css',
   vueVersion: '2',
@@ -52,7 +52,7 @@ unmountWidget(api);
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `name` | String | 必填 | 物料全局变量名（如 `biFinancePanel`） |
+| `name` | String | 必填 | 物料全局变量名（如 `finance-panel`） |
 | `js` | String | 必填 | UMD JS 文件路径 |
 | `css` | String | `''` | CSS 文件路径（可选） |
 | `vueVersion` | String | `'3'` | Vue 版本：`'2'` / `'3'` / `'none'` |

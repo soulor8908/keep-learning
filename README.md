@@ -112,7 +112,7 @@ export default createVue3Widget(MyWidget, {
 
 ```vue
 <WidgetHost
-  name="biMyWidget"
+  name="my-widget"
   js="/widgets/my-widget.js"
   css="/widgets/my-widget.css"
   vue-version="3"
@@ -123,5 +123,5 @@ export default createVue3Widget(MyWidget, {
 ### 命名规范
 
 - 目录名：`my-widget`（kebab-case）
-- UMD 全局名：`biMyWidget`（自动转换，加 `bi` 前缀）
+- UMD 全局名：`my-widget`（与目录名一致，不再做转换）
 - 文件名：`my-widget.js` + `my-widget.css`

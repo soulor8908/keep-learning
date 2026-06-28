@@ -132,7 +132,7 @@ function unloadStyle(url) {
 
 // ─── 错误降级 ───
 
-function renderError(container, message, canRetry) {
+function renderError(container, message, canRetry, widgetConfig) {
   container.innerHTML = `
     <div class="widget-error" style="padding:12px;border:1px solid #fecaca;border-radius:6px;background:#fef2f2;color:#b91c1c;font-size:13px">
       <div>${message}</div>
@@ -140,9 +140,11 @@ function renderError(container, message, canRetry) {
     </div>
   `;
   if (canRetry) {
+    const savedConfig = widgetConfig || container._widgetConfig;
     container.querySelector('.widget-error__retry')?.addEventListener('click', () => {
+      if (!document.contains(container)) return;
       container.innerHTML = '';
-      mountWidget(container, container._widgetConfig);
+      mountWidget(container, savedConfig);
     });
   }
 }
@@ -184,7 +186,7 @@ export async function mountWidget(container, widget) {
     };
   } catch (err) {
     console.error(`[widget] ${name} 失败:`, err);
-    renderError(container, err.message, true);
+    renderError(container, err.message, true, widget);
     return { unmount: () => {} };
   }
 }
