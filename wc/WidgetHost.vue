@@ -8,15 +8,10 @@ import { mountWidget, unmountWidget } from './loader.js';
 
 const props = defineProps({
   name: { type: String, required: true },
-  js: { type: String, default: '' },
+  js: { type: String, required: true },
   css: { type: String, default: '' },
   vueVersion: { type: String, default: '3' },
   widgetProps: { type: Object, default: () => ({}) },
-  runtimeDeps: { type: Array, default: () => [] },
-  retryable: { type: Boolean, default: true },
-  // 内置 i18n
-  locale: { type: String, default: 'zh-CN' },
-  messages: { type: Object, default: () => ({}) },
   // 生命周期钩子
   onBeforeMount: { type: Function, default: null },
   onMounted: { type: Function, default: null },
@@ -38,16 +33,9 @@ function ensureMountPoint() {
   return host.firstChild;
 }
 
-function t(key) {
-  const dict = props.messages[props.locale];
-  return (dict && dict[key]) || key;
-}
-
 function buildProps() {
   return {
     ...props.widgetProps,
-    locale: props.locale,
-    t,
     emit(eventName, payload) {
       emit('widget-event', { widget: props.name, event: eventName, payload });
     }
@@ -67,9 +55,7 @@ async function doMount() {
     js: props.js,
     css: props.css,
     vueVersion: props.vueVersion,
-    runtimeDeps: props.runtimeDeps,
-    props: buildProps(),
-    retryable: props.retryable
+    props: buildProps()
   });
 
   if (props.onMounted) {
@@ -86,11 +72,10 @@ function doUnmount() {
 }
 
 onMounted(() => { doMount(); });
-
 onUnmounted(() => { doUnmount(); });
 
 watch(
-  () => [props.widgetProps, props.locale, props.messages],
+  () => props.widgetProps,
   async () => {
     doUnmount();
     const host = hostRef.value;

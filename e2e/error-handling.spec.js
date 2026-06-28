@@ -222,9 +222,9 @@ test.describe('错误降级 E2E', () => {
     expect(result.successText).toContain('重试成功');
   });
 
-  // ─── retryable=false 不显示重试按钮 ───
+  // ─── 重试按钮始终可用 ───
 
-  test('retryable=false 时不显示重试按钮', async ({ page }) => {
+  test('加载失败时显示重试按钮', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { mountWidget } = await import('/loader.js');
       const container = document.createElement('div');
@@ -233,8 +233,7 @@ test.describe('错误降级 E2E', () => {
       await mountWidget(container, {
         name: 'biNoRetryWidget',
         js: '/widgets/not-found.js',
-        vueVersion: '3',
-        retryable: false
+        vueVersion: '3'
       });
 
       return {
@@ -244,7 +243,7 @@ test.describe('错误降级 E2E', () => {
     });
 
     expect(result.hasError).toBe(true);
-    expect(result.hasRetryBtn).toBe(false);
+    expect(result.hasRetryBtn).toBe(true);
   });
 
   // ─── 多物料独立降级 ───

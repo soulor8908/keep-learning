@@ -5,26 +5,27 @@
  *   import Component from './Widget.vue';
  *   import { createVue2Widget } from '@wc/templates/vue2.js';
  *   export default createVue2Widget(Component, {
- *     plugins: [ELEMENT]
+ *     plugins: [ELEMENT],
+ *     deps: ['element-ui']
  *   });
  */
 
 /**
  * @param {import('vue').Component} Component
- * @param {{ plugins?: any[] }} [options]
- * @returns {{ mount: Function, unmount: Function }}
+ * @param {{ plugins?: any[], deps?: string[] }} [options]
  */
 export function createVue2Widget(Component, options = {}) {
-  const { plugins = [] } = options;
+  const { plugins = [], deps = [] } = options;
 
-  // Vue.use() 是全局的，只注册一次
   for (const plugin of plugins) {
-    if (plugin && typeof window.Vue2.use === 'function') {
-      window.Vue2.use(plugin);
+    if (plugin && typeof Vue?.use === 'function') {
+      Vue.use(plugin);
     }
   }
 
   return {
+    __widget_meta__: { deps },
+
     mount(container, props = {}) {
       const app = new window.Vue2({
         render: (h) => h(Component, { props })
@@ -33,9 +34,7 @@ export function createVue2Widget(Component, options = {}) {
       return {
         unmount: () => {
           app.$destroy();
-          if (container) {
-            container.innerHTML = '';
-          }
+          if (container) container.innerHTML = '';
         }
       };
     }

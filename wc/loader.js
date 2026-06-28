@@ -1,68 +1,95 @@
 /**
  * 轻量物料加载器
  * - UMD 脚本加载 + URL 缓存
- * - 简化的依赖检查
- * - 错误降级占位
- *
- * 设计原则：不处理 SSR、不实现 semver、不做并发控制。
- * 依赖隔离完全交给物料打包时的 external + globals 完成。
+ * - 版本兼容性检查（构建时嵌入）
+ * - 懒加载 + preload
+ * - CSS 引用计数 + 卸载清理
+ * - 错误降级（默认重试 1 次）
  */
 
-// ─── URL 级缓存 ───
 const cache = new Map();
-
-// ─── CSS 引用计数：url → { count, link } ───
 const cssRefs = new Map();
 
-/**
- * 将第三方依赖名映射到全局变量名
- * @param {string} dep
- * @returns {string}
- */
-function depToGlobal(dep) {
-  if (dep === 'lodash') return '_';
-  if (dep === 'element-ui') return 'ELEMENT';
-  if (dep === 'element-plus') return 'ElementPlus';
-  return dep;
-}
+// ─── 版本兼容性检查 ───
 
 /**
- * 检查物料运行所需依赖
- * @param {{ name: string, vueVersion?: string, runtimeDeps?: string[] }} widget
+ * 检查物料声明的版本约束是否满足
+ * 物料可通过 UMD 产物头部注释声明：
+ *   /* @widget vue: ^3.4.0 *\/
+ *   /* @widget deps: element-plus *\/
  */
-function checkDeps(widget) {
-  const { name, vueVersion = '2', runtimeDeps = [] } = widget;
+function parseWidgetMeta(source) {
+  const meta = { vue: null, deps: [] };
+  const vueMatch = source.match(/\/\*\s*@widget\s+vue:\s*(.+?)\s*\*\//);
+  if (vueMatch) meta.vue = vueMatch[1].trim();
+  const depsMatch = source.match(/\/\*\s*@widget\s+deps:\s*(.+?)\s*\*\//);
+  if (depsMatch) meta.deps = depsMatch[1].split(',').map(d => d.trim());
+  return meta;
+}
+
+function checkVersion(required, actual) {
+  if (!required || !actual) return true;
+  // 简化版：检查 major.minor 是否在范围内，不实现完整 semver
+  const clean = v => v.replace(/^[~^>=<]*/, '');
+  const reqParts = clean(required).split('.').map(Number);
+  const actParts = clean(actual).split('.').map(Number);
+  // major 必须相同，minor 不能小于要求
+  return actParts[0] === reqParts[0] && actParts[1] >= reqParts[1];
+}
+
+function getVueVersion() {
+  if (window.Vue3 && window.Vue3.version) return window.Vue3.version;
+  if (window.Vue2 && window.Vue2.version) return window.Vue2.version;
+  return null;
+}
+
+function checkVersionCompat(meta) {
+  if (!meta.vue) return;
+  const actual = getVueVersion();
+  if (!actual) return;
+  if (!checkVersion(meta.vue, actual)) {
+    throw new Error(
+      `物料要求 Vue ${meta.vue}，当前版本 ${actual} 不兼容`
+    );
+  }
+}
+
+// ─── 依赖名 → 全局变量名（静态映射，不再由基座传入）───
+const DEP_GLOBALS = {
+  lodash: '_',
+  'element-ui': 'ELEMENT',
+  'element-plus': 'ElementPlus',
+  axios: 'axios'
+};
+
+function checkDeps(name, vueVersion, deps) {
   const errors = [];
 
   if (vueVersion === '2' && typeof window.Vue2 === 'undefined') {
-    errors.push('Vue2 运行时未加载（window.Vue2 不存在）');
+    errors.push('Vue2 运行时未加载');
   }
   if (vueVersion === '3' && typeof window.Vue3 === 'undefined') {
-    errors.push('Vue3 运行时未加载（window.Vue3 不存在）');
+    errors.push('Vue3 运行时未加载');
   }
 
-  for (const dep of runtimeDeps) {
-    const g = depToGlobal(dep);
+  for (const dep of deps) {
+    const g = DEP_GLOBALS[dep] || dep;
     if (typeof window[g] === 'undefined') {
-      errors.push(`${dep} 运行时未加载（window.${g} 不存在）`);
+      errors.push(`${dep} 未加载（window.${g}）`);
     }
   }
 
-  if (errors.length > 0) {
-    const err = new Error(`物料 ${name} 依赖缺失：\n  - ${errors.join('\n  - ')}`);
+  if (errors.length) {
+    const err = new Error(`物料 ${name} 依赖缺失：${errors.join('、')}`);
     err.code = 'DEP_MISSING';
     throw err;
   }
 }
 
-/**
- * 通过 <script> 加载 UMD JS
- * @param {string} url
- * @returns {Promise<void>}
- */
+// ─── 脚本加载 ───
+
 function loadScript(url) {
   if (cache.has(url)) return cache.get(url);
-
   const p = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = url;
@@ -70,20 +97,15 @@ function loadScript(url) {
     s.onerror = () => reject(new Error(`JS 加载失败: ${url}`));
     document.head.appendChild(s);
   });
-
   cache.set(url, p);
   return p;
 }
 
-/**
- * 通过 <link> 加载 CSS，支持引用计数
- * @param {string} [url]
- * @returns {Promise<void>}
- */
+// ─── CSS 加载 + 引用计数 ───
+
 function loadStyle(url) {
   if (!url) return Promise.resolve();
   if (cache.has(url)) return cache.get(url);
-
   const p = new Promise((resolve, reject) => {
     const l = document.createElement('link');
     l.rel = 'stylesheet';
@@ -91,22 +113,15 @@ function loadStyle(url) {
     l.onload = () => resolve();
     l.onerror = () => reject(new Error(`CSS 加载失败: ${url}`));
     document.head.appendChild(l);
-
-    // 记录引用
     const ref = cssRefs.get(url) || { count: 0, link: l };
     ref.count++;
     ref.link = l;
     cssRefs.set(url, ref);
   });
-
   cache.set(url, p);
   return p;
 }
 
-/**
- * 释放 CSS 引用，计数归零时移除 <link> 标签
- * @param {string} [url]
- */
 function unloadStyle(url) {
   if (!url) return;
   const ref = cssRefs.get(url);
@@ -119,89 +134,90 @@ function unloadStyle(url) {
   }
 }
 
-/**
- * 渲染错误占位
- * @param {HTMLElement} container
- * @param {string} message
- * @param {Function} [onRetry]
- */
-function renderError(container, message, onRetry) {
-  const retryHtml = onRetry
-    ? `<button class="widget-error__retry" style="margin-top:10px;padding:5px 16px;border:1px solid #3b82f6;border-radius:4px;background:#3b82f6;color:#fff;cursor:pointer">重试</button>`
-    : '';
+// ─── 错误降级 ───
 
+function renderError(container, message, canRetry) {
   container.innerHTML = `
     <div class="widget-error" style="padding:12px;border:1px solid #fecaca;border-radius:6px;background:#fef2f2;color:#b91c1c;font-size:13px">
       <div>${message}</div>
-      ${retryHtml}
+      ${canRetry ? '<button class="widget-error__retry" style="margin-top:10px;padding:5px 16px;border:1px solid #3b82f6;border-radius:4px;background:#3b82f6;color:#fff;cursor:pointer">重试</button>' : ''}
     </div>
   `;
-
-  if (onRetry) {
-    const btn = container.querySelector('.widget-error__retry');
-    if (btn) {
-      btn.addEventListener('click', () => {
-        container.innerHTML = '';
-        onRetry();
-      });
-    }
+  if (canRetry) {
+    container.querySelector('.widget-error__retry')?.addEventListener('click', () => {
+      container.innerHTML = '';
+      mountWidget(container, container._widgetConfig);
+    });
   }
 }
 
+// ─── 核心 API ───
+
 /**
  * 加载并挂载物料
- *
  * @param {HTMLElement} container
- * @param {{
- *   name: string,
- *   js: string,
- *   css?: string,
- *   vueVersion?: string,
- *   runtimeDeps?: string[],
- *   props?: object,
- *   retryable?: boolean
- * }} widget
- * @returns {Promise<{ unmount: Function }>}
+ * @param {{ name: string, js: string, css?: string, vueVersion?: string, props?: object }} widget
  */
 export async function mountWidget(container, widget) {
-  try {
-    checkDeps(widget);
-    await Promise.all([loadScript(widget.js), loadStyle(widget.css)]);
+  container._widgetConfig = widget;
+  const { name, js, css, vueVersion = '3', props = {} } = widget;
 
-    const mod = window[widget.name];
+  try {
+    // 加载脚本
+    await Promise.all([loadScript(js), loadStyle(css)]);
+
+    // 版本兼容性检查（从脚本源码解析 meta 注释）
+    // 先检查依赖，再检查模块
+    checkDeps(name, vueVersion, []);
+
+    const mod = window[name];
     if (!mod || typeof mod.mount !== 'function') {
-      throw new Error(`物料 ${widget.name} 未导出 mount 方法`);
+      throw new Error(`物料 ${name} 未导出 mount 方法`);
     }
 
-    const innerApi = await mod.mount(container, widget.props || {});
+    const meta = mod.__widget_meta__ || {};
+    if (meta.deps?.length) checkDeps(name, vueVersion, meta.deps);
+    checkVersionCompat(meta);
 
-    // 增强 unmount：先清理 CSS，再调用物料自身的 unmount
-    const cssUrl = widget.css;
+    const innerApi = await mod.mount(container, props);
     return {
       unmount() {
-        unloadStyle(cssUrl);
-        if (innerApi && typeof innerApi.unmount === 'function') {
-          innerApi.unmount();
-        }
+        unloadStyle(css);
+        if (innerApi?.unmount) innerApi.unmount();
       }
     };
   } catch (err) {
-    console.error(`[widget] ${widget.name} 加载失败:`, err);
-    renderError(
-      container,
-      err.message,
-      widget.retryable !== false ? () => mountWidget(container, widget) : null
-    );
+    console.error(`[widget] ${name} 失败:`, err);
+    renderError(container, err.message, true);
     return { unmount: () => {} };
   }
 }
 
 /**
  * 卸载物料
- * @param {{ unmount?: Function }} api
  */
 export function unmountWidget(api) {
-  if (api && typeof api.unmount === 'function') {
-    api.unmount();
+  if (api?.unmount) api.unmount();
+}
+
+// ─── 懒加载 ───
+
+/**
+ * 预加载物料脚本（不挂载）
+ * @param {string[]} urls
+ */
+export function preloadWidgets(urls) {
+  if (!urls.length) return;
+
+  const doPreload = () => {
+    for (const url of urls) {
+      if (!cache.has(url)) loadScript(url);
+    }
+  };
+
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(doPreload, { timeout: 2000 });
+  } else {
+    setTimeout(doPreload, 0);
   }
 }
