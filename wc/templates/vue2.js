@@ -5,23 +5,16 @@
  *   import Component from './Widget.vue';
  *   import { createVue2Widget } from '@wc/templates/vue2.js';
  *   export default createVue2Widget(Component, {
- *     plugins: [ELEMENT],
  *     deps: ['element-ui']
  *   });
  */
 
 /**
  * @param {import('vue').Component} Component
- * @param {{ plugins?: any[], deps?: string[] }} [options]
+ * @param {{ deps?: string[] }} [options]
  */
 export function createVue2Widget(Component, options = {}) {
-  const { plugins = [], deps = [] } = options;
-
-  for (const plugin of plugins) {
-    if (plugin && typeof Vue?.use === 'function') {
-      Vue.use(plugin);
-    }
-  }
+  const { deps = [] } = options;
 
   return {
     __widget_meta__: { deps },

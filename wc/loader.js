@@ -15,7 +15,7 @@ const cssRefs = new Map();
 function checkVersion(required, actual) {
   if (!required || !actual) return true;
   // 简化版：检查 major.minor 是否在范围内，不实现完整 semver
-  const clean = v => v.replace(/^[~^>=<]*/, '');
+  const clean = v => v.replace(/^[~^>=<]*/, '').split('-')[0];
   const reqParts = clean(required).split('.').map(Number);
   const actParts = clean(actual).split('.').map(Number);
   // major 必须相同，minor 不能小于要求
@@ -123,8 +123,8 @@ function unloadStyle(url) {
   const ref = cssRefs.get(url);
   if (!ref) return;
   ref.count--;
-  if (ref.count <= 0 && ref.link && ref.link.parentNode) {
-    ref.link.parentNode.removeChild(ref.link);
+  if (ref.count <= 0 && ref.el && ref.el.parentNode) {
+    ref.el.parentNode.removeChild(ref.el);
     cssRefs.delete(url);
     cache.delete(url);
   }
