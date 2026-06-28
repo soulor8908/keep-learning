@@ -124,12 +124,37 @@ function i18nProps(title) {
   return { title, locale: locale.value, t };
 }
 
-const salesProps = computed(() => i18nProps('common.sales'));
-const orderProps = computed(() => i18nProps('common.order'));
-const financeProps = computed(() => i18nProps('common.finance'));
-const userProps = computed(() => i18nProps('common.user'));
+const salesProps = computed(() => ({
+  ...i18nProps('common.sales'),
+  columns: [
+    { prop: 'date', label: 'common.date', width: 120 },
+    { prop: 'name', label: 'common.product', width: 120 },
+    { prop: 'sales', label: 'common.sales_vol', width: 80 },
+    { prop: 'revenue', label: 'common.revenue' }
+  ]
+}));
+
+const orderProps = computed(() => ({
+  ...i18nProps('common.order'),
+  pageSize: 3
+}));
+
+const financeProps = computed(() => ({
+  ...i18nProps('common.finance'),
+  currency: '¥'
+}));
+
+const userProps = computed(() => ({
+  ...i18nProps('common.user'),
+  showEmail: true
+}));
+
 const clockProps = computed(() => i18nProps('common.clock'));
-const chartProps = computed(() => i18nProps('common.chart'));
+
+const chartProps = computed(() => ({
+  ...i18nProps('common.chart'),
+  data: [25, 60, 45, 80, 35]
+}));
 </script>
 
 <style>
