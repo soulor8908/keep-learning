@@ -29,48 +29,55 @@ function getLineCount(filePath) {
 test.describe('体积优化验证', () => {
   // ─── 物料产物体积 ───
 
-  test('Vue2 物料产物 < 7KB', () => {
-    const jsSize = getFileSizeKB(path.join(DEMO_DIR, 'vue2-widgets/dist/vue2-widgets.js'));
-    const cssSize = getFileSizeKB(path.join(DEMO_DIR, 'vue2-widgets/dist/style.css'));
+  test('Vue2 物料产物 < 4KB', () => {
+    const jsSize = getFileSizeKB(path.join(DEMO_DIR, 'vue2-widgets/dist/sales-panel.js'));
+    const cssSize = getFileSizeKB(path.join(DEMO_DIR, 'vue2-widgets/dist/sales-panel.css'));
 
-    console.log(`Vue2 widgets.js: ${jsSize.toFixed(2)} KB`);
-    console.log(`Vue2 style.css: ${cssSize.toFixed(2)} KB`);
-    console.log(`Vue2 total: ${(jsSize + cssSize).toFixed(2)} KB`);
+    console.log(`Vue2 sales-panel.js: ${jsSize.toFixed(2)} KB`);
+    console.log(`Vue2 sales-panel.css: ${cssSize.toFixed(2)} KB`);
 
-    expect(jsSize).toBeLessThan(7);
+    expect(jsSize).toBeLessThan(4);
   });
 
-  test('Vue3 物料产物 < 7KB', () => {
-    const jsSize = getFileSizeKB(path.join(DEMO_DIR, 'vue3-widgets/dist/vue3-widgets.js'));
-    const cssSize = getFileSizeKB(path.join(DEMO_DIR, 'vue3-widgets/dist/style.css'));
+  test('Vue3 物料产物 < 4KB', () => {
+    const jsSize = getFileSizeKB(path.join(DEMO_DIR, 'vue3-widgets/dist/finance-panel.js'));
+    const cssSize = getFileSizeKB(path.join(DEMO_DIR, 'vue3-widgets/dist/finance-panel.css'));
 
-    console.log(`Vue3 widgets.js: ${jsSize.toFixed(2)} KB`);
-    console.log(`Vue3 style.css: ${cssSize.toFixed(2)} KB`);
-    console.log(`Vue3 total: ${(jsSize + cssSize).toFixed(2)} KB`);
+    console.log(`Vue3 finance-panel.js: ${jsSize.toFixed(2)} KB`);
+    console.log(`Vue3 finance-panel.css: ${cssSize.toFixed(2)} KB`);
 
-    expect(jsSize).toBeLessThan(7);
+    expect(jsSize).toBeLessThan(4);
   });
 
-  test('H5 物料产物 < 3KB', () => {
-    const jsSize = getFileSizeKB(path.join(DEMO_DIR, 'h5-widgets/dist/h5-widgets.js'));
+  test('H5 物料产物 < 2KB', () => {
+    const jsSize = getFileSizeKB(path.join(DEMO_DIR, 'h5-widgets/dist/clock-widget.js'));
 
-    console.log(`H5 widgets.js: ${jsSize.toFixed(2)} KB`);
+    console.log(`H5 clock-widget.js: ${jsSize.toFixed(2)} KB`);
 
-    expect(jsSize).toBeLessThan(3);
+    expect(jsSize).toBeLessThan(2);
   });
 
   test('物料库总产物 < 20KB', () => {
-    const vue2Js = getFileSizeKB(path.join(DEMO_DIR, 'vue2-widgets/dist/vue2-widgets.js'));
-    const vue2Css = getFileSizeKB(path.join(DEMO_DIR, 'vue2-widgets/dist/style.css'));
-    const vue3Js = getFileSizeKB(path.join(DEMO_DIR, 'vue3-widgets/dist/vue3-widgets.js'));
-    const vue3Css = getFileSizeKB(path.join(DEMO_DIR, 'vue3-widgets/dist/style.css'));
-    const h5Js = getFileSizeKB(path.join(DEMO_DIR, 'h5-widgets/dist/h5-widgets.js'));
-    const total = vue2Js + vue2Css + vue3Js + vue3Css + h5Js;
+    function dirSize(dir) {
+      let total = 0;
+      for (const f of fs.readdirSync(dir)) {
+        const fp = path.join(dir, f);
+        if (fs.statSync(fp).isFile() && (f.endsWith('.js') || f.endsWith('.css'))) {
+          total += fs.statSync(fp).size;
+        }
+      }
+      return total / 1024;
+    }
+
+    const vue2 = dirSize(path.join(DEMO_DIR, 'vue2-widgets/dist'));
+    const vue3 = dirSize(path.join(DEMO_DIR, 'vue3-widgets/dist'));
+    const h5 = dirSize(path.join(DEMO_DIR, 'h5-widgets/dist'));
+    const total = vue2 + vue3 + h5;
 
     console.log(`Total widget size: ${total.toFixed(2)} KB`);
-    console.log(`  Vue2: ${(vue2Js + vue2Css).toFixed(2)} KB`);
-    console.log(`  Vue3: ${(vue3Js + vue3Css).toFixed(2)} KB`);
-    console.log(`  H5:   ${h5Js.toFixed(2)} KB`);
+    console.log(`  Vue2: ${vue2.toFixed(2)} KB`);
+    console.log(`  Vue3: ${vue3.toFixed(2)} KB`);
+    console.log(`  H5:   ${h5.toFixed(2)} KB`);
 
     expect(total).toBeLessThan(20);
   });

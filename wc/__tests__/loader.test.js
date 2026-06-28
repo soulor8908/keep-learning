@@ -56,6 +56,7 @@ describe('loader', () => {
   });
 
   it('依赖缺失时渲染错误占位', async () => {
+    mockResourceLoader();
     const container = document.getElementById('host');
     await mountWidget(container, {
       name: 'biTestWidget',

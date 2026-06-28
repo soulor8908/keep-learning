@@ -9,6 +9,7 @@ import { mountWidget, unmountWidget, loadScript } from './loader.js';
 const props = defineProps({
   name: { type: String, required: true },
   js: { type: String, required: true },
+  css: { type: String, default: '' },
   vueVersion: { type: String, default: '3' },
   widgetProps: { type: Object, default: () => ({}) },
   onBeforeMount: { type: Function, default: null },
@@ -69,12 +70,13 @@ async function doMount() {
 
   const mod = findWidget(props.name);
   if (mod && typeof mod.mount === 'function') {
-    const innerApi = await mod.mount(mountPoint, props.widgetProps || {});
+    const innerApi = await mod.mount(mountPoint, buildProps());
     widgetApi = { unmount: () => { if (innerApi?.unmount) innerApi.unmount(); } };
   } else {
     widgetApi = await mountWidget(mountPoint, {
       name: props.name,
       js: props.js,
+      css: props.css,
       vueVersion: props.vueVersion,
       props: buildProps()
     });

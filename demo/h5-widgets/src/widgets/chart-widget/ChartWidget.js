@@ -32,7 +32,7 @@ export function renderChart(container, props = {}) {
         ${bars}
       </div>
       <div class="chart-actions" style="margin-top:12px">
-        <button class="chart-btn" style="padding:4px 12px;border:1px solid #409eff;border-radius:4px;background:#409eff;color:#fff;cursor:pointer;font-size:12px">Refresh</button>
+        <button class="chart-btn" style="padding:4px 12px;border:1px solid #409eff;border-radius:4px;background:#409eff;color:#fff;cursor:pointer;font-size:12px">${escapeHtml(t('common.refresh'))}</button>
       </div>
     </div>
   `;

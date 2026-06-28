@@ -7,7 +7,7 @@
 ## 技术栈
 
 - **框架**：Vue 2/3、原生 H5
-- **构建工具**：Vite
+- **构建工具**：Vite（每个物料独立构建为 UMD）
 - **UI 库**：ElementUI (Vue2)、ElementPlus (Vue3) —— 可选，按需加载
 - **包管理器**：pnpm
 - **测试**：Vitest + Playwright
@@ -16,20 +16,21 @@
 
 ```
 /workspace/projects/
-├── .coze                    # Coze 项目配置
-├── package.json              # 根依赖（测试工具 + concurrently/cross-env）
-├── scripts/                  # Coze 脚本
-│   ├── coze-preview-build.sh # 预览构建
-│   ├── coze-preview-run.sh   # 预览运行
-│   ├── h5-preview-build.sh   # H5 预览构建
-│   ├── h5-preview-run.sh     # H5 预览运行
+├── package.json              # 根依赖（测试工具 + concurrently）
+├── scripts/                  # 构建与部署脚本
 │   ├── deploy_build.sh       # 部署构建
 │   └── deploy_run.sh         # 部署运行
 ├── demo/                     # 子项目
 │   ├── host/                 # 统一基座（Vue2 + Vue3 + H5 共存）
-│   ├── vue2-widget/          # Vue2 物料示例
-│   ├── vue3-widget/          # Vue3 物料示例
-│   └── h5-widget/            # H5 物料示例
+│   ├── vue2-widgets/         # Vue2 物料（每个物料独立 UMD）
+│   │   ├── build.mjs         # 分包构建脚本
+│   │   └── src/widgets/      # 各物料独立目录
+│   ├── vue3-widgets/         # Vue3 物料（每个物料独立 UMD）
+│   │   ├── build.mjs
+│   │   └── src/widgets/
+│   └── h5-widgets/           # H5 物料（每个物料独立 UMD）
+│       ├── build.mjs
+│       └── src/widgets/
 └── wc/                       # 运行时核心
     ├── loader.js             # UMD 加载 + URL 缓存 + 依赖检查 + 错误降级
     ├── WidgetHost.vue        # Vue3 基座组件
@@ -42,18 +43,18 @@
 | 子项目 | 端口 | 入口 | 用途 |
 |--------|------|------|------|
 | demo/host | 5000 | index.html | 统一基座（主预览入口） |
-| demo/vue2-widget | - | Vite | Vue2 物料 UMD 构建 |
-| demo/vue3-widget | - | Vite | Vue3 物料 UMD 构建 |
-| demo/h5-widget | - | Vite | H5 物料 UMD 构建 |
+| demo/vue2-widgets | - | build.mjs | Vue2 物料分包 UMD 构建 |
+| demo/vue3-widgets | - | build.mjs | Vue3 物料分包 UMD 构建 |
+| demo/h5-widgets | - | build.mjs | H5 物料分包 UMD 构建 |
 
 ## 核心 API
 
 | 模块 | 导出 | 说明 |
 |------|------|------|
-| @wc/core/loader | `mountWidget(container, widget)`、`unmountWidget(api)` | 轻量加载器 |
-| @wc/core/WidgetHost.vue | `WidgetHost` | Vue3 基座组件 |
-| @wc/core/templates/vue2 | `createVue2Widget(Component)` | Vue2 物料入口模板 |
-| @wc/core/templates/vue3 | `createVue3Widget(Component)` | Vue3 物料入口模板 |
+| @wc/core/loader | `mountWidget(container, widget)`、`unmountWidget(api)`、`preloadWidgets(urls)` | 轻量加载器 |
+| @wc/core/WidgetHost.vue | `WidgetHost` | Vue3 基座组件（支持 `css` 属性） |
+| @wc/core/templates/vue2 | `createVue2Widget(Component, options)` | Vue2 物料入口模板 |
+| @wc/core/templates/vue3 | `createVue3Widget(Component, options)` | Vue3 物料入口模板 |
 | @wc/core/templates/h5 | `createH5Widget(renderFn)` | H5 物料入口模板 |
 
 ## 运行与预览
@@ -62,7 +63,7 @@
 # 安装根依赖
 pnpm install
 
-# 构建所有物料
+# 构建所有物料（每个物料独立 UMD 文件）
 pnpm build:widgets
 
 # 启动统一基座
@@ -76,6 +77,17 @@ pnpm dev:widget:vue2
 pnpm dev:widget:vue3
 pnpm dev:widget:h5
 ```
+
+## 分包构建
+
+每个技术栈的物料通过 `build.mjs` 自动分包构建：
+
+- 扫描 `src/widgets/` 下所有子目录
+- 每个目录生成独立的 `{name}.js` + `{name}.css`
+- UMD 全局名自动转换：`my-widget` → `biMyWidget`
+- 产物输出到 `dist/` 目录
+
+新增物料只需在 `src/widgets/` 下创建目录，无需修改构建配置。
 
 ## 用户偏好与长期约束
 
@@ -103,7 +115,7 @@ pnpm dev:widget:h5
 
 1. **语言**：注释与文档用中文，技术术语保留英文。代码标识符用英文。
 2. **不使用 emoji**：代码、注释、文档中均不使用 emoji。
-3. **注释风格**：解释“为什么”而非“是什么”。用 `// ─── 标题 ───` 分隔符划分区块。函数用 JSDoc。
+3. **注释风格**：解释"为什么"而非"是什么"。用 `// ─── 标题 ───` 分隔符划分区块。函数用 JSDoc。
 4. **防御性编码**：系统边界做校验与 try/catch；内部代码信任框架保证；失败不阻断主流程时用 try/catch + console.warn 降级。
 5. **不过度工程化**：只做被要求的事；一次性操作不抽 helper；不为假想的未来需求设计。
 

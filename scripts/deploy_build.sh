@@ -30,9 +30,9 @@ cp demo/host/node_modules/element-plus/dist/index.css demo/host/dist/runtime/ele
 cp node_modules/lodash/lodash.min.js demo/host/dist/runtime/lodash.min.js
 
 # 物料产物
-cp demo/vue2-widget/dist/widget.js demo/host/dist/widgets/vue2-sales-panel.js
-cp demo/vue2-widget/dist/style.css demo/host/dist/widgets/vue2-sales-panel.css
-cp demo/vue3-widget/dist/widget.js demo/host/dist/widgets/vue3-finance-panel.js
-cp demo/h5-widget/dist/widget.js demo/host/dist/widgets/h5-clock-widget.js
+for dir in vue2-widgets vue3-widgets h5-widgets; do
+  cp demo/$dir/dist/*.js demo/host/dist/widgets/ 2>/dev/null || true
+  cp demo/$dir/dist/*.css demo/host/dist/widgets/ 2>/dev/null || true
+done
 
 echo "Build complete."

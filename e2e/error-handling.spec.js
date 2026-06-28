@@ -31,7 +31,7 @@ test.describe('错误降级 E2E', () => {
 
       await mountWidget(container, {
         name: 'biTestMissingVue2',
-        js: '/widgets/vue2-widgets.js',
+        js: '/widgets/sales-panel.js',
         vueVersion: '2',
         props: {}
       });
@@ -67,7 +67,7 @@ test.describe('错误降级 E2E', () => {
 
       await mountWidget(container, {
         name: 'biTestMissingVue3',
-        js: '/widgets/vue3-widgets.js',
+        js: '/widgets/finance-panel.js',
         vueVersion: '3',
         props: {}
       });

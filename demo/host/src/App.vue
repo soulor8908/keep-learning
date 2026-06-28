@@ -59,12 +59,12 @@ import { ref, computed } from 'vue';
 import WidgetHost from '@wc/core/WidgetHost.vue';
 
 const WIDGET_REGISTRY = {
-  biSalesPanel: { name: 'biSalesPanel', js: '/widgets/vue2-widgets.js', vueVersion: '2' },
-  biOrderPanel: { name: 'biOrderPanel', js: '/widgets/vue2-widgets.js', vueVersion: '2' },
-  biFinancePanel: { name: 'biFinancePanel', js: '/widgets/vue3-widgets.js', vueVersion: '3' },
-  biUserPanel: { name: 'biUserPanel', js: '/widgets/vue3-widgets.js', vueVersion: '3' },
-  biClockWidget: { name: 'biClockWidget', js: '/widgets/h5-widgets.js', vueVersion: 'none' },
-  biChartWidget: { name: 'biChartWidget', js: '/widgets/h5-widgets.js', vueVersion: 'none' }
+  biSalesPanel: { name: 'biSalesPanel', js: '/widgets/sales-panel.js', vueVersion: '2' },
+  biOrderPanel: { name: 'biOrderPanel', js: '/widgets/order-panel.js', vueVersion: '2' },
+  biFinancePanel: { name: 'biFinancePanel', js: '/widgets/finance-panel.js', vueVersion: '3' },
+  biUserPanel: { name: 'biUserPanel', js: '/widgets/user-panel.js', vueVersion: '3' },
+  biClockWidget: { name: 'biClockWidget', js: '/widgets/clock-widget.js', vueVersion: 'none' },
+  biChartWidget: { name: 'biChartWidget', js: '/widgets/chart-widget.js', vueVersion: 'none' }
 };
 
 const locale = ref('zh-CN');
@@ -94,7 +94,8 @@ const messages = {
     'common.total_profit': '总利润', 'common.export': '导出报表',
     'common.order_id': '订单号', 'common.customer': '客户', 'common.amount': '金额',
     'common.status': '状态', 'common.name': '姓名', 'common.email': '邮箱', 'common.role': '角色',
-    'common.widget_name': 'Vue2 物料', 'common.widget_name2': 'Vue3 物料'
+    'common.widget_name': 'Vue2 物料', 'common.widget_name2': 'Vue3 物料',
+    'common.events': '事件'
   },
   'en-US': {
     'app.title': 'BI Dashboard', 'app.switch_lang': 'Switch Language', 'app.event_log': 'Event Log', 'app.clear': 'Clear',
@@ -110,7 +111,8 @@ const messages = {
     'common.total_profit': 'Total Profit', 'common.export': 'Export',
     'common.order_id': 'Order ID', 'common.customer': 'Customer', 'common.amount': 'Amount',
     'common.status': 'Status', 'common.name': 'Name', 'common.email': 'Email', 'common.role': 'Role',
-    'common.widget_name': 'Vue2 Widget', 'common.widget_name2': 'Vue3 Widget'
+    'common.widget_name': 'Vue2 Widget', 'common.widget_name2': 'Vue3 Widget',
+    'common.events': 'Events'
   }
 };
 

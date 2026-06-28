@@ -12,21 +12,6 @@ const cssRefs = new Map();
 
 // ─── 版本兼容性检查 ───
 
-/**
- * 检查物料声明的版本约束是否满足
- * 物料可通过 UMD 产物头部注释声明：
- *   /* @widget vue: ^3.4.0 *\/
- *   /* @widget deps: element-plus *\/
- */
-function parseWidgetMeta(source) {
-  const meta = { vue: null, deps: [] };
-  const vueMatch = source.match(/\/\*\s*@widget\s+vue:\s*(.+?)\s*\*\//);
-  if (vueMatch) meta.vue = vueMatch[1].trim();
-  const depsMatch = source.match(/\/\*\s*@widget\s+deps:\s*(.+?)\s*\*\//);
-  if (depsMatch) meta.deps = depsMatch[1].split(',').map(d => d.trim());
-  return meta;
-}
-
 function checkVersion(required, actual) {
   if (!required || !actual) return true;
   // 简化版：检查 major.minor 是否在范围内，不实现完整 semver
@@ -94,7 +79,10 @@ export function loadScript(url) {
     const s = document.createElement('script');
     s.src = url;
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`JS 加载失败: ${url}`));
+    s.onerror = () => {
+      cache.delete(url);
+      reject(new Error(`JS 加载失败: ${url}`));
+    };
     document.head.appendChild(s);
   });
   cache.set(url, p);
@@ -106,18 +94,26 @@ export function loadScript(url) {
 function loadStyle(url) {
   if (!url) return Promise.resolve();
   if (cache.has(url)) return cache.get(url);
+
+  // 先创建 DOM 元素并记录引用，再构造 promise
+  const l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = url;
+  document.head.appendChild(l);
+
+  const ref = { count: 1, el: l };
+  cssRefs.set(url, ref);
+
   const p = new Promise((resolve, reject) => {
-    const l = document.createElement('link');
-    l.rel = 'stylesheet';
-    l.href = url;
     l.onload = () => resolve();
-    l.onerror = () => reject(new Error(`CSS 加载失败: ${url}`));
-    document.head.appendChild(l);
-    const ref = cssRefs.get(url) || { count: 0, link: l };
-    ref.count++;
-    ref.link = l;
-    cssRefs.set(url, ref);
+    l.onerror = () => {
+      cssRefs.delete(url);
+      cache.delete(url);
+      if (l.parentNode) l.parentNode.removeChild(l);
+      reject(new Error(`CSS 加载失败: ${url}`));
+    };
   });
+
   cache.set(url, p);
   return p;
 }

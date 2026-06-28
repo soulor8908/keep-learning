@@ -32,7 +32,7 @@ for (const [lib, config] of Object.entries(WIDGET_LIBS)) {
   const distDir = path.resolve(__dirname, `../${lib}/dist`);
   if (!fs.existsSync(distDir)) continue;
   for (const file of fs.readdirSync(distDir)) {
-    if (file.endsWith('.js')) {
+    if (file.endsWith('.js') || file.endsWith('.css')) {
       WIDGET_MAP[`/widgets/${file}`] = path.resolve(distDir, file);
     }
   }

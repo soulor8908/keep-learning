@@ -14,12 +14,12 @@
   window._ = lodash
   ...
 
-物料 UMD 构建：
+物料 UMD 构建（每个物料独立一个 UMD 文件）：
   external: ['vue']
   output.globals: { vue: 'Vue2' }  // 或 Vue3
 
 基座加载：
-  mountWidget(container, { name, js, vueVersion, props })
+  mountWidget(container, { name, js, css, vueVersion, props })
 ```
 
 ## 目录
@@ -32,10 +32,16 @@ wc/
 └── README.md
 
 demo/
-├── host/                  # 新基座（同时加载 Vue2 + Vue3 运行时）
-├── vue2-widget/           # Vue2 物料示例
-├── vue3-widget/           # Vue3 物料示例
-└── h5-widget/             # H5 物料示例
+├── host/                  # 统一基座（同时加载 Vue2 + Vue3 运行时）
+├── vue2-widgets/          # Vue2 物料（每个物料独立 UMD）
+│   ├── build.mjs          # 分包构建脚本
+│   └── src/widgets/       # 各物料独立目录
+├── vue3-widgets/          # Vue3 物料（每个物料独立 UMD）
+│   ├── build.mjs
+│   └── src/widgets/
+└── h5-widgets/            # H5 物料（每个物料独立 UMD）
+    ├── build.mjs
+    └── src/widgets/
 ```
 
 ## 快速开始
@@ -44,7 +50,7 @@ demo/
 # 安装依赖
 pnpm install
 
-# 构建所有物料
+# 构建所有物料（每个物料独立 UMD 文件）
 pnpm build:widgets
 
 # 启动基座
@@ -77,45 +83,45 @@ pnpm e2e
 
 ## 写一个物料
 
-Vue3 示例：
+### 1. 创建物料目录
 
-```js
-// demo/my-widget/src/index.js
-import MyComponent from './MyComponent.vue';
-import { createVue3Widget } from '@wc/core/templates/vue3';
-
-export default createVue3Widget(MyComponent);
+```
+demo/vue3-widgets/src/widgets/my-widget/
+├── index.js           # 物料入口
+└── MyWidget.vue       # Vue 组件
 ```
 
-```js
-// demo/my-widget/vite.config.js
-import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
+### 2. 编写物料入口
 
-export default defineConfig({
-  plugins: [vue()],
-  build: {
-    lib: {
-      entry: './src/index.js',
-      name: 'myWidget',
-      formats: ['umd'],
-      fileName: () => 'widget.js'
-    },
-    rollupOptions: {
-      external: ['vue'],
-      output: { globals: { vue: 'Vue3' } }
-    }
-  }
+```js
+// demo/vue3-widgets/src/widgets/my-widget/index.js
+import MyWidget from './MyWidget.vue';
+import { createVue3Widget } from '@wc/core/templates/vue3';
+
+export default createVue3Widget(MyWidget, {
+  plugins: window.ElementPlus ? [window.ElementPlus] : [],
+  deps: ['element-plus']
 });
 ```
 
-在基座中加载：
+### 3. 自动构建
+
+`build.mjs` 会自动扫描 `src/widgets/` 下所有目录，无需额外配置。运行 `pnpm build:widgets` 即可。
+
+### 4. 在基座中加载
 
 ```vue
 <WidgetHost
-  name="myWidget"
+  name="biMyWidget"
   js="/widgets/my-widget.js"
+  css="/widgets/my-widget.css"
   vue-version="3"
   :widget-props="{ title: '示例' }"
 />
 ```
+
+### 命名规范
+
+- 目录名：`my-widget`（kebab-case）
+- UMD 全局名：`biMyWidget`（自动转换，加 `bi` 前缀）
+- 文件名：`my-widget.js` + `my-widget.css`
