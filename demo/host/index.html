@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BI 看板基座</title>
+    <!--
+      运行时加载策略：
+      - 开发模式（vite dev）：通过 /runtime/* 中间件从 node_modules 加载
+      - 生产模式：同上，或替换为 CDN URL（见下方注释）
+      - CDN 模式：取消注释 CDN 部分，注释本地部分
+    -->
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <!-- ===== 本地模式（默认） ===== -->
+    <script src="/runtime/vue2.js"></script>
+    <link rel="stylesheet" href="/runtime/element-ui.css" />
+    <script src="/runtime/element-ui.js"></script>
+    <script>
+      window.ELEMENT = ELEMENT;
+      window.Vue2 = window.Vue;
+    </script>
+
+    <script src="/runtime/vue3.js"></script>
+    <script>
+      window.Vue3 = window.Vue;
+    </script>
+
+    <link rel="stylesheet" href="/runtime/element-plus.css" />
+    <script src="/runtime/element-plus.js"></script>
+    <script>
+      window.ElementPlus = ElementPlus;
+    </script>
+
+    <script src="/runtime/lodash.min.js"></script>
+    <script>
+      window._ = _;
+    </script>
+
+    <!-- ===== CDN 模式（取消注释启用） =====
+    <script src="https://unpkg.com/vue@2.6.14/dist/vue.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css" />
+    <script src="https://unpkg.com/element-ui@2.15.14/lib/index.js"></script>
+    <script>
+      window.ELEMENT = ELEMENT;
+      window.Vue2 = window.Vue;
+    </script>
+
+    <script src="https://unpkg.com/vue@3.4.21/dist/vue.global.js"></script>
+    <script>
+      window.Vue3 = window.Vue;
+    </script>
+
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.7.0/dist/index.css" />
+    <script src="https://unpkg.com/element-plus@2.7.0/dist/index.full.js"></script>
+    <script>
+      window.ElementPlus = ElementPlus;
+    </script>
+
+    <script src="https://unpkg.com/lodash@4.17.21/lodash.min.js"></script>
+    <script>
+      window._ = _;
+    </script>
+    ===== -->
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

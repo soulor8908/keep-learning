@@ -1,0 +1,23 @@
+{
+  "name": "host",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "serve": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "element-plus": "^2.7.0",
+    "element-ui": "^2.15.14",
+    "mitt": "^3.0.1",
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@wc/core": "workspace:*",
+    "vite": "^5.0.0",
+    "vue2": "npm:vue@2.6.14"
+  }
+}

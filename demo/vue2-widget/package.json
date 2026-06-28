@@ -1,0 +1,20 @@
+{
+  "name": "vue2-widget",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "serve": "vite",
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue2": "^2.3.3",
+    "@wc/core": "workspace:*",
+    "vite": "^5.0.0",
+    "vue": "^2.7.16"
+  },
+  "dependencies": {
+    "element-ui": "^2.15.14"
+  }
+}

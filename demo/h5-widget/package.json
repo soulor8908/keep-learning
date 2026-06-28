@@ -1,0 +1,15 @@
+{
+  "name": "h5-widget",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "serve": "vite",
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "devDependencies": {
+    "@wc/core": "workspace:*",
+    "vite": "^5.0.0"
+  }
+}
