@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# H5 Widget Lib 预览构建脚本
+# H5 Widget 预览构建脚本
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# 安装 h5-widget-lib 依赖
-cd demo/h5-widget-lib
+# 安装依赖并构建 H5 物料
 pnpm install
+cd demo/h5-widget
+pnpm vite build
+
+echo "H5 preview build complete."

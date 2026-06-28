@@ -590,28 +590,28 @@ wc/
 ## 九、执行计划（4 天）
 
 ### Day 1：删除（4 小时）
-- [ ] 删除所有旧模块，保留 UMD 加载机制的概念
-- [ ] 创建新目录：`wc/loader.js`、`wc/WidgetHost.vue`、`wc/templates/`
+- [x] 删除所有旧模块，保留 UMD 加载机制的概念
+- [x] 创建新目录：`wc/loader.js`、`wc/WidgetHost.vue`、`wc/templates/`
 
 ### Day 2：实现核心（4 小时）
-- [ ] 写 `wc/loader.js`（100 行，保留 UMD 加载 + 缓存 + 依赖检查）
-- [ ] 写 `wc/WidgetHost.vue`（25 行）
-- [ ] 写三个物料模板（各 5 行）
-- [ ] 创建 `demo/host/` 基座（提供 Vue2 + Vue3 运行时）
+- [x] 写 `wc/loader.js`（172 行，保留 UMD 加载 + 缓存 + 依赖检查）
+- [x] 写 `wc/WidgetHost.vue`（65 行）
+- [x] 写三个物料模板（vue2 33 行 / vue3 35 行 / h5 32 行）
+- [x] 创建 `demo/host/` 基座（提供 Vue2 + Vue3 运行时）
 
 ### Day 3：demo 验证（4 小时）
-- [ ] 创建 `demo/vue2-widget/`（UMD，external Vue2）
-- [ ] 创建 `demo/vue3-widget/`（UMD，external Vue3）
-- [ ] 创建 `demo/h5-widget/`（UMD，无框架）
-- [ ] 验证三物料在同一个页面中共存，依赖隔离正常
-- [ ] 验证错误降级
-- [ ] 验证体积优化
+- [x] 创建 `demo/vue2-widget/`（UMD，external Vue2）
+- [x] 创建 `demo/vue3-widget/`（UMD，external Vue3）
+- [x] 创建 `demo/h5-widget/`（UMD，无框架）
+- [x] 验证三物料在同一个页面中共存，依赖隔离正常
+- [x] 验证错误降级（13 个 E2E 用例全部通过）
+- [x] 验证体积优化（三物料总产物 2.98KB，核心运行时 337 行）
 
 ### Day 4：测试 + 文档（4 小时）
-- [ ] 单元测试（缓存、依赖检查、错误降级）
-- [ ] 端到端测试（Playwright）
-- [ ] README.md（50 行）
-- [ ] 最终验证
+- [x] 单元测试（缓存、依赖检查、错误降级）— 6 个用例通过
+- [x] 端到端测试（Playwright）— 34 个用例通过
+- [x] README.md（wc/README.md 106 行）
+- [x] 最终验证
 
 ---
 

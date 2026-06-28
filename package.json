@@ -15,26 +15,18 @@
   "scripts": {
     "test": "vitest",
     "test:run": "vitest run",
-    "test:vue3-esm": "vitest run --config wc/vue3-esm/vitest.config.js",
     "test:ci": "vitest run --reporter=verbose",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium",
     "e2e:report": "playwright show-report",
     "docs:api": "jsdoc -c jsdoc.conf.json",
     "docs:api:serve": "jsdoc -c jsdoc.conf.json && npx http-server docs/api -p 4000",
-    "build": "pnpm -r --filter './demo/*' run build",
-    "dev": "concurrently \"pnpm dev:vue3\" \"pnpm dev:vue2\" \"pnpm dev:vue3-esm\"",
-    "dev:vue3": "concurrently \"pnpm --filter vue3-widget-lib serve:dev\" \"pnpm --filter vue3-host serve\"",
-    "dev:vue2": "concurrently \"pnpm --filter vue2-widget-lib serve:widget\" \"pnpm --filter vue2-host serve\"",
-    "dev:vue3-esm": "concurrently \"pnpm --filter vue3-esm-widget serve:widget\" \"pnpm --filter vue3-esm-h5 serve:widget\" \"pnpm --filter vue3-esm-host serve\"",
-    "dev:vue3-host": "pnpm --filter vue3-host serve",
-    "dev:vue2-host": "pnpm --filter vue2-host serve",
-    "dev:vue3-esm-host": "pnpm --filter vue3-esm-host serve",
-    "dev:vue3-widget": "pnpm --filter vue3-widget-lib serve:widget",
-    "dev:vue2-widget": "pnpm --filter vue2-widget-lib serve:widget",
-    "dev:vue3-esm-widget": "pnpm --filter vue3-esm-widget serve:widget",
-    "dev:h5-lib": "pnpm --filter h5-widget-lib serve",
-    "dev:vue3-with-service": "concurrently \"pnpm --filter vue3-widget-lib serve:dev-server\" \"pnpm --filter vue3-host serve\"",
-    "dev:all-with-service": "concurrently \"pnpm --filter vue3-widget-lib serve:dev-server\" \"pnpm --filter vue3-host serve\" \"pnpm --filter vue2-widget-lib serve:widget\" \"pnpm --filter vue2-host serve\" \"pnpm --filter vue3-esm-widget serve:widget\" \"pnpm --filter vue3-esm-h5 serve:widget\" \"pnpm --filter vue3-esm-host serve\""
+    "build": "pnpm -r --filter vue2-widget --filter vue3-widget --filter h5-widget --filter host run build",
+    "build:widgets": "pnpm -r --filter vue2-widget --filter vue3-widget --filter h5-widget run build",
+    "serve": "pnpm --filter host serve",
+    "dev": "pnpm build:widgets && concurrently \"pnpm -r --filter vue2-widget --filter vue3-widget --filter h5-widget run watch\" \"pnpm --filter host serve\"",
+    "dev:widget:vue2": "pnpm --filter vue2-widget serve",
+    "dev:widget:vue3": "pnpm --filter vue3-widget serve",
+    "dev:widget:h5": "pnpm --filter h5-widget serve"
   }
 }

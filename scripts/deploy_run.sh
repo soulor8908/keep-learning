@@ -7,6 +7,6 @@ cd "$PROJECT_DIR"
 
 PORT="${DEPLOY_RUN_PORT:-5000}"
 
-echo "Starting vue3-host on port $PORT..."
-cd demo/vue3-host
+echo "Starting host on port $PORT..."
+cd demo/host
 exec npx serve dist -l "$PORT"

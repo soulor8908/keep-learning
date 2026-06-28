@@ -6,6 +6,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# 安装 vue3-host 依赖
-cd demo/vue3-host
+# 安装依赖
 pnpm install
+
+# 构建物料与基座
+pnpm build:widgets
+cd demo/host
+pnpm vite build
+
+echo "Preview build complete."

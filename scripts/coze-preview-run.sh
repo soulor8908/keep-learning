@@ -13,6 +13,9 @@ sleep 1
 # 显式声明关键环境变量
 export PORT=5000
 
-# 进入 vue3-host 子目录并启动预览
-cd demo/vue3-host
+# 构建物料（开发预览需要产物）
+pnpm build:widgets
+
+# 进入 host 子目录并启动预览
+cd demo/host
 exec pnpm exec vite --host 0.0.0.0 --port 5000

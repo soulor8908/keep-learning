@@ -44,42 +44,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-
-      # 构建各物料库并拷贝到 vue3-host/public/widgets/
-      - name: Build vue3-widget-lib
-        working-directory: demo/vue3-widget-lib
-        run: pnpm build:all
-
-      - name: Build h5-widget-lib
-        working-directory: demo/h5-widget-lib
-        run: pnpm build:all
-
-      - name: Copy widget assets to vue3-host
-        run: |
-          mkdir -p demo/vue3-host/public/widgets
-          cp demo/vue3-widget-lib/dist/*.js demo/vue3-host/public/widgets/ 2>/dev/null || true
-          cp demo/vue3-widget-lib/dist/*.css demo/vue3-host/public/widgets/ 2>/dev/null || true
-          cp demo/h5-widget-lib/dist/*.js demo/vue3-host/public/widgets/ 2>/dev/null || true
-          cp demo/h5-widget-lib/dist/*.css demo/vue3-host/public/widgets/ 2>/dev/null || true
-
-      # 构建并启动 vue3-host 预览服务
-      - name: Build vue3-host
-        working-directory: demo/vue3-host
-        run: pnpm build
-
-      - name: Start vue3-host preview
-        working-directory: demo/vue3-host
-        run: npx vite preview --port 4173 --strictHost &
-
-      - name: Wait for server
-        run: npx wait-on http://localhost:4173 --timeout 30000
-
-      # 安装 Playwright 浏览器并运行 E2E
       - run: pnpm e2e:install
-      - name: Run Playwright tests
-        run: pnpm e2e
-        env:
-          E2E_BASE_URL: http://localhost:4173
+      - run: pnpm e2e
 
       - uses: actions/upload-artifact@v4
         if: failure()
