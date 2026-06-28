@@ -12,6 +12,9 @@ const props = defineProps({
   css: { type: String, default: '' },
   vueVersion: { type: String, default: '3' },
   widgetProps: { type: Object, default: () => ({}) },
+  context: { type: Object, default: () => ({}) },
+  integrity: { type: String, default: '' },
+  cssIntegrity: { type: String, default: '' },
   onBeforeMount: { type: Function, default: null },
   onMounted: { type: Function, default: null },
   onUnmounted: { type: Function, default: null }
@@ -35,7 +38,16 @@ function ensureMountPoint() {
 function buildProps() {
   return {
     ...props.widgetProps,
-    emit(eventName, payload) {
+    context: props.context,
+    emit(type, payload) {
+      window.dispatchEvent(new CustomEvent(`widget:${type}`, { detail: payload }));
+    },
+    on(type, handler) {
+      const fn = e => handler(e.detail);
+      window.addEventListener(`widget:${type}`, fn);
+      return () => window.removeEventListener(`widget:${type}`, fn);
+    },
+    emitToHost(eventName, payload) {
       emit('widget-event', { widget: props.name, event: eventName, payload });
     }
   };
@@ -78,6 +90,9 @@ async function doMount() {
       js: props.js,
       css: props.css,
       vueVersion: props.vueVersion,
+      context: props.context,
+      integrity: props.integrity,
+      cssIntegrity: props.cssIntegrity,
       props: buildProps()
     });
   }

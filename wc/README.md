@@ -24,11 +24,15 @@
     css="/widgets/sales-panel.css"
     vue-version="2"
     :widget-props="{ title: '销售' }"
+    :context="baseContext"
   />
 </template>
 
 <script setup>
 import WidgetHost from '@wc/core/WidgetHost.vue';
+
+// 基座上下文，会被注入到所有物料的 props.context 中
+const baseContext = { user: 'admin', theme: 'dark' };
 </script>
 ```
 
@@ -42,6 +46,9 @@ const api = await mountWidget(container, {
   js: '/widgets/sales-panel.js',
   css: '/widgets/sales-panel.css',
   vueVersion: '2',
+  context: { user: 'admin', theme: 'dark' },
+  integrity: 'sha256-abc...',
+  cssIntegrity: 'sha256-def...',
   props: { title: '销售' }
 });
 
@@ -57,6 +64,9 @@ unmountWidget(api);
 | `css` | String | `''` | CSS 文件路径（可选） |
 | `vueVersion` | String | `'3'` | Vue 版本：`'2'` / `'3'` / `'none'` |
 | `widgetProps` | Object | `{}` | 传递给物料的 props |
+| `context` | Object | `{}` | 基座上下文（用户、权限、主题等） |
+| `integrity` | String | `''` | JS 文件 SRI hash |
+| `cssIntegrity` | String | `''` | CSS 文件 SRI hash |
 | `onBeforeMount` | Function | `null` | 挂载前回调 |
 | `onMounted` | Function | `null` | 挂载后回调 |
 | `onUnmounted` | Function | `null` | 卸载后回调 |
@@ -129,4 +139,52 @@ unmountWidget(api);
 
 // 预加载物料脚本（不挂载）
 preloadWidgets(['/widgets/finance-panel.js']);
+```
+
+## 跨物料通信（pub/sub）
+
+每个物料通过 `props.emit` / `props.on` 进行跨物料通信，基于 `window.dispatchEvent`，无需额外依赖：
+
+```js
+// 物料 A（筛选器）
+// 筛选条件改变时广播事件
+props.emit('filterChanged', { region: 'CN', date: '2025-01' });
+
+// 物料 B（图表）
+// 监听筛选条件变化并刷新数据
+const off = props.on('filterChanged', (data) => {
+  fetchChartData(data);
+});
+
+// 组件卸载时取消监听
+off();
+```
+
+## 基座上下文共享
+
+基座通过 `context` 将用户、权限、主题等信息注入所有物料：
+
+```js
+// 基座
+mountWidget(container, {
+  name: 'sales-panel',
+  context: { user: 'admin', role: 'editor', theme: 'dark' }
+});
+
+// 物料内读取
+const { user, theme } = props.context;
+```
+
+## SRI 校验
+
+通过 `integrity` / `cssIntegrity` 为 JS / CSS 文件开启 Subresource Integrity 校验：
+
+```js
+mountWidget(container, {
+  name: 'sales-panel',
+  js: '/widgets/sales-panel.js',
+  css: '/widgets/sales-panel.css',
+  integrity: 'sha256-abc...',
+  cssIntegrity: 'sha256-def...'
+});
 ```

@@ -73,11 +73,16 @@ function checkDeps(name, vueVersion, deps) {
 
 // ─── 脚本加载 ───
 
-export function loadScript(url) {
+export function loadScript(url, options = {}) {
   if (cache.has(url)) return cache.get(url);
+  const { integrity } = options;
   const p = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = url;
+    if (integrity) {
+      s.integrity = integrity;
+      s.crossOrigin = 'anonymous';
+    }
     s.onload = () => resolve();
     s.onerror = () => {
       cache.delete(url);
@@ -91,14 +96,19 @@ export function loadScript(url) {
 
 // ─── CSS 加载 + 引用计数 ───
 
-function loadStyle(url) {
+function loadStyle(url, options = {}) {
   if (!url) return Promise.resolve();
   if (cache.has(url)) return cache.get(url);
 
+  const { integrity } = options;
   // 先创建 DOM 元素并记录引用，再构造 promise
   const l = document.createElement('link');
   l.rel = 'stylesheet';
   l.href = url;
+  if (integrity) {
+    l.integrity = integrity;
+    l.crossOrigin = 'anonymous';
+  }
   document.head.appendChild(l);
 
   const ref = { count: 1, el: l };
@@ -154,15 +164,35 @@ function renderError(container, message, canRetry, widgetConfig) {
 /**
  * 加载并挂载物料
  * @param {HTMLElement} container
- * @param {{ name: string, js: string, css?: string, vueVersion?: string, props?: object }} widget
+ * @param {{ name: string, js: string, css?: string, vueVersion?: string, props?: object, context?: object, integrity?: string, cssIntegrity?: string }} widget
  */
 export async function mountWidget(container, widget) {
   container._widgetConfig = widget;
-  const { name, js, css, vueVersion = '3', props = {} } = widget;
+  const {
+    name, js, css, vueVersion = '3', props = {},
+    context = {}, integrity, cssIntegrity
+  } = widget;
+
+  // ─── 跨物料通信 pub/sub ───
+  const widgetProps = {
+    ...props,
+    context,
+    emit(type, payload) {
+      window.dispatchEvent(new CustomEvent(`widget:${type}`, { detail: payload }));
+    },
+    on(type, handler) {
+      const fn = e => handler(e.detail);
+      window.addEventListener(`widget:${type}`, fn);
+      return () => window.removeEventListener(`widget:${type}`, fn);
+    }
+  };
 
   try {
-    // 加载脚本
-    await Promise.all([loadScript(js), loadStyle(css)]);
+    // 加载脚本（支持 SRI）
+    await Promise.all([
+      loadScript(js, integrity ? { integrity } : {}),
+      loadStyle(css, cssIntegrity ? { integrity: cssIntegrity } : {})
+    ]);
 
     // 版本兼容性检查（从脚本源码解析 meta 注释）
     // 先检查依赖，再检查模块
@@ -177,7 +207,7 @@ export async function mountWidget(container, widget) {
     if (meta.deps?.length) checkDeps(name, vueVersion, meta.deps);
     checkVersionCompat(meta);
 
-    const innerApi = await mod.mount(container, props);
+    const innerApi = await mod.mount(container, widgetProps);
     return {
       unmount() {
         unloadStyle(css);
