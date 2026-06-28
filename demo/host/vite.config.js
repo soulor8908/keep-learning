@@ -8,9 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HOST_NM = path.resolve(__dirname, 'node_modules');
 const ROOT_NM = path.resolve(__dirname, '../../node_modules');
 
-const isProd = process.env.NODE_ENV === 'production';
-
-// ─── 本地模式映射 ───
+// ─── 运行时依赖映射 ───
 const LOCAL_MAP = {
   '/runtime/vue2.js': path.resolve(HOST_NM, 'vue2/dist/vue.js'),
   '/runtime/vue3.js': path.resolve(HOST_NM, 'vue/dist/vue.global.js'),
@@ -21,14 +19,24 @@ const LOCAL_MAP = {
   '/runtime/lodash.min.js': path.resolve(ROOT_NM, 'lodash/lodash.min.js')
 };
 
-// ─── 物料产物映射 ───
-const WIDGET_MAP = {
-  '/widgets/vue2-sales-panel.js': path.resolve(__dirname, '../vue2-widget/dist/widget.js'),
-  '/widgets/vue2-sales-panel.css': path.resolve(__dirname, '../vue2-widget/dist/style.css'),
-  '/widgets/vue3-finance-panel.js': path.resolve(__dirname, '../vue3-widget/dist/widget.js'),
-  '/widgets/vue3-finance-panel.css': path.resolve(__dirname, '../vue3-widget/dist/style.css'),
-  '/widgets/h5-clock-widget.js': path.resolve(__dirname, '../h5-widget/dist/widget.js')
+// ─── 物料库映射 ───
+const WIDGET_LIBS = {
+  'vue2-widgets': { vueVersion: '2' },
+  'vue3-widgets': { vueVersion: '3' },
+  'h5-widgets': { vueVersion: 'none' }
 };
+
+// 自动生成物料产物映射
+const WIDGET_MAP = {};
+for (const [lib, config] of Object.entries(WIDGET_LIBS)) {
+  const distDir = path.resolve(__dirname, `../${lib}/dist`);
+  if (!fs.existsSync(distDir)) continue;
+  for (const file of fs.readdirSync(distDir)) {
+    if (file.endsWith('.js')) {
+      WIDGET_MAP[`/widgets/${file}`] = path.resolve(distDir, file);
+    }
+  }
+}
 
 const TEST_MODULE_MAP = {
   '/loader.js': path.resolve(__dirname, '../../wc/loader.js')
@@ -38,24 +46,20 @@ function localServePlugin() {
   return {
     name: 'local-serve',
     configureServer(server) {
-      // 监听 widget 产物变化，触发 full-reload
       const watcher = server.watcher;
-      const distDirs = [
-        path.resolve(__dirname, '../vue2-widget/dist'),
-        path.resolve(__dirname, '../vue3-widget/dist'),
-        path.resolve(__dirname, '../h5-widget/dist')
-      ];
-      for (const dir of distDirs) {
-        if (fs.existsSync(dir)) watcher.add(dir);
+      for (const lib of Object.keys(WIDGET_LIBS)) {
+        const distDir = path.resolve(__dirname, `../${lib}/dist`);
+        if (fs.existsSync(distDir)) watcher.add(distDir);
       }
       watcher.on('change', (file) => {
-        if (file.includes('/dist/widget.js') || file.includes('/dist/style.css')) {
+        if (file.includes('/dist/') && (file.endsWith('.js') || file.endsWith('.css'))) {
           server.ws.send({ type: 'full-reload' });
         }
       });
 
       server.middlewares.use((req, res, next) => {
-        const target = WIDGET_MAP[req.url] || LOCAL_MAP[req.url] || TEST_MODULE_MAP[req.url];
+        const url = req.url.split('?')[0];
+        const target = WIDGET_MAP[url] || LOCAL_MAP[url] || TEST_MODULE_MAP[url];
         if (!target) return next();
         if (!fs.existsSync(target)) {
           res.statusCode = 404;

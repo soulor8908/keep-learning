@@ -21,12 +21,12 @@
     "e2e:report": "playwright show-report",
     "docs:api": "jsdoc -c jsdoc.conf.json",
     "docs:api:serve": "jsdoc -c jsdoc.conf.json && npx http-server docs/api -p 4000",
-    "build": "pnpm -r --filter vue2-widget --filter vue3-widget --filter h5-widget --filter host run build",
-    "build:widgets": "pnpm -r --filter vue2-widget --filter vue3-widget --filter h5-widget run build",
+    "build": "pnpm -r --filter vue2-widgets --filter vue3-widgets --filter h5-widgets --filter host run build",
+    "build:widgets": "pnpm -r --filter vue2-widgets --filter vue3-widgets --filter h5-widgets run build",
     "serve": "pnpm --filter host serve",
-    "dev": "pnpm build:widgets && concurrently \"pnpm -r --filter vue2-widget --filter vue3-widget --filter h5-widget run watch\" \"pnpm --filter host serve\"",
-    "dev:widget:vue2": "pnpm --filter vue2-widget serve",
-    "dev:widget:vue3": "pnpm --filter vue3-widget serve",
-    "dev:widget:h5": "pnpm --filter h5-widget serve"
+    "dev": "pnpm build:widgets && concurrently \"pnpm -r --filter vue2-widgets --filter vue3-widgets --filter h5-widgets run watch\" \"pnpm --filter host serve\"",
+    "dev:widget:vue2": "pnpm --filter vue2-widgets serve",
+    "dev:widget:vue3": "pnpm --filter vue3-widgets serve",
+    "dev:widget:h5": "pnpm --filter h5-widgets serve"
   }
 }

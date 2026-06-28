@@ -1,19 +1,20 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
-// ─── Vue3 物料 UMD 构建配置 ───
-// 产物作为独立 widget，运行时依赖 vue / element-plus 由宿主提供
 export default defineConfig({
   plugins: [vue()],
   build: {
     lib: {
       entry: './src/index.js',
-      name: 'biFinancePanel',
+      name: 'vue3Widgets',
       formats: ['umd'],
-      fileName: () => 'widget.js'
+      fileName: () => 'vue3-widgets.js'
     },
     rollupOptions: {
-      external: ['vue', 'element-plus'],
+      external: (id) => {
+        if (id.endsWith('.css')) return false;
+        return id === 'vue' || id === 'element-plus';
+      },
       output: {
         globals: {
           vue: 'Vue3',

@@ -8,6 +8,23 @@ test.describe('BI 看板基座 E2E', () => {
 
   // ─── 基础渲染 ───
 
+  test('调试：查看所有 widget-host', async ({ page }) => {
+    const logs = [];
+    page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
+
+    const hosts = await page.locator('.widget-host').count();
+    console.log('widget-host count:', hosts);
+    for (let i = 0; i < hosts; i++) {
+      const html = await page.locator('.widget-host').nth(i).innerHTML();
+      console.log(`host ${i}:`, html.substring(0, 300));
+    }
+
+    const cards = await page.locator('.dashboard__card').count();
+    console.log('card count:', cards);
+
+    console.log('logs:', logs.filter(l => l.includes('error') || l.includes('Error')).join('\n'));
+  });
+
   test('Vue2/Vue3/H5 物料在同一页面渲染', async ({ page }) => {
     await expect(page.locator('h2:has-text("Vue2 销售面板")')).toBeVisible();
     await expect(page.locator('h2:has-text("Vue3 财务面板")')).toBeVisible();
@@ -108,18 +125,21 @@ test.describe('BI 看板基座 E2E', () => {
 
   // ─── 多物料独立性 ───
 
-  test('三个物料区域互不干扰', async ({ page }) => {
+  test('六个物料区域互不干扰', async ({ page }) => {
     const cards = page.locator('.dashboard__card');
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(6);
 
-    // Vue2 物料内容（$mount 替换了 widget-host）
-    await expect(page.locator('.sales-panel')).toContainText('Vue2 物料');
+    // Vue2 物料
+    await expect(page.locator('.sales-panel')).toContainText('销售');
+    await expect(page.locator('.order-panel')).toContainText('订单');
 
-    // Vue3 物料内容（在 widget-host 内部渲染）
-    await expect(page.locator('.finance-panel')).toContainText('Vue3 物料');
+    // Vue3 物料
+    await expect(page.locator('.finance-panel')).toContainText('财务');
+    await expect(page.locator('.user-panel')).toContainText('用户');
 
-    // H5 物料内容
+    // H5 物料
     await expect(page.locator('.clock-title')).toBeVisible();
+    await expect(page.locator('.chart-title')).toBeVisible();
     await expect(page.locator('.clock-title')).toContainText('时钟');
   });
 

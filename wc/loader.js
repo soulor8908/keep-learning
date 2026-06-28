@@ -88,7 +88,7 @@ function checkDeps(name, vueVersion, deps) {
 
 // ─── 脚本加载 ───
 
-function loadScript(url) {
+export function loadScript(url) {
   if (cache.has(url)) return cache.get(url);
   const p = new Promise((resolve, reject) => {
     const s = document.createElement('script');

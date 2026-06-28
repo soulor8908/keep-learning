@@ -1,5 +1,5 @@
 {
-  "name": "vue3-widget",
+  "name": "vue2-widgets",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,8 +9,12 @@
     "watch": "vite build --watch"
   },
   "devDependencies": {
+    "@vitejs/plugin-vue2": "^2.3.3",
+    "@wc/core": "workspace:*",
     "vite": "^5.0.0",
-    "@vitejs/plugin-vue": "^5.0.0",
-    "@wc/core": "workspace:*"
+    "vue": "^2.7.16"
+  },
+  "dependencies": {
+    "element-ui": "^2.15.14"
   }
 }
