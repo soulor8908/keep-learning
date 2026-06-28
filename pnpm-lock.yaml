@@ -42,6 +42,28 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@26.0.1)(happy-dom@14.12.3)(terser@5.48.0)
 
+  demo/h5-host:
+    dependencies:
+      element-plus:
+        specifier: ^2.7.0
+        version: 2.14.2(vue@2.7.16)
+      element-ui:
+        specifier: ^2.15.14
+        version: 2.15.14(vue@2.7.16)
+    devDependencies:
+      '@wc/core':
+        specifier: workspace:*
+        version: link:../../wc
+      vite:
+        specifier: ^5.0.0
+        version: 5.4.21(@types/node@26.0.1)(terser@5.48.0)
+      vue:
+        specifier: ^2.7.16
+        version: 2.7.16
+      vue3:
+        specifier: npm:vue@^3.4.21
+        version: vue@3.5.35
+
   demo/h5-widgets:
     devDependencies:
       '@wc/core':
@@ -78,6 +100,31 @@ importers:
       vue2:
         specifier: npm:vue@2.6.14
         version: vue@2.6.14
+
+  demo/vue2-host:
+    dependencies:
+      element-plus:
+        specifier: ^2.7.0
+        version: 2.14.2(vue@2.7.16)
+      element-ui:
+        specifier: ^2.15.14
+        version: 2.15.14(vue@2.7.16)
+    devDependencies:
+      '@vitejs/plugin-vue2':
+        specifier: ^2.3.3
+        version: 2.3.4(vite@5.4.21(@types/node@26.0.1)(terser@5.48.0))(vue@2.7.16)
+      '@wc/core':
+        specifier: workspace:*
+        version: link:../../wc
+      vite:
+        specifier: ^5.0.0
+        version: 5.4.21(@types/node@26.0.1)(terser@5.48.0)
+      vue:
+        specifier: ^2.7.16
+        version: 2.7.16
+      vue3:
+        specifier: npm:vue@^3.4.21
+        version: vue@3.5.35
 
   demo/vue2-widgets:
     dependencies:
@@ -354,79 +401,66 @@ packages:
     resolution: {integrity: sha512-n1GJHPOvpIfhi3TmrCeh6S6URt9BFCt0KQE3qvexyGCTAKpR4Lg+eWvNZEqu7epxwus/8ElT3hacYEucm49SZg==}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-arm-musleabihf@4.62.2':
     resolution: {integrity: sha512-JqgflS8wEB+UXV/vS1RpRbifGBeN4D5lz8D8oOFbFZw4vedvdOgCFAjfBmIMdW3yL10XpQQ0Ambepw6MXrhOnA==}
     cpu: [arm]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.62.2':
     resolution: {integrity: sha512-wnFJkogWvN4jm/hQRF2UBaeUmk20j5+DmHvoyWii2b8HJDyvz1MF2OU/6ynXt2KR63rbZLWkFpoytpdc/yBuSA==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-arm64-musl@4.62.2':
     resolution: {integrity: sha512-HVu2bp0zhvJ8xHEV9+UUs7S90VadmBSY3LcIMvozbPo4AuMGDWlz3ymHLHZPX4hR67TKTt8Qp5PJ5RBg/i+RMQ==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-loong64-gnu@4.62.2':
     resolution: {integrity: sha512-mQqqAV8QaoSgr9I2fKDLY2BAVvmKjWoGiu/cSYQonsLvtqwEn1E4QYfnCOcp5zoEqNhsDYin1s6jx/VJmrxlZg==}
     cpu: [loong64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-loong64-musl@4.62.2':
     resolution: {integrity: sha512-IxKLoxCQ2IWi6bT2akyDUBGsOImDKB+sPp4EsTmwFQ/fMwpCKm8uLSSgP/Kx/QYUgKis6SEZ5/Nlhup0DIA0PQ==}
     cpu: [loong64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-ppc64-gnu@4.62.2':
     resolution: {integrity: sha512-Mk5ha2RQSgyFfmYYLkBpPnUk8D8FriBxesO1u9O75X0mHgXL1UQcH5Itl2lurWL2tj0RxV9b9tJgipac0hRY9A==}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-ppc64-musl@4.62.2':
     resolution: {integrity: sha512-CjvEnqJL/0/TQ3TXX3OPIJ/kmBellrWd4heXUmHeJlTnmwjKpSJzoehLaL6Xk0ZnMHBu9dZuFADNOrtjF4v+2w==}
     cpu: [ppc64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-riscv64-gnu@4.62.2':
     resolution: {integrity: sha512-1SiZbzwdkaDURsew/tSOrooKiYy7EQGT6m8ufavAi9NEyQb/6VuIxFXAL1fqa4iZe3g4NbNk4P7J32z2tw5Mgg==}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-musl@4.62.2':
     resolution: {integrity: sha512-nQts12zJ3NQRoE6uYljOH89v7szzLDvG2JD/vsX+vGXU8w/At1GowTZ5/7qeFQ8m7L55rpR8Okugnuo5bgjy2Q==}
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-s390x-gnu@4.62.2':
     resolution: {integrity: sha512-E9/ll019jhPIJgpzfZoIkBGhcz+kKNgVWYRY0zr9srBdPPFVpvOKW8VaJKUbeK+eZXyQF9ltME+Kk6affeaPgg==}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-gnu@4.62.2':
     resolution: {integrity: sha512-5BqxR/pshjey51iliyzTD5Xi3EN0aLmQ2lZ3lvefVV9c82BvrLo2/6OT55iifpWBufs6kdwWbuOKS841DrmK9A==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.62.2':
     resolution: {integrity: sha512-uNN83XxQrRAh/w0/pmAfibcwyb6YWt4gP+dpnQKPVJshAloQ785ii8CT8ZCIxkGg9opVsvAlGhFitSm6D1Jjpg==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-openbsd-x64@4.62.2':
     resolution: {integrity: sha512-srjEIxSH3LRnJN6THczDHWQplqEMFiAJrTab0msUryh9kwNpkICf3Ea6q6MN/2cZwRFUNx5w+h6Hpi4QuHS6Zg==}
@@ -1203,6 +1237,10 @@ snapshots:
 
   '@ctrl/tinycolor@4.2.0': {}
 
+  '@element-plus/icons-vue@2.3.2(vue@2.7.16)':
+    dependencies:
+      vue: 2.7.16
+
   '@element-plus/icons-vue@2.3.2(vue@3.5.35)':
     dependencies:
       vue: 3.5.35
@@ -1548,15 +1586,22 @@ snapshots:
       '@vue/shared': 3.5.35
       csstype: 3.2.3
 
-  '@vue/server-renderer@3.5.35(vue@3.5.35)':
+  '@vue/server-renderer@3.5.35(vue@2.7.16)':
     dependencies:
       '@vue/compiler-ssr': 3.5.35
       '@vue/shared': 3.5.35
-      vue: 3.5.35
+      vue: 2.7.16
 
   '@vue/shared@3.5.35': {}
 
   '@vue/shared@3.5.39': {}
+
+  '@vueuse/core@14.3.0(vue@2.7.16)':
+    dependencies:
+      '@types/web-bluetooth': 0.0.21
+      '@vueuse/metadata': 14.3.0
+      '@vueuse/shared': 14.3.0(vue@2.7.16)
+      vue: 2.7.16
 
   '@vueuse/core@14.3.0(vue@3.5.35)':
     dependencies:
@@ -1566,6 +1611,10 @@ snapshots:
       vue: 3.5.35
 
   '@vueuse/metadata@14.3.0': {}
+
+  '@vueuse/shared@14.3.0(vue@2.7.16)':
+    dependencies:
+      vue: 2.7.16
 
   '@vueuse/shared@14.3.0(vue@3.5.35)':
     dependencies:
@@ -1674,6 +1723,25 @@ snapshots:
   deepmerge@1.5.2: {}
 
   diff-sequences@29.6.3: {}
+
+  element-plus@2.14.2(vue@2.7.16):
+    dependencies:
+      '@ctrl/tinycolor': 4.2.0
+      '@element-plus/icons-vue': 2.3.2(vue@2.7.16)
+      '@floating-ui/dom': 1.7.6
+      '@popperjs/core': '@sxzz/popperjs-es@2.11.8'
+      '@types/lodash': 4.17.24
+      '@types/lodash-es': 4.17.12
+      '@vueuse/core': 14.3.0(vue@2.7.16)
+      async-validator: 4.2.5
+      dayjs: 1.11.21
+      lodash: 4.18.1
+      lodash-es: 4.18.1
+      lodash-unified: 1.0.3(@types/lodash-es@4.17.12)(lodash-es@4.18.1)(lodash@4.18.1)
+      memoize-one: 6.0.0
+      normalize-wheel-es: 1.2.0
+      vue: 2.7.16
+      vue-component-type-helpers: 3.3.5
 
   element-plus@2.14.2(vue@3.5.35):
     dependencies:
@@ -2150,7 +2218,7 @@ snapshots:
       '@vue/compiler-dom': 3.5.35
       '@vue/compiler-sfc': 3.5.35
       '@vue/runtime-dom': 3.5.35
-      '@vue/server-renderer': 3.5.35(vue@3.5.35)
+      '@vue/server-renderer': 3.5.35(vue@2.7.16)
       '@vue/shared': 3.5.35
 
   webidl-conversions@7.0.0: {}

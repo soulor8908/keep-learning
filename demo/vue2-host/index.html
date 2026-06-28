@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vue2 Host - Vue2 基座托管多技术栈物料</title>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <!--
+      运行时加载策略
+      - 基座自身用 Vue2（window.Vue / window.Vue2 同源）
+      - Vue3 物料需要 window.Vue3 + window.ElementPlus
+      - Vue2 物料需要 window.Vue2 + window.ELEMENT
+      全部走本地 /runtime/*，零外部 CDN，可在内网/离线环境运行。
+    -->
+
+    <!-- Vue2 运行时：vue2.js 资源文件把全局挂到 window.Vue -->
+    <script src="/runtime/vue2.js"></script>
+    <link rel="stylesheet" href="/runtime/element-ui.css" />
+    <script src="/runtime/element-ui.js"></script>
+    <script>
+      window.ELEMENT = ELEMENT;
+      // 暴露 Vue2 给物料入口模板（createVue2Widget 用 window.Vue2）
+      window.Vue2 = window.Vue;
+    </script>
+
+    <!-- Vue3 运行时：与 Vue2 共存，通过不同全局变量名天然隔离 -->
+    <script src="/runtime/vue3.js"></script>
+    <script>
+      window.Vue3 = window.Vue;
+    </script>
+
+    <link rel="stylesheet" href="/runtime/element-plus.css" />
+    <script src="/runtime/element-plus.js"></script>
+    <script>
+      window.ElementPlus = ElementPlus;
+    </script>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
