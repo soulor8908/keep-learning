@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
-    "@wc/core": "workspace:*",
+    "@wc/core": "file:../wc",
     "vite": "^5.0.0",
     "vue2": "npm:vue@2.6.14"
   }

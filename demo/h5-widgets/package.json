@@ -9,7 +9,7 @@
     "watch": "node --max-old-space-size=4096 build.mjs --watch"
   },
   "devDependencies": {
-    "@wc/core": "workspace:*",
+    "@wc/core": "file:../wc",
     "vite": "^5.0.0"
   }
 }

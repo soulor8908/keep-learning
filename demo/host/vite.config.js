@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HOST_NM = path.resolve(__dirname, 'node_modules');
 const ROOT_NM = path.resolve(__dirname, '../../node_modules');
 
-// ─── 运行时依赖映射 ───
+// ─── 运行时依赖映射（从基座 node_modules 读取）───
 const LOCAL_MAP = {
   '/runtime/vue2.js': path.resolve(HOST_NM, 'vue2/dist/vue.js'),
   '/runtime/vue3.js': path.resolve(HOST_NM, 'vue/dist/vue.global.js'),
@@ -19,17 +19,19 @@ const LOCAL_MAP = {
   '/runtime/lodash.min.js': path.resolve(ROOT_NM, 'lodash/lodash.min.js')
 };
 
-// ─── 物料库映射 ───
-const WIDGET_LIBS = {
-  'vue2-widgets': { vueVersion: '2' },
-  'vue3-widgets': { vueVersion: '3' },
-  'h5-widgets': { vueVersion: 'none' }
-};
+// ─── 物料库映射（支持多仓开发）───
+// 本地开发：VITE_WIDGETS_DIRS 环境变量指定物料产物目录（逗号分隔）
+// 默认回退到同级 demo 目录（仅适用于 monorepo 本地开发）
+const WIDGETS_BASE_DIRS = process.env.VITE_WIDGETS_DIRS
+  ? process.env.VITE_WIDGETS_DIRS.split(',').map(d => d.trim())
+  : [
+      path.resolve(__dirname, '../vue2-widgets/dist'),
+      path.resolve(__dirname, '../vue3-widgets/dist'),
+      path.resolve(__dirname, '../h5-widgets/dist')
+    ];
 
-// 自动生成物料产物映射
 const WIDGET_MAP = {};
-for (const [lib, config] of Object.entries(WIDGET_LIBS)) {
-  const distDir = path.resolve(__dirname, `../${lib}/dist`);
+for (const distDir of WIDGETS_BASE_DIRS) {
   if (!fs.existsSync(distDir)) continue;
   for (const file of fs.readdirSync(distDir)) {
     if (file.endsWith('.js') || file.endsWith('.css')) {
@@ -47,8 +49,7 @@ function localServePlugin() {
     name: 'local-serve',
     configureServer(server) {
       const watcher = server.watcher;
-      for (const lib of Object.keys(WIDGET_LIBS)) {
-        const distDir = path.resolve(__dirname, `../${lib}/dist`);
+      for (const distDir of WIDGETS_BASE_DIRS) {
         if (fs.existsSync(distDir)) watcher.add(distDir);
       }
       watcher.on('change', (file) => {

@@ -44,17 +44,20 @@ demo/
     └── src/widgets/
 ```
 
-## 快速开始
+## 快速开始（本地开发）
 
 ```bash
-# 安装依赖
+# 安装根依赖（测试工具）
 pnpm install
 
-# 构建所有物料（每个物料独立 UMD 文件）
-pnpm build:widgets
+# 各物料仓库独立构建
+cd demo/vue2-widgets && pnpm install && pnpm run build
+cd demo/vue3-widgets && pnpm install && pnpm run build
+cd demo/h5-widgets && pnpm install && pnpm run build
 
-# 启动基座
-pnpm serve
+# 启动基座（指定物料产物目录）
+cd demo/host
+VITE_WIDGETS_DIRS="../vue2-widgets/dist,../vue3-widgets/dist,../h5-widgets/dist" pnpm run serve
 ```
 
 访问 http://localhost:5000，页面会同时展示 Vue2 / Vue3 / H5 三个物料。
@@ -62,31 +65,24 @@ pnpm serve
 ## 开发
 
 ```bash
-# 一键启动：构建物料 + watch + host
-pnpm dev
-
-# 单独预览某个物料
-pnpm dev:widget:vue2
-pnpm dev:widget:vue3
-pnpm dev:widget:h5
-```
-
-## 测试
-
-```bash
-# 单元测试
+# 单元测试（根目录）
 pnpm test:run
 
-# 端到端测试
+# 端到端测试（根目录）
 pnpm e2e
+
+# 单独预览物料（进入物料仓库）
+cd demo/vue2-widgets && pnpm run serve
+cd demo/vue3-widgets && pnpm run serve
+cd demo/h5-widgets && pnpm run serve
 ```
 
 ## 写一个物料
 
-### 1. 创建物料目录
+### 1. 创建物料目录（在物料仓库中）
 
 ```
-demo/vue3-widgets/src/widgets/my-widget/
+src/widgets/my-widget/
 ├── index.js           # 物料入口
 └── MyWidget.vue       # Vue 组件
 ```
@@ -94,7 +90,7 @@ demo/vue3-widgets/src/widgets/my-widget/
 ### 2. 编写物料入口
 
 ```js
-// demo/vue3-widgets/src/widgets/my-widget/index.js
+// src/widgets/my-widget/index.js
 import MyWidget from './MyWidget.vue';
 import { createVue3Widget } from '@wc/core/templates/vue3';
 
@@ -106,7 +102,13 @@ export default createVue3Widget(MyWidget, {
 
 ### 3. 自动构建
 
-`build.mjs` 会自动扫描 `src/widgets/` 下所有目录，无需额外配置。运行 `pnpm build:widgets` 即可。
+在物料仓库中运行：
+
+```bash
+pnpm run build
+```
+
+`build.mjs` 会自动扫描 `src/widgets/` 下所有目录，无需额外配置。产物输出到 `dist/` 目录。
 
 ### 4. 在基座中加载
 
