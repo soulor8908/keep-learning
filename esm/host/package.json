@@ -1,0 +1,28 @@
+{
+  "name": "esm-host",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build:widgets": "node --max-old-space-size=4096 build.mjs",
+    "serve": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "element-plus": "^2.7.0",
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vitejs/plugin-vue2": "^2.3.3",
+    "@wc/esm-core": "file:../wc",
+    "element-ui": "^2.15.14",
+    "vite": "^5.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@vitejs/plugin-vue2>vue": "2.7.16"
+    }
+  }
+}

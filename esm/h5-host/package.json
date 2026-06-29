@@ -1,0 +1,15 @@
+{
+  "name": "esm-h5-host",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "serve": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@wc/esm-core": "file:../wc",
+    "vite": "^5.0.0"
+  }
+}

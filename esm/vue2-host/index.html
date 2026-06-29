@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vue2 Host (ESM + importmap)</title>
+    <!--
+      Vue2 单栈基座（ESM 版），对照 demo/vue2-host/index.html：
+      - UMD 版 index.html 零 script，跨栈运行时由 loader.ensureRuntimes 按需注入 window.Vue3/ElementPlus
+      - ESM 版 index.html 用一张 importmap 声明解析规则，跨栈依赖由浏览器原生 import 按需触发
+      顶层 imports：基座自身是 Vue2 → vue 解析到 Vue2，element-ui 同栈共享
+      scopes：/widgets/vue3/* → Vue3 + element-plus（跨栈 Vue3 物料）
+    -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css" />
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.7.0/dist/index.css" />
+
+    <script type="importmap">
+    {
+      "imports": {
+        "vue":          "https://esm.sh/vue@2.6.14",
+        "element-ui":   "https://esm.sh/element-ui@2.15.14?deps=vue@2.6.14"
+      },
+      "scopes": {
+        "/widgets/vue3/": {
+          "vue":           "https://esm.sh/vue@3.4.21",
+          "element-plus":  "https://esm.sh/element-plus@2.7.0?deps=vue@3.4.21"
+        }
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
