@@ -1,0 +1,31 @@
+{
+  "_comment": "UI 组件库分组策略——本文件是唯一配置源。importmap 生成、构建期 resolver（auto 模式）、构建期校验（manual 模式）都读它。改分组只改本文件即可，无需动构建代码。",
+
+  "_comment_groups": "分组原则：组内组件强相关（同出现），跨组无交集（每个组件唯一归属一组）。同组同 URL 浏览器去重，不同组互不重复加载。",
+
+  "_comment_naming": "element-plus 具名导出带 El 前缀（ElButton）；element-ui 不带（Button）。本文件按各库真实导出名填写，resolver 会自动处理 <el-button> → ElButton/Button 的转换。",
+
+  "_comment_versions": "version 与 deps 在生成 importmap URL 时拼到 esm.sh 查询串，确保组内组件共享同一 vue 实例。",
+
+  "element-plus": {
+    "version": "2.7.0",
+    "vueDep": "vue@3.4.21",
+    "groups": {
+      "common": ["ElButton", "ElInput", "ElTag", "ElIcon", "ElForm", "ElFormItem", "ElMessage", "ElMessageBox"],
+      "table":  ["ElTable", "ElTableColumn", "ElPagination"],
+      "form":   ["ElSelect", "ElOption", "ElCascader", "ElSwitch", "ElRadio", "ElRadioGroup", "ElCheckbox", "ElCheckboxGroup"],
+      "heavy":  ["ElDatePicker", "ElColorPicker", "ElUpload", "ElTree", "ElTreeSelect"]
+    }
+  },
+
+  "element-ui": {
+    "version": "2.15.14",
+    "vueDep": "vue@2.6.14",
+    "groups": {
+      "common": ["Button", "Input", "Tag", "Icon", "Form", "FormItem", "Message", "MessageBox"],
+      "table":  ["Table", "TableColumn", "Pagination"],
+      "form":   ["Select", "Option", "Cascader", "Switch", "Radio", "RadioGroup", "Checkbox", "CheckboxGroup"],
+      "heavy":  ["DatePicker", "ColorPicker", "Upload", "Tree"]
+    }
+  }
+}

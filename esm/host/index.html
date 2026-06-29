@@ -3,27 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BI 看板基座（ESM + importmap）</title>
+    <title>BI 看板基座（ESM + importmap + UI 分组按需）</title>
     <!--
-      ESM + importmap 运行时策略（对照 UMD 版 demo/host/index.html）：
-      - UMD 版在 <head> 里用一串 <script> 把 vue2/vue3/element-ui/element-plus 注入到 window.Vue2/Vue3/...，
-        物料 UMD 读取这些全局变量。首屏付出全部运行时体积，再由 loader.ensureRuntimes 改为按需。
-      - ESM 版只用一张 importmap 声明 bare specifier → ESM URL 的映射，运行时按需由浏览器原生 import 触发，
-        不再有任何 window 全局变量、不再有 <script> 注入。
+      UI 分组按需加载策略（对照旧版全量 importmap）：
 
-      importmap 的两个关键设计：
-      1. 顶层 imports：基座自身（Vue3）与跨技术栈共享依赖的默认解析。
-         - vue → Vue3（基座是 Vue3）
-         - element-plus → Vue3 物料与基座共用的 ElementPlus
-      2. scopes：按物料 URL 前缀分流，让同一个 bare specifier 'vue' 在不同目录下解析到不同大版本。
-         - /widgets/vue2/*  → vue → Vue2，element-ui → element-ui（其内部 vue 由 esm.sh ?deps 钉到 2.6.14，与 scope 共享同一实例）
-         - /widgets/vue3/*  → vue → Vue3，element-plus → element-plus
+      旧版：importmap 把 'element-plus' 映射到全量 esm.sh URL，任何物料 import 都拉全量。
+      新版：把组件库按使用频次/类型分组，每组一个 canonical URL 放进 importmap 顶层 imports：
+        - element-plus/common  → 高频通用（Button/Input/Tag/...）
+        - element-plus/table   → 表格类（Table/TableColumn/Pagination）
+        - element-plus/form    → 表单类（Select/Cascader/Switch/...）
+        - element-plus/heavy   → 少用但大（DatePicker/Upload/...）
+      物料只 import 用到的组，用到才加载；同组同 URL 浏览器自动去重（跨物料/跨基座）。
 
-      这正是替代 UMD `external + globals + window.Vue2/Vue3` 的等价机制：
-      依赖隔离由"不同全局变量名"变成"不同 URL scope 解析"，共享由"同一 window 全局"变成"同一 ESM URL 浏览器去重"。
+      importmap 由 vite.config.js 的 importmapInjectPlugin 从 esm/wc/ui-groups.json 自动生成，
+      改分组只改那个 json 文件，本 html 的占位标记下方无需手改。
 
-      离线/内网：把下列 esm.sh / unpkg URL 全部替换为自托管的 ESM 产物路径即可
-      （esm.sh 的输出可一次性 vendor 到内网静态服务器，importmap 只改 URL 不改结构）。
+      离线/内网：启动时设 UI_CDN_BASE=http://内网静态服务器 即可把所有 esm.sh URL 换成自托管产物。
     -->
 
     <!-- UI 库全局样式：浏览器原生 ESM 不支持 import CSS，组件库 CSS 仍需 <link> 全局引入。
@@ -31,26 +26,9 @@
     <link rel="stylesheet" href="https://unpkg.com/element-plus@2.7.0/dist/index.css" />
     <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css" />
 
-    <script type="importmap">
-    {
-      "imports": {
-        "vue":           "https://esm.sh/vue@3.4.21",
-        "element-plus":  "https://esm.sh/element-plus@2.7.0?deps=vue@3.4.21",
-        "lodash":        "https://esm.sh/lodash@4.17.21",
-        "axios":         "https://esm.sh/axios@1.7.7"
-      },
-      "scopes": {
-        "/widgets/vue2/": {
-          "vue":         "https://esm.sh/vue@2.6.14",
-          "element-ui":  "https://esm.sh/element-ui@2.15.14?deps=vue@2.6.14"
-        },
-        "/widgets/vue3/": {
-          "vue":           "https://esm.sh/vue@3.4.21",
-          "element-plus":  "https://esm.sh/element-plus@2.7.0?deps=vue@3.4.21"
-        }
-      }
-    }
-    </script>
+    <!--IMPORTMAP_INJECT-->
+    <!-- importmap 由 vite 插件从 ui-groups.json 生成并注入此处；构建/启动后此处为 <script type="importmap"> -->
+    <!--/IMPORTMAP_INJECT-->
   </head>
   <body>
     <div id="app"></div>

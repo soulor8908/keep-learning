@@ -1,21 +1,23 @@
 /**
- * Vue3 物料入口模板（ESM 版）
+ * Vue3 物料入口模板（ESM 版 + UI 分组按需）
  *
- * 与 UMD 版本（wc/templates/vue3.js）的差异：
- * - 不再读 window.Vue3，改为 bare `import { createApp, h } from 'vue'`，由 importmap 的 scope 解析到 Vue3 ESM
- * - element-plus 不再从 window.ElementPlus 读取，改为按声明动态 import('element-plus')
+ * 与旧版（全量 app.use(ElementPlus)）的差异：
+ * - 不再全量加载 element-plus。UI 组件的注册交给物料 SFC 自己：
+ *   - manual 模式：物料 <script setup> 里 import { ElButton } from 'element-plus/common'
+ *   - auto 模式：unplugin-vue-components 在构建期自动注入上述 import
+ * - 模板只负责 Vue 实例创建/挂载，不再管 UI 库。deps 字段保留仅为元信息标注。
  *
  * @example
  *   import Component from './Widget.vue';
  *   import { createVue3Widget } from '@wc/core/templates/vue3';
- *   export default createVue3Widget(Component, { deps: ['element-plus'] });
+ *   export default createVue3Widget(Component);
  */
 
 import { createApp, h } from 'vue';
 
 /**
  * @param {import('vue').Component} Component
- * @param {{ plugins?: any[], deps?: string[] }} [options]
+ * @param {{ plugins?: any[], deps?: string[] }} [options]  deps 仅作元信息，不再触发全量加载
  */
 export function createVue3Widget(Component, options = {}) {
   const { plugins = [], deps = [] } = options;
@@ -23,21 +25,12 @@ export function createVue3Widget(Component, options = {}) {
   return {
     __widget_meta__: { deps },
 
-    async mount(container, props = {}) {
+    mount(container, props = {}) {
       const app = createApp({ render: () => h(Component, props) });
 
+      // 业务方通过 plugins 传入的插件（非 UI 库的全量注册），如自研插件
       for (const plugin of plugins) {
         app.use(plugin);
-      }
-
-      // element-plus 按需加载：仅在声明时动态 import
-      if (deps.includes('element-plus')) {
-        try {
-          const { default: ElementPlus } = await import('element-plus');
-          app.use(ElementPlus);
-        } catch (e) {
-          console.warn('[vue3-widget] element-plus 加载失败:', e);
-        }
       }
 
       app.mount(container);

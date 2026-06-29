@@ -1,22 +1,23 @@
 /**
- * Vue2 物料入口模板（ESM 版）
+ * Vue2 物料入口模板（ESM 版 + UI 分组按需）
  *
- * 与 UMD 版本（wc/templates/vue2.js）的差异：
- * - 不再读 window.Vue2，改为 bare `import Vue from 'vue'`，由 importmap 的 scope 解析到 Vue2 ESM
- * - element-ui 不再从 window.ELEMENT 读取，改为按声明动态 import('element-ui')，
- *   importmap 解析到 element-ui ESM（其内部依赖的 vue 与本物料共享同一实例）
+ * 与旧版（全量 Vue.use(ElementUI)）的差异：
+ * - 不再全量加载 element-ui。UI 组件注册交给物料 SFC：
+ *   - manual 模式：物料 <script> 里 import { Button } from 'element-ui/common' 并 components 注册
+ *   - auto 模式：unplugin-vue-components 在构建期自动注入 import + 注册
+ * - 模板只负责 Vue2 实例创建/挂载。
  *
  * @example
  *   import Component from './Widget.vue';
  *   import { createVue2Widget } from '@wc/core/templates/vue2';
- *   export default createVue2Widget(Component, { deps: ['element-ui'] });
+ *   export default createVue2Widget(Component);
  */
 
 import Vue from 'vue';
 
 /**
  * @param {import('vue').Component} Component
- * @param {{ deps?: string[] }} [options]
+ * @param {{ deps?: string[] }} [options]  deps 仅作元信息，不再触发全量加载
  */
 export function createVue2Widget(Component, options = {}) {
   const { deps = [] } = options;
@@ -24,18 +25,7 @@ export function createVue2Widget(Component, options = {}) {
   return {
     __widget_meta__: { deps },
 
-    async mount(container, props = {}) {
-      // element-ui 按需加载：仅在声明时动态 import，importmap 解析到 element-ui ESM
-      if (deps.includes('element-ui')) {
-        try {
-          const { default: ElementUI } = await import('element-ui');
-          // Vue.use 由 Vue2 自身去重（同实例只 install 一次），多个 Vue2 物料复用同一份 element-ui
-          Vue.use(ElementUI);
-        } catch (e) {
-          console.warn('[vue2-widget] element-ui 加载失败:', e);
-        }
-      }
-
+    mount(container, props = {}) {
       const app = new Vue({
         render: (h) => h(Component, { props })
       });

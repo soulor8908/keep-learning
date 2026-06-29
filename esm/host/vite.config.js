@@ -3,13 +3,16 @@ import vue from '@vitejs/plugin-vue';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { loadUiGroups, generateImportmap } from '../wc/importmap-gen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// 物料 ESM 产物根目录（按技术栈分子目录，配合 importmap scopes）
 const WIDGETS_ROOT = process.env.VITE_WIDGETS_DIR
   ? process.env.VITE_WIDGETS_DIR
   : path.resolve(__dirname, '../dist/widgets');
+
+// 离线/内网：用 UI_CDN_BASE 环境变量指向自托管 ESM 产物前缀
+const UI_CDN_BASE = process.env.UI_CDN_BASE || 'https://esm.sh';
 
 function localServePlugin() {
   return {
@@ -24,7 +27,6 @@ function localServePlugin() {
       });
 
       // 静态托管物料 ESM 产物：/widgets/* → esm/dist/widgets/*
-      // 这些文件不经 Vite 编译，原样下发，浏览器用 index.html 里的 importmap 解析其 bare import。
       server.middlewares.use((req, res, next) => {
         const url = req.url.split('?')[0];
         if (!url.startsWith('/widgets/')) return next();
@@ -43,20 +45,38 @@ function localServePlugin() {
   };
 }
 
+// importmap 注入插件：读 ui-groups.json 生成 importmap，替换 index.html 里的占位标记。
+// 这样改分组只改 ui-groups.json，dev 重启即生效，无需手改 index.html。
+function importmapInjectPlugin() {
+  return {
+    name: 'importmap-inject',
+    transformIndexHtml(html) {
+      const groups = loadUiGroups();
+      const { imports, scopes } = generateImportmap(groups, { cdnBase: UI_CDN_BASE });
+      const importmap = JSON.stringify({ imports, scopes });
+      return html.replace(
+        /<!--IMPORTMAP_INJECT-->[\s\S]*?<!--\/IMPORTMAP_INJECT-->/,
+        `<script type="importmap">${importmap}</script>`
+      );
+    }
+  };
+}
+
 export default defineConfig({
-  plugins: [vue(), localServePlugin()],
+  plugins: [vue(), localServePlugin(), importmapInjectPlugin()],
   resolve: {
     alias: {
       '@wc/esm-core': path.resolve(__dirname, '../wc'),
       '@': path.resolve(__dirname, 'src')
     }
   },
-  // 基座自身的 vue / element-plus 也走 importmap（与 Vue3 物料共享同一份 ESM），
-  // 因此从预打包与构建产物中排除，留给浏览器原生解析。
-  // 对照 UMD 版：UMD 基座把 element-plus 打进 chunk，与物料的 window.ElementPlus 是两份。
-  optimizeDeps: { exclude: ['vue', 'element-plus', 'element-ui'] },
+  // 基座自身的 vue 也走 importmap（与 Vue3 物料共享同一份 ESM）。
+  // 组 specifier（element-plus/common 等）同样交给 importmap，从预打包与构建产物中排除。
+  optimizeDeps: { exclude: ['vue', 'element-plus', 'element-ui', /^element-plus\//, /^element-ui\//] },
   build: {
-    rollupOptions: { external: ['vue', 'element-plus', 'element-ui'] }
+    rollupOptions: {
+      external: ['vue', 'element-plus', 'element-ui', /^element-plus\//, /^element-ui\//]
+    }
   },
   server: {
     port: 5010,
