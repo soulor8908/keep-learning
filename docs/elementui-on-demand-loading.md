@@ -29,6 +29,71 @@
 
 ---
 
+## 0.1 已落地：运行时按需加载（前置依赖）
+
+> 在按组件按需加载（Plan C）落地之前，`wc/loader.js` 已实现「运行时按需加载」：基座 `index.html` 不再首屏注入 Vue2 / Vue3 / element-ui / element-plus，而是由 `mountWidget` 在加载物料 UMD 之前，按物料的 `vueVersion` + `runtimeDeps` 声明补齐缺失的全局变量。
+
+这是 ElementUI 按需加载的**前置条件**：先把整个 UI 库按物料声明懒加载（消除首屏体积），再在此基础上做按组件加载（进一步消除冗余）。本节描述已实现的部分，第 1 节起描述更精细的设计目标。
+
+### API
+
+```js
+import { ensureRuntimes } from '@wc/core/loader';
+
+// 通常由 mountWidget 内部自动调用；业务侧仅在需要预热时手动调用
+await ensureRuntimes({ vue2: true, vue3: true, elementUi: true, elementPlus: true });
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `needs.vue2` | boolean | 加载 `window.Vue2`（缺失时拉 `/runtime/vue2.js`） |
+| `needs.vue3` | boolean | 加载 `window.Vue3`（缺失时拉 `/runtime/vue3.js`） |
+| `needs.elementUi` | boolean | 加载 `window.ELEMENT`（自动先加载 vue2） |
+| `needs.elementPlus` | boolean | 加载 `window.ElementPlus`（自动先加载 vue3） |
+
+### 默认 URL 与覆盖
+
+`loader.js` 内置默认 URL 表，业务侧可通过 `window.__WIDGET_RUNTIME_URLS__` 覆盖为自有 CDN：
+
+```js
+window.__WIDGET_RUNTIME_URLS__ = {
+  'element-plus': {
+    js: 'https://cdn.example.com/element-plus@2.7.0.js',
+    css: 'https://cdn.example.com/element-plus@2.7.0.css',
+    globalVar: 'ElementPlus',
+    requires: 'vue3'
+  }
+};
+```
+
+### 物料侧声明
+
+物料通过 `runtimeDeps` 声明运行时依赖，loader 据此决定是否加载 element-ui / element-plus：
+
+```js
+await mountWidget(container, {
+  name: 'biFinancePanel',
+  js: '/widgets/finance-panel.js',
+  css: '/widgets/finance-panel.css',
+  vueVersion: '3',
+  runtimeDeps: ['element-plus'],  // loader 自动按需加载 element-plus（含前置 vue3）
+  props: { title: '财务' }
+});
+```
+
+### 与 Plan C 的关系
+
+| 维度 | 当前已实现 | Plan C（待实施） |
+|------|------------|------------------|
+| 粒度 | 整包（element-ui / element-plus 全量） | 单组件（Button / Input / Select …） |
+| 触发 | 物料声明 `runtimeDeps` | 物料 `schema.json` 声明 `uiDependencies.components` |
+| 注册 | `Vue.use(window.ELEMENT)` | `Vue.component('el-button', Component)` |
+| 体积 | 数百 kB（按物料懒加载） | 数十 kB（按物料实际使用的组件加载） |
+
+> 运行时按需加载完成后，Plan C 的注册表驱动按组件加载可作为下一步优化目标。
+
+---
+
 ## 1. 调研：ElementUI 包体积
 
 ### 1.1 全量包体积

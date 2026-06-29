@@ -29,20 +29,26 @@
 每个仓库独立，通过 `@wc/core` npm 包和 HTTP 产物交互：
 
 ```
-# 仓库 A：运行时核心（本仓库）
+# 仓库 A：运行时核心（本仓库 wc/）
 wc/
 ├── package.json            # 包名 @wc/core，发布到 npm
-├── loader.js               # UMD 加载 + URL 缓存 + 依赖检查 + 错误降级
+├── loader.js               # UMD 加载 + URL 缓存 + 依赖检查 + 错误降级 + 运行时按需加载
 ├── WidgetHost.vue          # Vue3 基座组件
 ├── templates/              # Vue2 / Vue3 / H5 物料入口模板
 └── README.md
 
 # 仓库 B：基座（本仓库 demo/host 模拟）
 demo/host/
-├── package.json
+├── package.json            # 依赖 @wc/core（本地用 file:../wc）
 ├── src/App.vue             # 物料注册表（只记录 URL，不引用源码）
 ├── vite.config.js          # 开发服务器配置
 └── index.html              # 注入运行时全局变量
+
+# 仓库 B'：单栈基座示例（本仓库 demo/vue2-host / demo/h5-host 模拟）
+# 当基座本身是某个技术栈（如 Vue2 老页面、H5 营销页）时，同栈物料走 ESM 直引，
+# 跨栈物料仍走 loader（loader 内部按需补齐运行时）。
+demo/vue2-host/            # Vue2 单栈基座（端口 5001）
+demo/h5-host/               # H5 单栈基座（端口 5002）
 
 # 仓库 C：Vue2 物料（本仓库 demo/vue2-widgets 模拟）
 demo/vue2-widgets/
@@ -68,20 +74,22 @@ demo/h5-widgets/
 
 ## 关键入口 / 核心模块
 
-| 仓库 | 入口 | 用途 |
-|------|------|------|
-| `@wc/core` | `loader.js` / `WidgetHost.vue` / `templates/` | 运行时核心，npm 包分发 |
-| `demo/host` | `index.html` + `vite.config.js` | 统一基座预览（本地模拟） |
-| `demo/vue2-widgets` | `build.mjs` | Vue2 物料分包 UMD 构建 |
-| `demo/vue3-widgets` | `build.mjs` | Vue3 物料分包 UMD 构建 |
-| `demo/h5-widgets` | `build.mjs` | H5 物料分包 UMD 构建 |
+| 仓库 | 端口 | 入口 | 用途 |
+|------|------|------|------|
+| `@wc/core` | - | `loader.js` / `WidgetHost.vue` / `templates/` | 运行时核心，npm 包分发 |
+| `demo/host` | 5000 | `index.html` + `vite.config.js` | 统一基座预览（Vue2/Vue3/H5 全部走 loader） |
+| `demo/vue2-host` | 5001 | `index.html` + `vite.config.js` | Vue2 单栈基座（同栈 ESM，跨栈 loader） |
+| `demo/h5-host` | 5002 | `index.html` + `vite.config.js` | H5 单栈基座（同栈 ESM，跨栈 loader） |
+| `demo/vue2-widgets` | - | `build.mjs` | Vue2 物料分包 UMD 构建 |
+| `demo/vue3-widgets` | - | `build.mjs` | Vue3 物料分包 UMD 构建 |
+| `demo/h5-widgets` | - | `build.mjs` | H5 物料分包 UMD 构建 |
 
 ## 核心 API
 
 | 模块 | 导出 | 说明 |
 |------|------|------|
-| `@wc/core/loader` | `mountWidget(container, widget)`、`unmountWidget(api)`、`preloadWidgets(urls)` | 轻量加载器 |
-| `@wc/core/WidgetHost.vue` | `WidgetHost` | Vue3 基座组件（支持 `css` 属性） |
+| `@wc/core/loader` | `mountWidget(container, widget)`、`unmountWidget(api)`、`preloadWidgets(urls)`、`ensureRuntimes(needs)` | 轻量加载器；`mountWidget` 内部已调用 `ensureRuntimes`，按物料声明的 `vueVersion` + `runtimeDeps` 按需补齐 `window.Vue2/Vue3/ELEMENT/ElementPlus` |
+| `@wc/core/WidgetHost.vue` | `WidgetHost` | Vue3 基座组件（支持 `css`、`runtimeDeps` 属性） |
 | `@wc/core/templates/vue2` | `createVue2Widget(Component, options)` | Vue2 物料入口模板 |
 | `@wc/core/templates/vue3` | `createVue3Widget(Component, options)` | Vue3 物料入口模板 |
 | `@wc/core/templates/h5` | `createH5Widget(renderFn)` | H5 物料入口模板 |
@@ -123,6 +131,10 @@ pnpm test
 pnpm test:run
 pnpm test:ci
 pnpm e2e
+
+# 单栈基座预览（多仓视角下需进入各自目录）
+cd demo/vue2-host && pnpm install && pnpm serve    # 端口 5001
+cd demo/h5-host   && pnpm install && pnpm serve    # 端口 5002
 ```
 
 ## 分包构建
@@ -204,11 +216,13 @@ WIDGETS_DIRS="/repo/vue2-widgets/dist,/repo/vue3-widgets/dist,/repo/h5-widgets/d
 
 | 全局变量 | 提供者 | 用途 |
 |---------|--------|------|
-| `window.Vue2` | 基座 index.html | Vue2 物料运行时 |
-| `window.Vue3` | 基座 index.html | Vue3 物料运行时 |
-| `window.ElementPlus` | 基座 index.html | ElementPlus 组件库（可选） |
-| `window._` | 基座 index.html | lodash（可选） |
-| `window.axios` | 基座 index.html | axios（可选） |
+| `window.Vue2` | `loader.ensureRuntimes`（缺失时拉 `/runtime/vue2.js`），或 vue2-host `main.js` 直接注入 | Vue2 物料运行时 |
+| `window.Vue3` | `loader.ensureRuntimes`（缺失时拉 `/runtime/vue3.js`） | Vue3 物料运行时 |
+| `window.ELEMENT` | `loader.ensureRuntimes`（物料声明 `runtimeDeps: ['element-ui']` 时按需加载，自动先加载 vue2） | element-ui 组件库（可选） |
+| `window.ElementPlus` | `loader.ensureRuntimes`（物料声明 `runtimeDeps: ['element-plus']` 时按需加载，自动先加载 vue3） | ElementPlus 组件库（可选） |
+| `window._` | 各 host index.html 按需引入 | lodash（可选） |
+| `window.axios` | 各 host index.html 按需引入 | axios（可选） |
+| `window.__WIDGET_RUNTIME_URLS__` | 业务侧设置（在 mountWidget 之前） | 覆盖默认运行时 URL，把 vue2/vue3/element-ui/element-plus 打到自有 CDN |
 
 ## 代码习惯约定
 

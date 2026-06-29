@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>H5 Host - 原生基座托管多技术栈物料</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #303133; background: #f5f7fa; }
+      .h5host { padding: 20px; }
+      .h5host__header { margin-bottom: 24px; }
+      .h5host__header h1 { margin: 0 0 4px; font-size: 24px; }
+      .h5host__subtitle { margin: 0; color: #909399; font-size: 13px; line-height: 1.6; max-width: 720px; }
+      .h5host__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+      .h5host__card { padding: 16px; border: 1px solid #e4e7ed; border-radius: 8px; background: #fff; }
+      .h5host__card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+      .h5host__card-head h2 { margin: 0; font-size: 15px; font-weight: 500; }
+      .h5host__mount { min-height: 120px; }
+      .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #fff; }
+      .badge--vue2 { background: #42b983; }
+      .badge--vue3 { background: #35495e; }
+      .badge--h5 { background: #f56c2c; }
+      .h5host__log { margin-top: 24px; padding: 16px; border: 1px solid #e4e7ed; border-radius: 8px; background: #fafafa; }
+      .h5host__log-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+      .h5host__log-head h3 { margin: 0; font-size: 14px; }
+      .h5host__log-head button { padding: 4px 12px; border: 1px solid #dcdfe6; background: #fff; border-radius: 4px; cursor: pointer; font-size: 12px; }
+      .h5host__log-list { list-style: none; padding: 0; margin: 0; }
+      .h5host__log-list li { padding: 6px 0; border-bottom: 1px dashed #ebeef5; font-size: 13px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .h5host__log-list .time { color: #909399; font-family: monospace; font-size: 12px; }
+      .h5host__log-list .event { color: #409eff; }
+      .h5host__log-list code { background: #f4f4f5; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+      .h5host__log-empty { margin: 0; color: #909399; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <!--
+      H5 Host 是最纯粹的演示：基座本身没有框架，纯 DOM 操作。
+      - 同栈 H5 物料：ESM 直引 render 函数，零 UMD 中转。
+      - 跨栈 Vue2/Vue3 物料：mountWidget，loader 内部 ensureRuntimes 按需加载。
+      因此 index.html 不再首屏注入任何运行时脚本，零外部依赖。
+    -->
+
+    <div class="h5host">
+      <header class="h5host__header">
+        <h1>H5 Host</h1>
+        <p class="h5host__subtitle">
+          基座是原生 HTML/JS，零框架依赖。同栈 H5 物料走 ESM 直引，跨栈 Vue2/Vue3 物料走 loader 按需加载运行时。
+          这是「基座与物料技术栈解耦」的最终证明。
+        </p>
+      </header>
+
+      <!-- 卡片容器由 main.js 动态填充 -->
+      <main class="h5host__grid" id="grid"></main>
+
+      <aside class="h5host__log">
+        <header class="h5host__log-head">
+          <h3>事件日志</h3>
+          <button id="clear">清空</button>
+        </header>
+        <ul class="h5host__log-list" id="log-list"></ul>
+        <p class="h5host__log-empty" id="log-empty">点击物料内的按钮，事件会出现在这里</p>
+      </aside>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

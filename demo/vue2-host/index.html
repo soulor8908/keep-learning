@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vue2 Host - Vue2 基座托管多技术栈物料</title>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <!--
+      运行时加载策略（按需）：
+      - 基座自身是 Vue2，由 main.js 的 import Vue 加载，无需 index.html 注入。
+      - element-ui / Vue3 / element-plus 全部按需加载：
+          · Vue2 物料（ESM 直引）→ 首次挂载前动态 import element-ui，注册到基座 Vue。
+          · Vue3 / H5 物料（走 loader）→ mountWidget 内部 ensureRuntimes 按需注入。
+      - 因此 index.html 只放 #app 容器，零外部脚本，首屏不付出任何 UI 库成本。
+    -->
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

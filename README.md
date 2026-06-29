@@ -7,32 +7,37 @@
 依赖冲突的解决方案是 `external` + `globals` + 不同的全局变量名（`Vue2` / `Vue3`），不是 Custom Elements。新方案删除 CE 包装层，保留 UMD 加载和依赖隔离机制。
 
 ```
-基座加载共享运行时：
-  window.Vue2 = Vue2      // 给 Vue2 物料
-  window.Vue3 = Vue3      // 给 Vue3 物料
-  window.ElementPlus = ElementPlus
-  window._ = lodash
-  ...
+基座按需加载共享运行时（loader.ensureRuntimes）：
+  window.Vue2           // Vue2 物料运行时（缺失时由 loader 拉取 /runtime/vue2.js）
+  window.Vue3           // Vue3 物料运行时（缺失时由 loader 拉取 /runtime/vue3.js）
+  window.ELEMENT        // element-ui（Vue2 物料声明 runtimeDeps: ['element-ui'] 时拉取）
+  window.ElementPlus    // element-plus（Vue3 物料声明 runtimeDeps: ['element-plus'] 时拉取）
 
 物料 UMD 构建（每个物料独立一个 UMD 文件）：
   external: ['vue']
   output.globals: { vue: 'Vue2' }  // 或 Vue3
 
 基座加载：
-  mountWidget(container, { name, js, css, vueVersion, props })
+  mountWidget(container, { name, js, css, vueVersion, runtimeDeps, props })
+
+同栈物料优先走 ESM 直引（Vite 编译挂载，跳过 UMD 协议）：
+  vue2-host 中的 Vue2 物料 → import SalesPanel from '.../SalesPanel.vue'
+  h5-host   中的 H5   物料 → import { renderChart } from '.../ChartWidget.js'
 ```
 
 ## 目录
 
 ```
 wc/
-├── loader.js              # UMD 加载 + URL 缓存 + 依赖检查 + 错误降级
+├── loader.js              # UMD 加载 + URL 缓存 + 依赖检查 + 错误降级 + 运行时按需加载
 ├── WidgetHost.vue         # Vue3 基座组件
 ├── templates/             # Vue2 / Vue3 / H5 物料入口模板
 └── README.md
 
 demo/
-├── host/                  # 统一基座（同时加载 Vue2 + Vue3 运行时）
+├── host/                  # 统一基座（Vue2 + Vue3 + H5 共存，端口 5000）
+├── vue2-host/             # Vue2 单栈基座（同栈走 ESM，跨栈走 loader，端口 5001）
+├── h5-host/               # H5 单栈基座（同栈走 ESM，跨栈走 loader，端口 5002）
 ├── vue2-widgets/          # Vue2 物料（每个物料独立 UMD）
 │   ├── build.mjs          # 分包构建脚本
 │   └── src/widgets/       # 各物料独立目录
@@ -58,6 +63,12 @@ cd demo/h5-widgets && pnpm install && pnpm run build
 # 启动基座（指定物料产物目录）
 cd demo/host
 VITE_WIDGETS_DIRS="../vue2-widgets/dist,../vue3-widgets/dist,../h5-widgets/dist" pnpm run serve
+
+# 启动 Vue2 单栈基座（端口 5001）
+cd demo/vue2-host && pnpm install && pnpm serve
+
+# 启动 H5 单栈基座（端口 5002）
+cd demo/h5-host && pnpm install && pnpm serve
 ```
 
 访问 http://localhost:5000，页面会同时展示 Vue2 / Vue3 / H5 三个物料。
@@ -76,6 +87,16 @@ cd demo/vue2-widgets && pnpm run serve
 cd demo/vue3-widgets && pnpm run serve
 cd demo/h5-widgets && pnpm run serve
 ```
+
+## 多基座形态
+
+| 基座 | 端口 | 同栈物料 | 跨栈物料 |
+|------|------|----------|----------|
+| `demo/host` | 5000 | — | Vue2/Vue3/H5 全部走 loader（UMD） |
+| `demo/vue2-host` | 5001 | Vue2 物料 ESM 直引 | Vue3/H5 走 loader |
+| `demo/h5-host` | 5002 | H5 物料 ESM 直引 | Vue2/Vue3 走 loader |
+
+**为什么要多种基座**：实际业务里基座本身就是某种技术栈——Vue2 老页面、H5 营销页等。同栈物料没必要走 UMD 中转，ESM 直引更轻量；跨栈物料仍由 `loader` 统一加载，运行时按需补齐。
 
 ## 写一个物料
 
