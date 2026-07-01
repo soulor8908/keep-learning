@@ -31,8 +31,16 @@
 </template>
 
 <script>
+// manual 模式：直接从 element-ui 组 specifier 导入所需组件并本地注册。
+// unplugin-vue-components v32 不兼容 @vitejs/plugin-vue2（auto 模式对 Vue2 不生效），
+// 故 Vue2 物料统一走 manual 模式：import + components 显式声明，build.mjs 只做组 specifier 校验。
+// 组 specifier（element-ui/common、element-ui/table）由基座 importmap 顶层 imports 解析到 esm.sh。
+import { Tag as ElTag, Button as ElButton } from 'element-ui/common';
+import { Table as ElTable, TableColumn as ElTableColumn } from 'element-ui/table';
+
 export default {
   name: 'OrderPanel',
+  components: { ElTag, ElButton, ElTable, ElTableColumn },
   props: {
     title: { type: String, default: 'common.order' },
     locale: { type: String, default: 'zh-CN' },

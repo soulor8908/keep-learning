@@ -1,28 +1,28 @@
 ## 项目概述
 
-跨技术栈看板物料集成方案（BI 看板基座 + Vue2/Vue3/H5 物料），通过 UMD + `mount()` 把不同技术栈的物料以统一方式接入到同一个看板中。面向 2C 页面，对首屏性能、运行时性能和体积敏感。
+跨技术栈看板物料集成方案（BI 看板基座 + Vue2/Vue3/H5 物料），通过 **纯 ESM + 浏览器原生 importmap** 把不同技术栈的物料以统一方式接入到同一个看板中。面向 2C 页面，对首屏性能、运行时性能和体积敏感。
 
-依赖冲突的解决方案是 `external` + `globals` + 不同全局变量名（`Vue2` / `Vue3`），不是 Custom Elements。新架构已删除 CE 包装层。
+依赖隔离的解决方案是 `external` + importmap `scopes`（按物料 URL 前缀解析到不同 Vue 版本），不是 Custom Elements，也不是 UMD 全局变量。**不再有 `window.Vue2` / `window.Vue3` / `window.ElementPlus` 全局变量，不再有 `loader.ensureRuntimes` 运行时补齐。**
 
 ## 多仓基本条件
 
-**基座（Host）和各物料项目（Widgets）分属不同代码仓**，这是架构的基本约束。运行时基座通过 HTTP 加载 UMD 产物，不依赖文件系统路径或同仓源码引用。
+**基座（Host）和各物料项目（Widgets）分属不同代码仓**，这是架构的基本约束。运行时基座通过 HTTP 加载物料 ESM 产物，不依赖文件系统路径或同仓源码引用。
 
 本仓库（`wc/` + `demo/`）是本地开发参考实现，用 monorepo 模拟多仓场景。以下设计都按多仓约束执行：
 
 - 每个仓库独立构建、独立部署、独立版本管理
 - `@wc/core` 作为 npm 包分发，物料仓库通过 `npm install @wc/core` 引入
-- 基座通过 HTTP URL 加载物料 UMD 产物，不直接引用物料源码
-- 物料产物通过 `manifest.json` 自描述，基座注册表只记录 URL 和元数据
+- 基座通过 HTTP URL 加载物料 ESM 产物，不直接引用物料源码
+- 物料产物通过 `manifest.json` 自描述（`format: 'esm'`），基座注册表只记录 URL 和元数据
 - 本地开发用 `file:../wc` 模拟跨仓依赖
 
 ## 技术栈
 
 - **框架**：Vue 2/3、原生 H5
-- **构建工具**：Vite（每个物料独立构建为 UMD）
-- **UI 库**：ElementUI (Vue2)、ElementPlus (Vue3) —— 可选，按需加载
+- **构建工具**：Vite（每个物料独立构建为 ESM，`formats: ['es']`）
+- **UI 库**：ElementUI (Vue2)、ElementPlus (Vue3) —— 按组 specifier 按需加载（`element-plus/common`、`element-ui/table` 等）
 - **包管理器**：pnpm
-- **测试**：Vitest + Playwright
+- **测试**：Vitest（happy-dom）+ Playwright（Chromium）
 
 ## 仓库结构（多仓视角）
 
@@ -32,35 +32,39 @@
 # 仓库 A：运行时核心（本仓库 wc/）
 wc/
 ├── package.json            # 包名 @wc/core，发布到 npm
-├── loader.js               # UMD 加载 + URL 缓存 + 依赖检查 + 错误降级 + 运行时按需加载
-├── WidgetHost.vue          # Vue3 基座组件
+├── loader.js               # ESM 动态 import + modCache + CSS 引用计数 + 错误降级 + preloadWidgets
+├── WidgetHost.vue          # Vue3 基座组件（url/css props）
+├── host-plugin.js          # localServeWidgetsPlugin + importmapInjectPlugin + hostResolveAlias
+├── importmap-gen.js        # generateImportmap + createGroupResolver + createManualCheckPlugin
+├── compat.js               # importmap 兼容检测 + es-module-shims 注入（可选）
+├── ui-groups.json          # UI 组件库分组策略（唯一配置源）
 ├── templates/              # Vue2 / Vue3 / H5 物料入口模板
 └── README.md
 
 # 仓库 B：基座（本仓库 demo/host 模拟）
 demo/host/
 ├── package.json            # 依赖 @wc/core（本地用 file:../wc）
-├── src/App.vue             # 物料注册表（只记录 URL，不引用源码）
-├── vite.config.js          # 开发服务器配置
-└── index.html              # 注入运行时全局变量
+├── src/App.vue             # 物料注册表（只记录 url/css，不引用源码）
+├── vite.config.js          # importmapInjectPlugin({ hostStack: 'vue3' }) + hostResolveAlias
+└── index.html              # <!--IMPORTMAP_INJECT--> 占位符（plugin 注入 importmap）
 
 # 仓库 B'：单栈基座示例（本仓库 demo/vue2-host / demo/h5-host 模拟）
 # 当基座本身是某个技术栈（如 Vue2 老页面、H5 营销页）时，同栈物料走 ESM 直引，
-# 跨栈物料仍走 loader（loader 内部按需补齐运行时）。
-demo/vue2-host/            # Vue2 单栈基座（端口 5001）
-demo/h5-host/               # H5 单栈基座（端口 5002）
+# 跨栈物料仍走 loader（依赖由 importmap 解析，不再有运行时补齐）。
+demo/vue2-host/             # Vue2 单栈基座（端口 5001，hostStack='vue2'）
+demo/h5-host/               # H5 单栈基座（端口 5002，hostStack='none'）
 
-# 仓库 C：Vue2 物料（本仓库 demo/vue2-widgets 模拟）
+# 仓库 C：Vue2 物料（本仓库 demo/vue2-widgets 模拟，manual 模式）
 demo/vue2-widgets/
 ├── package.json            # 依赖 @wc/core（本地用 file:../wc）
-├── build.mjs               # 分包构建脚本
-├── src/widgets/            # 各物料独立目录
-└── dist/                   # 产物：每个物料独立 .js + .css + manifest.json
+├── build.mjs               # 分包构建脚本（UI_GROUP_MODE=manual 时只校验组 specifier）
+├── src/widgets/            # 各物料独立目录（SFC 手动 import element-ui 组）
+└── dist/                   # 产物：每个物料独立 .js + .css + manifest.json（format: 'esm'）
 
-# 仓库 D：Vue3 物料（本仓库 demo/vue3-widgets 模拟）
+# 仓库 D：Vue3 物料（本仓库 demo/vue3-widgets 模拟，auto 模式）
 demo/vue3-widgets/
 ├── package.json
-├── build.mjs
+├── build.mjs               # unplugin-vue-components + createGroupResolver 自动注入组 import
 ├── src/widgets/
 └── dist/
 
@@ -76,20 +80,23 @@ demo/h5-widgets/
 
 | 仓库 | 端口 | 入口 | 用途 |
 |------|------|------|------|
-| `@wc/core` | - | `loader.js` / `WidgetHost.vue` / `templates/` | 运行时核心，npm 包分发 |
-| `demo/host` | 5000 | `index.html` + `vite.config.js` | 统一基座预览（Vue2/Vue3/H5 全部走 loader） |
-| `demo/vue2-host` | 5001 | `index.html` + `vite.config.js` | Vue2 单栈基座（同栈 ESM，跨栈 loader） |
-| `demo/h5-host` | 5002 | `index.html` + `vite.config.js` | H5 单栈基座（同栈 ESM，跨栈 loader） |
-| `demo/vue2-widgets` | - | `build.mjs` | Vue2 物料分包 UMD 构建 |
-| `demo/vue3-widgets` | - | `build.mjs` | Vue3 物料分包 UMD 构建 |
-| `demo/h5-widgets` | - | `build.mjs` | H5 物料分包 UMD 构建 |
+| `@wc/core` | - | `loader.js` / `WidgetHost.vue` / `host-plugin.js` / `importmap-gen.js` / `compat.js` / `templates/` | 运行时核心，npm 包分发 |
+| `demo/host` | 5000 | `index.html` + `vite.config.js` | 统一基座预览（Vue2/Vue3/H5 全部走 loader，hostStack='vue3'） |
+| `demo/vue2-host` | 5001 | `index.html` + `vite.config.js` | Vue2 单栈基座（同栈 ESM，跨栈 loader，hostStack='vue2'） |
+| `demo/h5-host` | 5002 | `index.html` + `vite.config.js` | H5 单栈基座（同栈 ESM，跨栈 loader，hostStack='none'） |
+| `demo/vue2-widgets` | - | `build.mjs` | Vue2 物料分包 ESM 构建（manual 模式） |
+| `demo/vue3-widgets` | - | `build.mjs` | Vue3 物料分包 ESM 构建（auto 模式） |
+| `demo/h5-widgets` | - | `build.mjs` | H5 物料分包 ESM 构建 |
 
 ## 核心 API
 
 | 模块 | 导出 | 说明 |
 |------|------|------|
-| `@wc/core/loader` | `mountWidget(container, widget)`、`unmountWidget(api)`、`preloadWidgets(urls)`、`ensureRuntimes(needs)` | 轻量加载器；`mountWidget` 内部已调用 `ensureRuntimes`，按物料声明的 `vueVersion` + `runtimeDeps` 按需补齐 `window.Vue2/Vue3/ELEMENT/ElementPlus` |
-| `@wc/core/WidgetHost.vue` | `WidgetHost` | Vue3 基座组件（支持 `css`、`runtimeDeps` 属性） |
+| `@wc/core/loader` | `mountWidget(container, widget)`、`unmountWidget(api)`、`preloadWidgets(urls)` | ESM 加载器；`mountWidget` 用 `dynamic import(url)` 拉取物料模块图，`modCache` 去重、CSS 引用计数共享、错误降级。**不再有 `ensureRuntimes`**（依赖隔离交给 importmap） |
+| `@wc/core/WidgetHost.vue` | `WidgetHost` | Vue3 基座组件（支持 `url`、`css`、`widgetProps`、`context` 属性，`@widget-event` 事件） |
+| `@wc/core/host-plugin` | `localServeWidgetsPlugin(dirs?)`、`importmapInjectPlugin(opts)`、`hostResolveAlias(opts)` | Vite 插件：dev 托管物料产物 / 注入 importmap / 基座 dev alias |
+| `@wc/core/importmap-gen` | `generateImportmap(groups, opts)`、`loadUiGroups()`、`createGroupResolver()`、`createManualCheckPlugin()` | importmap 生成与 UI 分组解析 |
+| `@wc/core/compat` | `supportsImportmap()`、`injectImportmapShim(url?)`、`DEFAULT_SHIM_URL` | importmap 兼容检测与 es-module-shims 注入（可选） |
 | `@wc/core/templates/vue2` | `createVue2Widget(Component, options)` | Vue2 物料入口模板 |
 | `@wc/core/templates/vue3` | `createVue3Widget(Component, options)` | Vue3 物料入口模板 |
 | `@wc/core/templates/h5` | `createH5Widget(renderFn)` | H5 物料入口模板 |
@@ -100,22 +107,23 @@ demo/h5-widgets/
 
 ```bash
 # 1. 进入每个物料仓库，独立构建
-# Vue2 物料
-cd demo/vue2-widgets && pnpm install && pnpm run build
-# Vue3 物料
-cd demo/vue3-widgets && pnpm install && pnpm run build
+# Vue2 物料（manual 模式：SFC 手动 import element-ui 组）
+cd demo/vue2-widgets && pnpm install --ignore-workspace && UI_GROUP_MODE=manual pnpm run build
+# Vue3 物料（auto 模式：unplugin-vue-components 自动注入）
+cd demo/vue3-widgets && pnpm install --ignore-workspace && pnpm run build
 # H5 物料
-cd demo/h5-widgets && pnpm install && pnpm run build
+cd demo/h5-widgets && pnpm install --ignore-workspace && pnpm run build
 
 # 2. 进入基座仓库，启动开发服务器
 # 多仓开发时，通过 VITE_WIDGETS_DIRS 环境变量指定物料产物目录
 cd demo/host
 VITE_WIDGETS_DIRS="../vue2-widgets/dist,../vue3-widgets/dist,../h5-widgets/dist" pnpm run serve
 
-# 3. 部署构建（多仓部署时通过 WIDGETS_DIRS 传入物料产物目录）
-# 基座仓库
+# 3. 可选：启用浏览器兼容（注入 es-module-shims 嗅探脚本，兼容不支持 importmap 的旧浏览器）
+WIDGET_COMPAT=1 cd demo/host && pnpm run serve
+
+# 4. 部署构建（多仓部署时通过 WIDGETS_DIRS 传入物料产物目录）
 cd demo/host && pnpm vite build
-# 物料产物复制到基座 dist（多仓场景通过 WIDGETS_DIRS 指定）
 WIDGETS_DIRS="/path/to/vue2-widgets/dist,/path/to/vue3-widgets/dist,/path/to/h5-widgets/dist" \
   bash scripts/deploy_build.sh
 ```
@@ -126,27 +134,40 @@ WIDGETS_DIRS="/path/to/vue2-widgets/dist,/path/to/vue3-widgets/dist,/path/to/h5-
 # 安装根依赖（仅测试工具）
 pnpm install
 
-# 测试
+# 单元测试（Vitest + happy-dom）
 pnpm test
 pnpm test:run
 pnpm test:ci
+
+# 端到端测试（Playwright + Chromium，自动构建物料 + 启动 host dev server）
 pnpm e2e
 
 # 单栈基座预览（多仓视角下需进入各自目录）
-cd demo/vue2-host && pnpm install && pnpm serve    # 端口 5001
-cd demo/h5-host   && pnpm install && pnpm serve    # 端口 5002
+cd demo/vue2-host && pnpm install --ignore-workspace && pnpm serve    # 端口 5001
+cd demo/h5-host   && pnpm install --ignore-workspace && pnpm serve    # 端口 5002
 ```
+
+> 说明：`demo/*` 目录不在根 pnpm workspace 内（多仓模拟），需用 `--ignore-workspace` 让 pnpm 在各自目录独立安装依赖。
 
 ## 分包构建
 
 每个物料仓库独立构建，不依赖基座或其他物料仓库：
 
 - 扫描 `src/widgets/` 下所有子目录
-- 每个目录生成独立的 `{name}.js` + `{name}.css`
-- UMD 全局名 = 目录名（如 `my-widget`），不再做转换
-- 产物输出到 `dist/` 目录，同时生成 `manifest.json`
+- 每个目录生成独立的 `{name}.js` + `{name}.css`（`formats: ['es']`）
+- `external: ['vue', 'element-plus', 'element-ui', /^element-plus\//, /^element-ui\//]`，产物保留 bare import，运行时由 importmap 解析
+- 产物输出到 `dist/` 目录，同时生成 `manifest.json`（含 `format: 'esm'`）
 
 新增物料只需在 `src/widgets/` 下创建目录，无需修改构建配置。
+
+### UI 组件库接入模式
+
+| 模式 | 适用 | 物料写法 | 构建期处理 |
+|------|------|---------|-----------|
+| auto | Vue3 物料 | SFC 不写 import，直接用 `<el-table>` | `unplugin-vue-components` + `createGroupResolver` 自动注入 `import { ElTable } from 'element-plus/table'` |
+| manual | Vue2 物料 | SFC 手动 `import { Tag as ElTag } from 'element-ui/common'` + `components` 注册 | `createManualCheckPlugin` 只校验组 specifier 合法 |
+
+> Vue2 走 manual 的原因：`unplugin-vue-components` v32 不兼容 `@vitejs/plugin-vue2`，auto 模式对 Vue2 SFC 不生效。Vue2 物料构建需设 `UI_GROUP_MODE=manual`。
 
 ## 跨仓依赖
 
@@ -170,16 +191,15 @@ cd demo/h5-host   && pnpm install && pnpm serve    # 端口 5002
 
 ### 物料加载方式
 
-基座不引用物料源码，只通过 HTTP URL 加载 UMD 产物：
+基座不引用物料源码，只通过 HTTP URL 加载 ESM 产物：
 
 ```js
 // 基座注册表（WIDGET_REGISTRY）
 const WIDGET_REGISTRY = {
   salesPanel: {
-    name: 'sales-panel',        // UMD 全局变量名
-    js: '/widgets/sales-panel.js',   // HTTP URL
-    css: '/widgets/sales-panel.css', // HTTP URL
-    vueVersion: '2'
+    name: 'sales-panel',                // 物料名（WidgetHost class）
+    url: '/widgets/vue2/sales-panel.js', // ESM 模块 URL（前缀决定 importmap scope）
+    css: '/widgets/vue2/sales-panel.css' // CSS URL（可选）
   }
 };
 ```
@@ -188,9 +208,9 @@ const WIDGET_REGISTRY = {
 
 ```bash
 # 1. 各物料仓库独立构建（各自 CI/CD 执行）
-cd /repo/vue2-widgets && pnpm run build   # 产物 → dist/
-cd /repo/vue3-widgets && pnpm run build   # 产物 → dist/
-cd /repo/h5-widgets && pnpm run build     # 产物 → dist/
+cd /repo/vue2-widgets && UI_GROUP_MODE=manual pnpm run build   # 产物 → dist/
+cd /repo/vue3-widgets && pnpm run build                         # 产物 → dist/
+cd /repo/h5-widgets && pnpm run build                           # 产物 → dist/
 
 # 2. 基座仓库独立构建
 cd /repo/host && pnpm vite build          # 产物 → dist/
@@ -206,7 +226,7 @@ WIDGETS_DIRS="/repo/vue2-widgets/dist,/repo/vue3-widgets/dist,/repo/h5-widgets/d
 - Node.js 项目统一使用 pnpm 管理依赖
 - 预览端口固定为 5000
 - 部署入口为 demo/host（本地模拟），多仓中每个仓库独立部署
-- 物料需支持离线/内网环境
+- 物料需支持离线/内网环境（`UI_CDN_BASE` 覆盖 importmap 默认 esm.sh 前缀）
 - 只适配原生 H5、Vue2、Vue3，不做过度设计
 - 2C 页面：首屏性能、体积、鲁棒性优先
 - 不兼容历史版本，API 可自由迭代
@@ -214,15 +234,16 @@ WIDGETS_DIRS="/repo/vue2-widgets/dist,/repo/vue3-widgets/dist,/repo/h5-widgets/d
 
 ## 关键运行时全局变量
 
+纯 ESM 方案下，依赖隔离不再依赖 window 全局变量。仅保留少量可选全局：
+
 | 全局变量 | 提供者 | 用途 |
 |---------|--------|------|
-| `window.Vue2` | `loader.ensureRuntimes`（缺失时拉 `/runtime/vue2.js`），或 vue2-host `main.js` 直接注入 | Vue2 物料运行时 |
-| `window.Vue3` | `loader.ensureRuntimes`（缺失时拉 `/runtime/vue3.js`） | Vue3 物料运行时 |
-| `window.ELEMENT` | `loader.ensureRuntimes`（物料声明 `runtimeDeps: ['element-ui']` 时按需加载，自动先加载 vue2） | element-ui 组件库（可选） |
-| `window.ElementPlus` | `loader.ensureRuntimes`（物料声明 `runtimeDeps: ['element-plus']` 时按需加载，自动先加载 vue3） | ElementPlus 组件库（可选） |
 | `window._` | 各 host index.html 按需引入 | lodash（可选） |
 | `window.axios` | 各 host index.html 按需引入 | axios（可选） |
-| `window.__WIDGET_RUNTIME_URLS__` | 业务侧设置（在 mountWidget 之前） | 覆盖默认运行时 URL，把 vue2/vue3/element-ui/element-plus 打到自有 CDN |
+| `window.__WIDGET_SHIM_URL__` | 业务侧设置（在 importmap 注入前） | 覆盖默认 es-module-shims URL（离线/内网自托管） |
+| `window.__loader` | `demo/host/src/main.js` dev 期注入（生产构建 tree-shake） | e2e 测试直接调用 `mountWidget` / `unmountWidget` |
+
+> **不再有** `window.Vue2` / `window.Vue3` / `window.ELEMENT` / `window.ElementPlus` / `window.__WIDGET_RUNTIME_URLS__`。Vue 与组件库依赖全部由 importmap 顶层 imports + scopes 解析到 CDN（或 `UI_CDN_BASE` 指向的自托管 ESM）。
 
 ## 代码习惯约定
 
@@ -237,13 +258,14 @@ WIDGETS_DIRS="/repo/vue2-widgets/dist,/repo/vue3-widgets/dist,/repo/h5-widgets/d
 ### 模块实现
 
 1. **ESM 优先**：`wc/` 下用 ESM。需引用 CJS 时用 `createRequire`。
-2. **轻量运行时**：`wc/loader.js` 只负责 UMD 加载、依赖检查、错误降级，不做 semver、CE 注册、生命周期管理。
-3. **依赖隔离**：Vue2/Vue3 物料读取不同的 `window` 全局名，天然隔离。
+2. **轻量运行时**：`wc/loader.js` 只负责 ESM 动态 import、modCache 去重、CSS 引用计数、错误降级，不做 semver、CE 注册、生命周期管理、运行时依赖补齐。
+3. **依赖隔离**：Vue2/Vue3 物料内部 `import 'vue'` 由 importmap `scopes`（`/widgets/vue2/` → Vue2，`/widgets/vue3/` → Vue3）解析，天然隔离，无需全局变量。
+4. **基座 dev alias**：`hostResolveAlias({ hostStack, cdnBase })` 把基座自身的 bare import 重定向到与 importmap 顶层 imports 一致的 CDN URL，避免 Vite dev 从 node_modules 解析绕过 importmap。
 
 ### 测试习惯
 
 1. 改完 `.js` 用 `node --check` 验证语法。
-2. 测试框架：Vitest（happy-dom 环境）。
+2. 测试框架：Vitest（happy-dom 环境，单元测试）；Playwright（Chromium，e2e 测试）。
 3. 临时文件用完即删。
 
 ### Git 提交

@@ -135,10 +135,11 @@ test.describe('错误降级 E2E（纯 ESM）', () => {
     await page.evaluate(() => { window.__retryShouldFail = true; });
 
     // 第一次：mount 抛错
-    await page.evaluate(async (container, u) => {
+    // 注意：page.evaluate 只接受单个参数，多个值需用对象包裹传入。
+    await page.evaluate(async ({ container, u }) => {
       const { mountWidget } = window.__loader;
       await mountWidget(container, { name: 'biRetry', url: u });
-    }, containerHandle, url);
+    }, { container: containerHandle, u: url });
 
     // 初始状态：失败 + 重试按钮
     await expect(page.locator('.widget-error')).toHaveCount(1);

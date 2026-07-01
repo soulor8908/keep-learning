@@ -100,3 +100,36 @@ export function importmapInjectPlugin(opts = {}) {
     }
   };
 }
+
+/**
+ * 生成基座 dev 期 resolve.alias 映射，让 Vite 把基座自身的裸 import（vue / element-plus / element-ui）
+ * 直接重定向到与 importmap 顶层 imports 一致的 CDN URL。
+ *
+ * 为什么需要：Vite dev server 会拦截所有 bare import 并从 node_modules 解析，浏览器原生 importmap
+ * 不会生效。仅 optimizeDeps.exclude 不够——Vite 仍会用自身解析器把 'element-plus' 改写成
+ * /node_modules/.pnpm/element-plus@x/...，触发 dayjs 等 CJS 依赖的 named export 互操作问题。
+ * 用 resolve.alias 把 bare import 直接指向外部 https URL，Vite 不再预打包/改写，交给浏览器原生 ESM
+ * + importmap 解析，与物料共享同一份 CDN 实例。
+ *
+ * 生产构建（vite build）下 alias 不影响——rollupOptions.external 已把这些 bare import 标记为外部，
+ * 不进产物，运行时同样由浏览器 importmap 解析。
+ *
+ * @param {object} [opts]
+ * @param {'vue3'|'vue2'|'none'} [opts.hostStack='vue3']  必须与 importmapInjectPlugin 一致
+ * @param {string} [opts.cdnBase]  离线/内网自托管 ESM 前缀（默认 esm.sh），与 importmapInjectPlugin 一致
+ * @returns {Record<string, string>}  形如 { vue: 'https://esm.sh/vue@3.4.21', 'element-plus': '...' }
+ */
+export function hostResolveAlias(opts = {}) {
+  const { hostStack = 'vue3', cdnBase } = opts;
+  // hostStack='none'（H5 基座无框架）→ 基座不 import 'vue'，但跨栈物料仍可能 import element-*，
+  // 仍需声明 element-plus/element-ui alias 以防基座偶然引用。
+  const { imports } = generateImportmap(loadUiGroups(), { cdnBase, hostStack });
+  const alias = {};
+  // 只把基座会 import 的顶层 bare 入口加进 alias：vue（按 hostStack）、element-plus、element-ui。
+  // 组 specifier（element-plus/common 等）只出现在物料产物里，物料走 localServeWidgetsPlugin 静态托管，
+  // 不经 Vite 解析，无需 alias。
+  if (imports.vue) alias.vue = imports.vue;
+  if (imports['element-plus']) alias['element-plus'] = imports['element-plus'];
+  if (imports['element-ui']) alias['element-ui'] = imports['element-ui'];
+  return alias;
+}

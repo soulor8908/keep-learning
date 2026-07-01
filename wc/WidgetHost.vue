@@ -23,6 +23,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['widget-event']);
+// 把 emit 存到局部常量，避免 buildProps 内部方法名同名遮蔽导致调用自身。
+const emitToParent = emit;
 const hostRef = ref();
 let api = null;
 
@@ -42,7 +44,10 @@ function buildProps() {
     ...props.widgetProps,
     context: props.context,
     emit(type, payload) {
+      // 双通道：既向全局 window 广播（供其他物料 on() 监听），又向基座 Vue 组件抛 widget-event
+      // （供基座 @widget-event 监听）。物料只调 emit 即可，无需知道 emitToHost。
       window.dispatchEvent(new CustomEvent(`widget:${type}`, { detail: payload }));
+      emitToParent('widget-event', { widget: props.name, event: type, payload });
     },
     on(type, handler) {
       const fn = (e) => handler(e.detail);
@@ -50,7 +55,7 @@ function buildProps() {
       return () => window.removeEventListener(`widget:${type}`, fn);
     },
     emitToHost(eventName, payload) {
-      emit('widget-event', { widget: props.name, event: eventName, payload });
+      emitToParent('widget-event', { widget: props.name, event: eventName, payload });
     }
   };
 }

@@ -5,13 +5,22 @@ import { test, expect } from '@playwright/test';
  *
  * 验证 Vue2/Vue3/H5 物料在同一页面共存，依赖隔离由 importmap scopes 处理。
  * 不再有 window.Vue2/Vue3/ElementPlus 全局变量——所有依赖通过浏览器原生 ESM + importmap 解析。
+ *
+ * 选择器约定：
+ * - WidgetHost 渲染 <div class="widget-host {name}">，内部挂载点再放物料根节点。
+ * - 物料根节点常与 name 同名 class（如 sales-panel 物料根 div 也是 .sales-panel），
+ *   导致 .sales-panel 会同时命中外层 widget-host 与内层物料根 → strict mode violation。
+ * - 统一用 .widget-host.{name} 表示"该物料区域已挂载"，断言可见性/内容时加 :visible 或定位内部特有元素。
  */
 
 test.describe('BI 看板基座 E2E（纯 ESM）', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    // 物料通过动态 import() + esm.sh CDN 加载，需要较长等待时间
-    await page.waitForTimeout(5000);
+    // 物料通过动态 import() + esm.sh CDN 加载，首屏需要等待远程模块图拉取完成。
+    // 用 waitForSelector 等到 6 个物料区域都渲染出来，比固定 sleep 更可靠（CI 网络抖动也能容忍）。
+    await expect(page.locator('.dashboard__card')).toHaveCount(6, { timeout: 30_000 });
+    // 再等到内层物料根节点至少出现一个（确认挂载完成，不只是空容器）
+    await expect(page.locator('.widget-host.sales-panel .sales-panel')).toBeVisible({ timeout: 30_000 });
   });
 
   // ─── 基础渲染 ───
@@ -21,12 +30,12 @@ test.describe('BI 看板基座 E2E（纯 ESM）', () => {
     await expect(page.locator('h2:has-text("Vue3 财务面板")')).toBeVisible();
     await expect(page.locator('h2:has-text("H5 时钟组件")')).toBeVisible();
 
-    // Vue2 物料
-    await expect(page.locator('.sales-panel')).toBeVisible();
+    // Vue2 物料（内层根节点）
+    await expect(page.locator('.widget-host.sales-panel .sales-panel')).toBeVisible();
     // Vue3 物料
-    await expect(page.locator('.finance-panel')).toBeVisible();
-    // H5 物料
-    await expect(page.locator('.clock-widget')).toBeVisible();
+    await expect(page.locator('.widget-host.finance-panel .finance-panel')).toBeVisible();
+    // H5 物料（H5 物料根节点 class 与 name 同名）
+    await expect(page.locator('.widget-host.clock-widget .clock-widget')).toBeVisible();
   });
 
   test('页面标题和基座头部渲染正确', async ({ page }) => {
@@ -83,14 +92,25 @@ test.describe('BI 看板基座 E2E（纯 ESM）', () => {
     await expect(btn).toContainText('zh-CN');
   });
 
-  test('Vue2 物料按钮点击发出事件', async ({ page }) => {
-    const refreshBtn = page.locator('.sales-panel .el-button:has-text("刷新")');
+  test('Vue2 物料按钮点击触发事件', async ({ page }) => {
+    // 物料通过 props.emit 双通道广播：window widget:refresh 事件 + Vue widget-event。
+    // 这里验证 window 事件（更稳定、跨技术栈统一），同时确认物料内部状态更新（事件计数 +1）。
+    await page.evaluate(() => {
+      window.__refreshEvents = 0;
+      window.addEventListener('widget:refresh', () => { window.__refreshEvents++; });
+    });
+
+    const beforeCount = await page.evaluate(() => window.__refreshEvents);
+    const refreshBtn = page.locator('.widget-host.sales-panel .el-button:has-text("刷新")');
     await expect(refreshBtn).toBeVisible();
     await refreshBtn.click();
 
-    // 事件日志应出现
-    await expect(page.locator('.dashboard__event-log')).toBeVisible();
-    await expect(page.locator('.dashboard__event-log')).toContainText('sales-panel');
+    // window widget:refresh 事件应被触发
+    await expect.poll(async () => page.evaluate(() => window.__refreshEvents), { timeout: 5_000 })
+      .toBe(beforeCount + 1);
+
+    // 物料内部事件计数也应 +1（SalesPanel handleRefresh 内 eventLog.push）
+    await expect(page.locator('.widget-host.sales-panel')).toContainText(/事件:\s*1/);
   });
 
   // ─── 多物料独立性 ───
@@ -100,12 +120,12 @@ test.describe('BI 看板基座 E2E（纯 ESM）', () => {
     await expect(cards).toHaveCount(6);
 
     // Vue2 物料
-    await expect(page.locator('.sales-panel')).toContainText('销售');
-    await expect(page.locator('.order-panel')).toContainText('订单');
+    await expect(page.locator('.widget-host.sales-panel .sales-panel')).toContainText('销售');
+    await expect(page.locator('.widget-host.order-panel .order-panel')).toContainText('订单');
 
     // Vue3 物料
-    await expect(page.locator('.finance-panel')).toContainText('财务');
-    await expect(page.locator('.user-panel')).toContainText('用户');
+    await expect(page.locator('.widget-host.finance-panel .finance-panel')).toContainText('财务');
+    await expect(page.locator('.widget-host.user-panel .user-panel')).toContainText('用户');
 
     // H5 物料
     await expect(page.locator('.clock-title')).toBeVisible();
@@ -132,11 +152,11 @@ test.describe('BI 看板基座 E2E（纯 ESM）', () => {
   test('Vue2 和 Vue3 物料使用不同版本的 Vue（通过 importmap scope 隔离）', async ({ page }) => {
     // 物料内部各自 import 'vue'，由 importmap scope 解析到不同版本
     // 验证方式：两个物料都能正常渲染（如果版本冲突会报错）
-    await expect(page.locator('.sales-panel')).toBeVisible();
-    await expect(page.locator('.finance-panel')).toBeVisible();
+    await expect(page.locator('.widget-host.sales-panel .sales-panel')).toBeVisible();
+    await expect(page.locator('.widget-host.finance-panel .finance-panel')).toBeVisible();
 
     // Vue2 物料的 el-table 和 Vue3 物料的 el-table 应该各自独立工作
-    await expect(page.locator('.sales-panel .el-table')).toBeVisible();
-    await expect(page.locator('.finance-panel .el-table')).toBeVisible();
+    await expect(page.locator('.widget-host.sales-panel .el-table')).toBeVisible();
+    await expect(page.locator('.widget-host.finance-panel .el-table')).toBeVisible();
   });
 });
