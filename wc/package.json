@@ -1,14 +1,17 @@
 {
   "name": "@wc/core",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
+  "description": "跨技术栈看板物料加载核心（纯 ESM + importmap）",
   "main": "./loader.js",
   "exports": {
     ".": "./loader.js",
     "./loader": "./loader.js",
     "./WidgetHost.vue": "./WidgetHost.vue",
-    "./registry": "./registry.js",
-    "./runtime-config": "./runtime-config.js",
+    "./compat": "./compat.js",
+    "./host-plugin": "./host-plugin.js",
+    "./importmap-gen": "./importmap-gen.js",
+    "./ui-groups.json": "./ui-groups.json",
     "./templates/vue2": "./templates/vue2.js",
     "./templates/vue3": "./templates/vue3.js",
     "./templates/h5": "./templates/h5.js"
@@ -16,6 +19,10 @@
   "files": [
     "loader.js",
     "WidgetHost.vue",
+    "compat.js",
+    "host-plugin.js",
+    "importmap-gen.js",
+    "ui-groups.json",
     "templates",
     "README.md"
   ],

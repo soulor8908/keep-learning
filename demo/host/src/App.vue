@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard">
     <header class="dashboard__header">
-      <h1>{{ t('app.title') }}</h1>
+      <h1>{{ t('app.title') }} <small class="dashboard__tag">纯 ESM + importmap</small></h1>
       <div class="dashboard__header-actions">
         <el-button @click="toggleLocale">
           {{ t('app.switch_lang') }}：{{ locale }}
@@ -58,13 +58,16 @@
 import { ref, computed } from 'vue';
 import WidgetHost from '@wc/core/WidgetHost.vue';
 
+// ─── 物料注册表（纯 ESM） ───
+// URL 前缀（vue2/vue3/h5）决定 importmap scope，从而决定物料内部 bare 'vue' 解析到哪个版本。
+// 不再有 vueVersion / runtimeDeps / js：依赖隔离交给 importmap scope，加载交给浏览器原生 import()。
 const WIDGET_REGISTRY = {
-  biSalesPanel: { name: 'sales-panel', js: '/widgets/sales-panel.js', vueVersion: '2' },
-  biOrderPanel: { name: 'order-panel', js: '/widgets/order-panel.js', vueVersion: '2' },
-  biFinancePanel: { name: 'finance-panel', js: '/widgets/finance-panel.js', vueVersion: '3' },
-  biUserPanel: { name: 'user-panel', js: '/widgets/user-panel.js', vueVersion: '3' },
-  biClockWidget: { name: 'clock-widget', js: '/widgets/clock-widget.js', vueVersion: 'none' },
-  biChartWidget: { name: 'chart-widget', js: '/widgets/chart-widget.js', vueVersion: 'none' }
+  biSalesPanel:   { name: 'sales-panel',   url: '/widgets/vue2/sales-panel.js',   css: '/widgets/vue2/sales-panel.css' },
+  biOrderPanel:   { name: 'order-panel',    url: '/widgets/vue2/order-panel.js',    css: '/widgets/vue2/order-panel.css' },
+  biFinancePanel: { name: 'finance-panel',  url: '/widgets/vue3/finance-panel.js',  css: '/widgets/vue3/finance-panel.css' },
+  biUserPanel:    { name: 'user-panel',     url: '/widgets/vue3/user-panel.js',     css: '/widgets/vue3/user-panel.css' },
+  biClockWidget:  { name: 'clock-widget',   url: '/widgets/h5/clock-widget.js' },
+  biChartWidget:  { name: 'chart-widget',   url: '/widgets/h5/chart-widget.js' }
 };
 
 const locale = ref('zh-CN');
@@ -121,7 +124,6 @@ function t(key) {
   return (dict && dict[key]) || key;
 }
 
-// i18n 作为 widgetProps 的一部分传递给物料
 function i18nProps(title) {
   return { title, locale: locale.value, t };
 }
@@ -163,6 +165,7 @@ const chartProps = computed(() => ({
 .dashboard { padding: 20px; }
 .dashboard__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .dashboard__header h1 { margin: 0; font-size: 24px; }
+.dashboard__tag { font-size: 12px; color: #3b82f6; font-weight: 400; margin-left: 8px; }
 .dashboard__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; }
 .dashboard__card { padding: 16px; border: 1px solid #e4e7ed; border-radius: 8px; background: #fff; }
 .dashboard__card h2 { margin: 0 0 12px; font-size: 16px; color: #303133; }

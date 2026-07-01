@@ -13,6 +13,7 @@
     "vitest": "^1.6.0"
   },
   "scripts": {
+    "build:widgets": "cd demo/vue2-widgets && pnpm run build && cd ../vue3-widgets && pnpm run build && cd ../h5-widgets && pnpm run build",
     "test": "vitest",
     "test:run": "vitest run",
     "test:ci": "vitest run --reporter=verbose",

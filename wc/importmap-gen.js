@@ -44,28 +44,43 @@ export function buildComponentToGroup(groups) {
  * 任何物料 import 'element-plus/common' 都解析到同一 URL，浏览器模块图自动去重——
  * 这正是替代 ?exports= 并集方案"跨物料不去重"缺陷的核心。
  *
- * vue 仍按 URL 前缀 scope 分流（/widgets/vue2/* → Vue2，/widgets/vue3/* → Vue3），
- * 与原 ESM 方案一致，保证 Vue2/Vue3 物料依赖隔离。
+ * 顶层结构（任意基座都适用）：
+ *   - vue              按 hostStack 决定（vue3 基座→Vue3，vue2 基座→Vue2，h5 基座→不声明）
+ *   - element-plus     全量 URL，供基座自身 app.use(ElementPlus)
+ *   - element-ui       全量 URL，供 vue2 基座 Vue.use(ElementUI)
+ *   - element-plus/{group} / element-ui/{group}  分组 canonical URL，供物料按组 import
+ *   - lodash / axios   共享工具
+ * scopes：
+ *   - /widgets/vue2/  bare 'vue' → Vue2
+ *   - /widgets/vue3/  bare 'vue' → Vue3
+ * 物料的组 specifier（element-plus/common 等）从顶层 imports 解析，与 scope 无关——
+ * 组 URL 内部依赖由 esm.sh 的 deps 参数钉死，不依赖 scope。
  *
  * @param {object} groups loadUiGroups() 的返回
  * @param {object} [opts]
  * @param {string} [opts.cdnBase='https://esm.sh']  离线/内网时改成自托管 ESM 产物前缀
+ * @param {'vue3'|'vue2'|'none'} [opts.hostStack='vue3']  基座自身技术栈，决定顶层 vue 解析
  */
 export function generateImportmap(groups, opts = {}) {
-  const { cdnBase = 'https://esm.sh' } = opts;
+  const { cdnBase = 'https://esm.sh', hostStack = 'vue3' } = opts;
+
+  const vue2Ver = groups['element-ui'].vueDep.split('@')[1];   // 2.6.14
+  const vue3Ver = groups['element-plus'].vueDep.split('@')[1]; // 3.4.21
+  const epVer = groups['element-plus'].version;                // 2.7.0
+  const euiVer = groups['element-ui'].version;                 // 2.15.14
 
   const imports = {};
-  const scopes = {
-    // Vue2 物料：bare 'vue' 解析到 Vue2
-    '/widgets/vue2/': { vue: `${cdnBase}/vue@${groups['element-ui'].vueDep.split('@')[1]}` },
-    // Vue3 物料：bare 'vue' 解析到 Vue3
-    '/widgets/vue3/': { vue: `${cdnBase}/vue@${groups['element-plus'].vueDep.split('@')[1]}` }
-  };
 
-  // 基座默认（顶层）：vue → Vue3（基座是 Vue3），以及共享的 lodash/axios
-  imports.vue = `${cdnBase}/vue@${groups['element-plus'].vueDep.split('@')[1]}`;
+  // 顶层 vue：按基座技术栈决定。h5 基座无框架 → 不声明（基座不 import 'vue'）
+  if (hostStack === 'vue3') imports.vue = `${cdnBase}/vue@${vue3Ver}`;
+  else if (hostStack === 'vue2') imports.vue = `${cdnBase}/vue@${vue2Ver}`;
+
   imports.lodash = `${cdnBase}/lodash@4.17.21`;
   imports.axios = `${cdnBase}/axios@1.7.7`;
+
+  // 基座自身全量注册 UI 库（app.use(ElementPlus) / Vue.use(ElementUI)）所需的 bare 入口
+  imports['element-plus'] = `${cdnBase}/element-plus@${epVer}?deps=vue@${vue3Ver}`;
+  imports['element-ui'] = `${cdnBase}/element-ui@${euiVer}?deps=vue@${vue2Ver}`;
 
   // 每个组一个 canonical URL，放进顶层 imports
   // 同一组件全项目只属于一组 → 同组 specifier 全项目同一 URL → 浏览器去重
@@ -77,6 +92,12 @@ export function generateImportmap(groups, opts = {}) {
         `${cdnBase}/${lib}@${cfg.version}?exports=${exports}&deps=${cfg.vueDep}`;
     }
   }
+
+  // scopes：物料 URL 前缀决定其内部 bare 'vue' 解析到哪个版本（Vue2/Vue3 隔离）
+  const scopes = {
+    '/widgets/vue2/': { vue: `${cdnBase}/vue@${vue2Ver}` },
+    '/widgets/vue3/': { vue: `${cdnBase}/vue@${vue3Ver}` }
+  };
 
   return { imports, scopes };
 }

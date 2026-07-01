@@ -1,10 +1,10 @@
 <template>
   <div class="v2host">
     <header class="v2host__header">
-      <h1>Vue2 Host</h1>
+      <h1>Vue2 Host <small class="v2host__tag">纯 ESM + importmap</small></h1>
       <p class="v2host__subtitle">
-        基座是 Vue2。同栈物料（Vue2）走 ESM 直引，跨栈物料（Vue3/H5）走 loader；
-        element-ui / Vue3 / element-plus 全部按需加载，首屏零 UI 库成本。
+        基座是 Vue2。同栈物料（Vue2）走 ESM 直引，跨栈物料（Vue3/H5）走 loader 动态 import()；
+        依赖隔离与共享全部交给 importmap，无 window 全局变量。
       </p>
     </header>
 
@@ -14,7 +14,6 @@
           <span class="badge" :class="`badge--${w.key}`">{{ w.tag }}</span>
           <h2>{{ w.title }}</h2>
         </header>
-        <!-- 物料挂载点：loader 把 UMD 物料渲染到这个 div 里 -->
         <div :ref="`${w.key}Mount`" class="v2host__mount"></div>
       </section>
     </main>
@@ -42,34 +41,18 @@ import Vue from 'vue';
 import { mountWidget, unmountWidget } from '@wc/core/loader';
 
 // ─── 同栈物料：ESM 直引 ───
-// vue2-host 与 vue2-widgets 同为 Vue2，无需 UMD 中转。
-// Vite 在 dev 下直接编译 SFC，prod 下打进 host chunk，省掉 mount/unmount 协议开销。
+// 同栈 Vue2 物料无需中转，直接 import SFC，由 Vite 编译挂载，与基座共享同一份 Vue2。
 import SalesPanel from '../../vue2-widgets/src/widgets/sales-panel/SalesPanel.vue';
 
 // ─── 注册表 ───
 // stack 字段决定挂载路径：
-//   'esm-vue2' → new Vue({ render: h => h(Component, { props }) })，element-ui 按需 ESM 加载
-//   'loader'  → mountWidget，loader 内部 ensureRuntimes 按需加载 Vue2/Vue3/element-ui/element-plus
+//   'esm-vue2' → new Vue({ render: h => h(Component, { props }) })，element-ui 由基座 Vue.use 注册
+//   'loader'   → mountWidget，url 前缀（vue3/h5）决定 importmap scope
 const WIDGETS = [
-  { key: 'vue2', tag: 'Vue2 · ESM',    title: '销售面板', stack: 'esm-vue2', component: SalesPanel, needs: ['element-ui'] },
-  { key: 'vue3', tag: 'Vue3 · loader', title: '财务面板', stack: 'loader', name: 'biFinancePanel', js: '/widgets/finance-panel.js', vueVersion: '3', runtimeDeps: ['element-plus'] },
-  { key: 'h5',   tag: 'H5 · loader',   title: '时钟组件', stack: 'loader', name: 'biClockWidget',  js: '/widgets/clock-widget.js', vueVersion: 'none' }
+  { key: 'vue2', tag: 'Vue2 · ESM',    title: '销售面板', stack: 'esm-vue2', component: SalesPanel },
+  { key: 'vue3', tag: 'Vue3 · loader', title: '财务面板', stack: 'loader', name: 'finance-panel', url: '/widgets/vue3/finance-panel.js', css: '/widgets/vue3/finance-panel.css' },
+  { key: 'h5',   tag: 'H5 · loader',   title: '时钟组件', stack: 'loader', name: 'clock-widget',  url: '/widgets/h5/clock-widget.js' }
 ];
-
-// element-ui 在 host 的「bundled Vue」上注册一次即可全局生效
-let elementUIInstalled = false;
-async function ensureElementUI() {
-  if (elementUIInstalled) return;
-  // 动态 import：Vite 拆为独立 chunk，仅在首次用到 Vue2 物料时下载
-  const [{ default: ElementUI }] = await Promise.all([
-    import('element-ui'),
-    import('element-ui/lib/theme-chalk/index.css')
-  ]);
-  Vue.use(ElementUI);
-  // 同步暴露到 window，未来若有 UMD Vue2 物料可复用同一份 element-ui
-  window.ELEMENT = ElementUI;
-  elementUIInstalled = true;
-}
 
 // 同栈 Vue2 物料的轻量挂载：不走 createVue2Widget 模板，直接 new Vue
 function mountVue2ESM(container, Component, props) {
@@ -84,18 +67,16 @@ export default {
     return {
       widgets: WIDGETS,
       events: [],
-      apis: {} // key → widget api（含 unmount）
+      apis: {}
     };
   },
   mounted() {
     this.mountAll();
   },
   beforeDestroy() {
-    // 基座卸载时连带卸载所有物料，避免遗留定时器/监听器
     Object.values(this.apis).forEach(unmountWidget);
   },
   methods: {
-    // 把物料内部 emit 的事件桥接到基座的事件日志
     emitFactory(widgetName) {
       return (event, payload) => {
         this.events.unshift({
@@ -108,20 +89,17 @@ export default {
       };
     },
     async mountAll() {
-      // Vue2 Options API 下 $refs 在 mounted 后才可用
       for (const w of this.widgets) {
         const container = this.$refs[`${w.key}Mount`];
         if (!container) continue;
         const props = { emit: this.emitFactory(w.name || w.key), title: w.title };
         if (w.stack === 'esm-vue2') {
-          if (w.needs?.includes('element-ui')) await ensureElementUI();
           this.apis[w.key] = mountVue2ESM(container, w.component, props);
         } else {
           this.apis[w.key] = await mountWidget(container, {
             name: w.name,
-            js: w.js,
-            vueVersion: w.vueVersion,
-            runtimeDeps: w.runtimeDeps || [],
+            url: w.url,
+            css: w.css,
             props
           });
         }
@@ -135,6 +113,7 @@ export default {
 .v2host { padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #303133; }
 .v2host__header { margin-bottom: 24px; }
 .v2host__header h1 { margin: 0 0 4px; font-size: 24px; }
+.v2host__tag { font-size: 12px; color: #3b82f6; font-weight: 400; margin-left: 8px; }
 .v2host__subtitle { margin: 0; color: #909399; font-size: 13px; line-height: 1.6; max-width: 720px; }
 .v2host__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 .v2host__card { padding: 16px; border: 1px solid #e4e7ed; border-radius: 8px; background: #fff; }

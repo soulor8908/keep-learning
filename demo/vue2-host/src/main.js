@@ -1,12 +1,13 @@
-// Vue2 基座启动入口
-// - 基座自身通过 import Vue 加载 Vue2（npm 包，由 Vite 解析）。
-// - window.Vue2 = Vue：暴露给 loader 的 ensureRuntimes，使其检测到 Vue2 已就绪，
-//   避免 mountWidget 重复加载 /runtime/vue2.js；同时为未来可能的 UMD Vue2 物料保留出口。
-// - element-ui / Vue3 / element-plus 不在此加载，按需在 App.vue / loader 中触发。
+// Vue2 基座启动入口（纯 ESM 版）
+// 基座自身是 Vue2：vue 由 importmap 顶层解析到 Vue2 ESM（构建时 external）。
+// 同栈 Vue2 物料走 ESM 直引（Vite 编译 SFC，与基座共享同一份 Vue2）；
+// 跨栈 Vue3/H5 物料走 loader 的动态 import()，依赖由 importmap scope 解析。
+// 不再需要 window.Vue2 = Vue：ESM 版没有 window 全局变量约定。
 import Vue from 'vue';
+import ElementUI from 'element-ui';
 import App from './App.vue';
 
-window.Vue2 = Vue;
+Vue.use(ElementUI);
 
 new Vue({
   render: (h) => h(App)

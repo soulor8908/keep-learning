@@ -3,20 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vue2 Host - Vue2 基座托管多技术栈物料</title>
+    <title>Vue2 Host（纯 ESM + importmap）</title>
+    <!--
+      Vue2 单栈基座（纯 ESM 版）：
+      - 基座自身是 Vue2 → importmap 顶层 vue 解析到 Vue2，element-ui 同栈共享
+      - 同栈 Vue2 物料走 ESM 直引（Vite 编译 SFC，与基座共享同一份 Vue2）
+      - 跨栈 Vue3/H5 物料走 loader 动态 import()，依赖由 importmap scope 解析
+      - 不再有 window.Vue2 / window.ElementPlus 全局变量
+      importmap 由 importmapInjectPlugin（hostStack='vue2'）从 ui-groups.json 生成注入下方占位标记。
+    -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css" />
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.7.0/dist/index.css" />
+
+    <!--IMPORTMAP_INJECT-->
+    <!-- importmap 由 vite 插件生成注入（hostStack=vue2：顶层 vue=Vue2） -->
+    <!--/IMPORTMAP_INJECT-->
   </head>
   <body>
     <div id="app"></div>
-
-    <!--
-      运行时加载策略（按需）：
-      - 基座自身是 Vue2，由 main.js 的 import Vue 加载，无需 index.html 注入。
-      - element-ui / Vue3 / element-plus 全部按需加载：
-          · Vue2 物料（ESM 直引）→ 首次挂载前动态 import element-ui，注册到基座 Vue。
-          · Vue3 / H5 物料（走 loader）→ mountWidget 内部 ensureRuntimes 按需注入。
-      - 因此 index.html 只放 #app 容器，零外部脚本，首屏不付出任何 UI 库成本。
-    -->
-
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

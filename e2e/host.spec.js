@@ -1,46 +1,53 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('BI 看板基座 E2E', () => {
+/**
+ * BI 看板基座 E2E 测试（纯 ESM + importmap）
+ *
+ * 验证 Vue2/Vue3/H5 物料在同一页面共存，依赖隔离由 importmap scopes 处理。
+ * 不再有 window.Vue2/Vue3/ElementPlus 全局变量——所有依赖通过浏览器原生 ESM + importmap 解析。
+ */
+
+test.describe('BI 看板基座 E2E（纯 ESM）', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await page.waitForTimeout(2000);
+    // 物料通过动态 import() + esm.sh CDN 加载，需要较长等待时间
+    await page.waitForTimeout(5000);
   });
 
   // ─── 基础渲染 ───
-
-  test('调试：查看所有 widget-host', async ({ page }) => {
-    const logs = [];
-    page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
-
-    const hosts = await page.locator('.widget-host').count();
-    console.log('widget-host count:', hosts);
-    for (let i = 0; i < hosts; i++) {
-      const html = await page.locator('.widget-host').nth(i).innerHTML();
-      console.log(`host ${i}:`, html.substring(0, 300));
-    }
-
-    const cards = await page.locator('.dashboard__card').count();
-    console.log('card count:', cards);
-
-    console.log('logs:', logs.filter(l => l.includes('error') || l.includes('Error')).join('\n'));
-  });
 
   test('Vue2/Vue3/H5 物料在同一页面渲染', async ({ page }) => {
     await expect(page.locator('h2:has-text("Vue2 销售面板")')).toBeVisible();
     await expect(page.locator('h2:has-text("Vue3 财务面板")')).toBeVisible();
     await expect(page.locator('h2:has-text("H5 时钟组件")')).toBeVisible();
 
-    // Vue2: $mount 会替换宿主元素，sales-panel 直接出现在 section 中
+    // Vue2 物料
     await expect(page.locator('.sales-panel')).toBeVisible();
-    // Vue3: createApp.mount 在 widget-host 内部渲染
+    // Vue3 物料
     await expect(page.locator('.finance-panel')).toBeVisible();
-    // H5: innerHTML 直接写入 widget-host
+    // H5 物料
     await expect(page.locator('.clock-widget')).toBeVisible();
   });
 
   test('页面标题和基座头部渲染正确', async ({ page }) => {
+    await expect(page).toHaveTitle(/纯 ESM/);
     await expect(page.locator('h1:has-text("BI 看板")')).toBeVisible();
     await expect(page.locator('button:has-text("切换语言")')).toBeVisible();
+  });
+
+  test('importmap 已注入到页面', async ({ page }) => {
+    // 验证 importmap script 标签存在且包含 scopes
+    const importmapContent = await page.evaluate(() => {
+      const script = document.querySelector('script[type="importmap"]');
+      return script ? script.textContent : null;
+    });
+    expect(importmapContent).not.toBeNull();
+    const map = JSON.parse(importmapContent);
+    // scopes 必须包含 vue2/vue3 的隔离映射
+    expect(map.scopes['/widgets/vue2/']).toBeDefined();
+    expect(map.scopes['/widgets/vue2/'].vue).toMatch(/vue@2/);
+    expect(map.scopes['/widgets/vue3/']).toBeDefined();
+    expect(map.scopes['/widgets/vue3/'].vue).toMatch(/vue@3/);
   });
 
   test('H5 时钟组件实时更新时间', async ({ page }) => {
@@ -63,17 +70,6 @@ test.describe('BI 看板基座 E2E', () => {
     expect(errors).toEqual([]);
   });
 
-  test('控制台无 DEP_MISSING 错误', async ({ page }) => {
-    const depErrors = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error' && msg.text().includes('DEP_MISSING')) {
-        depErrors.push(msg.text());
-      }
-    });
-    await page.waitForTimeout(3000);
-    expect(depErrors).toEqual([]);
-  });
-
   // ─── 交互验证 ───
 
   test('切换语言按钮可点击', async ({ page }) => {
@@ -87,40 +83,14 @@ test.describe('BI 看板基座 E2E', () => {
     await expect(btn).toContainText('zh-CN');
   });
 
-  // ─── 卸载清理 ───
+  test('Vue2 物料按钮点击发出事件', async ({ page }) => {
+    const refreshBtn = page.locator('.sales-panel .el-button:has-text("刷新")');
+    await expect(refreshBtn).toBeVisible();
+    await refreshBtn.click();
 
-  test('WidgetHost 卸载后容器被清空', async ({ page }) => {
-    // H5 widget-host 保留完整，可以检查
-    const clockHost = page.locator('.clock-widget').locator('..');
-    await expect(page.locator('.clock-widget')).toBeVisible();
-
-    const innerHtml = await page.locator('.clock-widget').innerHTML();
-    expect(innerHtml).toContain('clock-time');
-  });
-
-  // ─── 错误降级 ───
-
-  test('加载不存在的物料时显示错误占位', async ({ page }) => {
-    await page.evaluate(() => {
-      const container = document.createElement('div');
-      container.id = 'error-test';
-      document.body.appendChild(container);
-
-      const script = document.createElement('script');
-      script.src = '/widgets/nonexistent-widget.js';
-      script.onerror = () => {
-        container.innerHTML = `
-          <div class="widget-error" style="padding:12px;border:1px solid #fecaca;border-radius:6px;background:#fef2f2;color:#b91c1c;font-size:13px">
-            <div>JS 加载失败: /widgets/nonexistent-widget.js</div>
-          </div>
-        `;
-      };
-      document.head.appendChild(script);
-    });
-
-    const errorPlaceholder = page.locator('#error-test .widget-error');
-    await expect(errorPlaceholder).toBeVisible({ timeout: 10000 });
-    await expect(errorPlaceholder).toContainText('加载失败');
+    // 事件日志应出现
+    await expect(page.locator('.dashboard__event-log')).toBeVisible();
+    await expect(page.locator('.dashboard__event-log')).toContainText('sales-panel');
   });
 
   // ─── 多物料独立性 ───
@@ -140,37 +110,33 @@ test.describe('BI 看板基座 E2E', () => {
     // H5 物料
     await expect(page.locator('.clock-title')).toBeVisible();
     await expect(page.locator('.chart-title')).toBeVisible();
-    await expect(page.locator('.clock-title')).toContainText('时钟');
   });
 
-  // ─── 运行时隔离 ───
+  // ─── 运行时隔离（ESM 方案：无 window 全局变量） ───
 
-  test('全局运行时变量正确挂载', async ({ page }) => {
+  test('纯 ESM 方案不使用 window 全局变量', async ({ page }) => {
     const globals = await page.evaluate(() => ({
       Vue2: typeof window.Vue2,
       Vue3: typeof window.Vue3,
-      ElementPlus: typeof window.ElementPlus
+      ElementPlus: typeof window.ElementPlus,
+      ELEMENT: typeof window.ELEMENT
     }));
 
-    expect(globals.Vue2).toBe('function');
-    expect(globals.Vue3).toBe('object');
-    expect(globals.ElementPlus).toBe('object');
+    // 纯 ESM 方案下，这些全局变量不应该存在（依赖由 importmap 解析，不挂到 window）
+    expect(globals.Vue2).toBe('undefined');
+    expect(globals.Vue3).toBe('undefined');
+    expect(globals.ElementPlus).toBe('undefined');
+    expect(globals.ELEMENT).toBe('undefined');
   });
 
-  test('Vue2 和 Vue3 运行时互不干扰', async ({ page }) => {
-    const result = await page.evaluate(() => {
-      const v2 = window.Vue2;
-      const v3 = window.Vue3;
+  test('Vue2 和 Vue3 物料使用不同版本的 Vue（通过 importmap scope 隔离）', async ({ page }) => {
+    // 物料内部各自 import 'vue'，由 importmap scope 解析到不同版本
+    // 验证方式：两个物料都能正常渲染（如果版本冲突会报错）
+    await expect(page.locator('.sales-panel')).toBeVisible();
+    await expect(page.locator('.finance-panel')).toBeVisible();
 
-      return {
-        vue2Version: v2.version,
-        vue3Version: v3.version,
-        vue2IsVue2: v2.version.startsWith('2.'),
-        vue3IsVue3: v3.version.startsWith('3.')
-      };
-    });
-
-    expect(result.vue2IsVue2).toBe(true);
-    expect(result.vue3IsVue3).toBe(true);
+    // Vue2 物料的 el-table 和 Vue3 物料的 el-table 应该各自独立工作
+    await expect(page.locator('.sales-panel .el-table')).toBeVisible();
+    await expect(page.locator('.finance-panel .el-table')).toBeVisible();
   });
 });

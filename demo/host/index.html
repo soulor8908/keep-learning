@@ -3,68 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BI 看板基座</title>
+    <title>BI 看板基座（纯 ESM + importmap）</title>
     <!--
-      运行时加载策略：
-      - 开发模式（vite dev）：通过 /runtime/* 中间件从 node_modules 加载
-      - 生产模式：同上，或替换为 CDN URL（见下方注释）
-      - CDN 模式：取消注释 CDN 部分，注释本地部分
+      纯 ESM + importmap 方案：依赖隔离与共享全部交给 importmap，不再有 window 全局变量、不再用 UMD。
+
+      UI 分组按需：组件库按使用频次分组，每组一个 canonical URL 放进 importmap 顶层 imports：
+        - element-plus/common  → 高频通用（Button/Input/Tag/...）
+        - element-plus/table   → 表格类（Table/TableColumn/Pagination）
+        - element-plus/form    → 表单类
+        - element-plus/heavy   → 少用但大
+      物料只 import 用到的组，用到才加载；同组同 URL 浏览器自动去重（跨物料/跨基座）。
+
+      importmap 由 vite 的 importmapInjectPlugin 从 wc/ui-groups.json 自动生成并注入下方占位标记，
+      改分组只改那个 json 文件，本 html 无需手改。
+
+      离线/内网：启动时设 UI_CDN_BASE=http://内网静态服务器 即可把所有 esm.sh URL 换成自托管产物。
+      旧浏览器兼容：WIDGET_COMPAT=1 启动，会在 importmap 前注入 es-module-shims 嗅探脚本。
     -->
+
+    <!-- UI 库全局样式：浏览器原生 ESM 不支持 import CSS，组件库 CSS 仍需 <link> 全局引入。
+         element-plus 供基座 + Vue3 物料，element-ui 供 Vue2 物料。 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.7.0/dist/index.css" />
+    <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css" />
+
+    <!--IMPORTMAP_INJECT-->
+    <!-- importmap 由 vite 插件从 ui-groups.json 生成并注入此处（构建/启动后为 <script type="importmap">） -->
+    <!--/IMPORTMAP_INJECT-->
   </head>
   <body>
     <div id="app"></div>
-
-    <!-- ===== 本地模式（默认） ===== -->
-    <script src="/runtime/vue2.js"></script>
-    <link rel="stylesheet" href="/runtime/element-ui.css" />
-    <script src="/runtime/element-ui.js"></script>
-    <script>
-      window.ELEMENT = ELEMENT;
-      window.Vue2 = window.Vue;
-    </script>
-
-    <script src="/runtime/vue3.js"></script>
-    <script>
-      window.Vue3 = window.Vue;
-    </script>
-
-    <link rel="stylesheet" href="/runtime/element-plus.css" />
-    <script src="/runtime/element-plus.js"></script>
-    <script>
-      window.ElementPlus = ElementPlus;
-    </script>
-
-    <script src="/runtime/lodash.min.js"></script>
-    <script>
-      window._ = _;
-    </script>
-
-    <!-- ===== CDN 模式（取消注释启用） =====
-    <script src="https://unpkg.com/vue@2.6.14/dist/vue.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css" />
-    <script src="https://unpkg.com/element-ui@2.15.14/lib/index.js"></script>
-    <script>
-      window.ELEMENT = ELEMENT;
-      window.Vue2 = window.Vue;
-    </script>
-
-    <script src="https://unpkg.com/vue@3.4.21/dist/vue.global.js"></script>
-    <script>
-      window.Vue3 = window.Vue;
-    </script>
-
-    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.7.0/dist/index.css" />
-    <script src="https://unpkg.com/element-plus@2.7.0/dist/index.full.js"></script>
-    <script>
-      window.ElementPlus = ElementPlus;
-    </script>
-
-    <script src="https://unpkg.com/lodash@4.17.21/lodash.min.js"></script>
-    <script>
-      window._ = _;
-    </script>
-    ===== -->
-
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

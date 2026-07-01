@@ -4,16 +4,18 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { mountWidget, unmountWidget, loadScript } from './loader.js';
+import { mountWidget, unmountWidget } from './loader.js';
 
+// 与 UMD 版 WidgetHost.vue 的差异：
+// - props 用 url/css 替代 js（ESM 模块 URL），去掉 vueVersion / runtimeDeps / integrity
+//   （依赖隔离交给 importmap，不再需要运行时声明）
+// - 不再有 loadScript + findWidget 的双路径，挂载只走 mountWidget 一条路
 const props = defineProps({
   name: { type: String, required: true },
-  js: { type: String, required: true },
+  url: { type: String, required: true },
   css: { type: String, default: '' },
-  vueVersion: { type: String, default: '3' },
   widgetProps: { type: Object, default: () => ({}) },
   context: { type: Object, default: () => ({}) },
-  integrity: { type: String, default: '' },
   cssIntegrity: { type: String, default: '' },
   onBeforeMount: { type: Function, default: null },
   onMounted: { type: Function, default: null },
@@ -43,7 +45,7 @@ function buildProps() {
       window.dispatchEvent(new CustomEvent(`widget:${type}`, { detail: payload }));
     },
     on(type, handler) {
-      const fn = e => handler(e.detail);
+      const fn = (e) => handler(e.detail);
       window.addEventListener(`widget:${type}`, fn);
       return () => window.removeEventListener(`widget:${type}`, fn);
     },
@@ -53,51 +55,21 @@ function buildProps() {
   };
 }
 
-// 从全局变量中查找物料（支持命名空间和直接挂载两种模式）
-function findWidget(name) {
-  // 直接挂载：window[name]
-  if (window[name]?.mount) return window[name];
-  // 命名空间：遍历 window 上的对象查找
-  for (const key of Object.keys(window)) {
-    const val = window[key];
-    if (val && typeof val === 'object' && !Array.isArray(val) && val[name]?.mount) {
-      return val[name];
-    }
-  }
-  return null;
-}
-
 async function doMount() {
   const mountPoint = ensureMountPoint();
   if (!mountPoint) return;
 
   if (props.onBeforeMount) props.onBeforeMount({ name: props.name, container: mountPoint });
 
-  let widgetApi = null;
+  api = await mountWidget(mountPoint, {
+    name: props.name,
+    url: props.url,
+    css: props.css,
+    context: props.context,
+    cssIntegrity: props.cssIntegrity,
+    props: buildProps()
+  });
 
-  // 通过 loadScript 加载 UMD 文件
-  try {
-    await loadScript(props.js);
-  } catch {}
-
-  const mod = findWidget(props.name);
-  if (mod && typeof mod.mount === 'function') {
-    const innerApi = await mod.mount(mountPoint, buildProps());
-    widgetApi = { unmount: () => { if (innerApi?.unmount) innerApi.unmount(); } };
-  } else {
-    widgetApi = await mountWidget(mountPoint, {
-      name: props.name,
-      js: props.js,
-      css: props.css,
-      vueVersion: props.vueVersion,
-      context: props.context,
-      integrity: props.integrity,
-      cssIntegrity: props.cssIntegrity,
-      props: buildProps()
-    });
-  }
-
-  api = widgetApi;
   if (props.onMounted) props.onMounted({ name: props.name, container: mountPoint, api });
 }
 

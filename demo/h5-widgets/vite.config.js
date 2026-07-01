@@ -1,12 +1,5 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig({
-  build: {
-    lib: {
-      entry: './src/index.js',
-      name: 'h5Widgets',
-      formats: ['umd'],
-      fileName: () => 'h5-widgets.js'
-    }
-  }
-});
+// 仅用于 vite serve 单仓开发预览。构建走 build.mjs（ESM 分包）。
+// H5 物料无框架依赖，无需任何插件。
+export default defineConfig({});

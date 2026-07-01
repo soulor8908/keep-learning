@@ -6,9 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# 安装依赖并构建 H5 物料
+# 安装依赖并构建 H5 物料（ESM）
 pnpm install
-cd demo/h5-widget
-pnpm vite build
+cd demo/h5-widgets
+pnpm run build
 
 echo "H5 preview build complete."

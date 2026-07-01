@@ -1,23 +1,24 @@
-// H5 Host 启动入口
-// 基座完全是 vanilla JS。
-// - 同栈 H5 物料：ESM 直引 render 函数，零 UMD 中转。
-// - 跨栈 Vue2/Vue3 物料：mountWidget，loader 内部 ensureRuntimes 按需加载。
+// H5 Host 启动入口（纯 ESM 版）
+// 基座完全是 vanilla JS，零框架依赖。
+// - 同栈 H5 物料：ESM 直引 render 函数，零中转
+// - 跨栈 Vue2/Vue3 物料：mountWidget 动态 import()，依赖由 importmap scope 解析
+// 对照 UMD 版：跨栈条目从 { js, vueVersion, runtimeDeps } 简化为 { url, css }，
+// 不再依赖 window.Vue2 / window.ElementPlus 全局变量。
 
 import { mountWidget, unmountWidget } from '@wc/core/loader';
 
 // ─── 同栈 H5 物料：ESM 直引 render 函数 ───
-// h5-widgets 的 render 函数本来就在源码里（ChartWidget.js / ClockWidget.js），
-// 没必要为 demo 走一遍 UMD 构建。
+// h5-widgets 的 render 函数本来就在源码里，没必要为 demo 走一遍构建。
 import { renderChart } from '../../h5-widgets/src/widgets/chart-widget/ChartWidget.js';
 
 // ─── 注册表 ───
 // stack 字段决定挂载路径：
 //   'esm-h5'  → 直接调用 render fn，返回 cleanup
-//   'loader'  → mountWidget，loader 内部按需加载运行时
+//   'loader'  → mountWidget，url 前缀（vue2/vue3）决定 importmap scope
 const WIDGETS = [
-  { key: 'h5',   tag: 'H5 · ESM',    title: '柱状图',   stack: 'esm-h5',   render: renderChart },
-  { key: 'vue2', tag: 'Vue2 · loader', title: '订单面板', stack: 'loader', name: 'biOrderPanel',  js: '/widgets/order-panel.js',  vueVersion: '2', runtimeDeps: ['element-ui'] },
-  { key: 'vue3', tag: 'Vue3 · loader', title: '用户面板', stack: 'loader', name: 'biUserPanel',   js: '/widgets/user-panel.js',   vueVersion: '3', runtimeDeps: ['element-plus'] }
+  { key: 'h5',   tag: 'H5 · ESM',     title: '柱状图',   stack: 'esm-h5',   render: renderChart },
+  { key: 'vue2', tag: 'Vue2 · loader', title: '订单面板', stack: 'loader', name: 'order-panel', url: '/widgets/vue2/order-panel.js', css: '/widgets/vue2/order-panel.css' },
+  { key: 'vue3', tag: 'Vue3 · loader', title: '用户面板', stack: 'loader', name: 'user-panel',  url: '/widgets/vue3/user-panel.js',  css: '/widgets/vue3/user-panel.css' }
 ];
 
 const events = [];
@@ -97,9 +98,8 @@ async function boot() {
     } else {
       apis[w.key] = await mountWidget(container, {
         name: w.name,
-        js: w.js,
-        vueVersion: w.vueVersion,
-        runtimeDeps: w.runtimeDeps || [],
+        url: w.url,
+        css: w.css,
         props
       });
     }

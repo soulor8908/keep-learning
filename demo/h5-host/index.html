@@ -3,13 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>H5 Host - 原生基座托管多技术栈物料</title>
+    <title>H5 Host（纯 ESM + importmap）</title>
+    <!--
+      H5 单栈基座（纯 ESM 版）：
+      - 基座是原生 HTML/JS，零框架依赖
+      - 同栈 H5 物料走 ESM 直引 render 函数，零中转
+      - 跨栈 Vue2/Vue3 物料走 loader 动态 import()，依赖由 importmap scope 解析
+      - 顶层 imports 不含 vue（hostStack='none'），仅声明两个 scope 供跨栈物料使用
+      importmap 由 importmapInjectPlugin（hostStack='none'）从 ui-groups.json 生成注入下方占位标记。
+      离线/内网：UI_CDN_BASE 指向自托管 ESM 前缀；旧浏览器：WIDGET_COMPAT=1 注入 es-module-shims。
+    -->
+
+    <!-- 跨栈物料用到的组件库全局样式（基座本身不引用，仅物料需要） -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui@2.15.14/lib/theme-chalk/index.css" />
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.7.0/dist/index.css" />
+
+    <!--IMPORTMAP_INJECT-->
+    <!-- importmap 由 vite 插件生成注入（hostStack=none：顶层无 vue，仅 scopes） -->
+    <!--/IMPORTMAP_INJECT-->
+
     <style>
       * { box-sizing: border-box; }
       body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #303133; background: #f5f7fa; }
       .h5host { padding: 20px; }
       .h5host__header { margin-bottom: 24px; }
       .h5host__header h1 { margin: 0 0 4px; font-size: 24px; }
+      .h5host__tag { font-size: 12px; color: #3b82f6; font-weight: 400; margin-left: 8px; }
       .h5host__subtitle { margin: 0; color: #909399; font-size: 13px; line-height: 1.6; max-width: 720px; }
       .h5host__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
       .h5host__card { padding: 16px; border: 1px solid #e4e7ed; border-radius: 8px; background: #fff; }
@@ -33,23 +52,15 @@
     </style>
   </head>
   <body>
-    <!--
-      H5 Host 是最纯粹的演示：基座本身没有框架，纯 DOM 操作。
-      - 同栈 H5 物料：ESM 直引 render 函数，零 UMD 中转。
-      - 跨栈 Vue2/Vue3 物料：mountWidget，loader 内部 ensureRuntimes 按需加载。
-      因此 index.html 不再首屏注入任何运行时脚本，零外部依赖。
-    -->
-
     <div class="h5host">
       <header class="h5host__header">
-        <h1>H5 Host</h1>
+        <h1>H5 Host <small class="h5host__tag">纯 ESM + importmap</small></h1>
         <p class="h5host__subtitle">
-          基座是原生 HTML/JS，零框架依赖。同栈 H5 物料走 ESM 直引，跨栈 Vue2/Vue3 物料走 loader 按需加载运行时。
-          这是「基座与物料技术栈解耦」的最终证明。
+          基座是原生 HTML/JS，零框架依赖。同栈 H5 物料走 ESM 直引，跨栈 Vue2/Vue3 物料走 loader 动态 import()；
+          依赖隔离与共享全部交给 importmap，无 window 全局变量。
         </p>
       </header>
 
-      <!-- 卡片容器由 main.js 动态填充 -->
       <main class="h5host__grid" id="grid"></main>
 
       <aside class="h5host__log">

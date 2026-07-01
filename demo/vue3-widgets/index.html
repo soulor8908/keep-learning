@@ -4,16 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vue3 Widget 预览</title>
-  <!-- Vue3 运行时，UMD 产物要求全局为 window.Vue3 -->
-  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
-  <script>
-    if (typeof window !== 'undefined' && window.Vue && !window.Vue3) {
-      window.Vue3 = window.Vue;
-    }
-  </script>
-  <!-- ElementPlus 样式与组件库 -->
+  <!-- 纯 ESM 开发预览：vue / element-plus 由 Vite 从 node_modules 解析，无需 importmap、无需 window 全局 -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.7.0/dist/index.css">
-  <script src="https://cdn.jsdelivr.net/npm/element-plus@2.7.0/dist/index.full.js"></script>
 </head>
 <body>
   <div id="app"></div>

@@ -1,261 +1,92 @@
-# @wc/core
+# @wc/core — 跨技术栈看板物料加载核心（纯 ESM + importmap）
 
-轻量物料运行时核心：UMD 加载 + `mount()` + 依赖检查 + 运行时按需加载。
+通过 **ESM + 浏览器原生 importmap** 把 Vue2 / Vue3 / H5 物料以统一方式接入同一个看板。
+依赖隔离与共享全部交给 importmap 的 `scopes`，运行时只做动态 `import()` + CSS 引用计数 + 错误降级，
+不再依赖任何 `window` 全局变量，也不再使用 UMD。
 
-## 安装
+> 本方案已完全移除 UMD。旧版的 `external + globals + window.Vue2/Vue3`、`ensureRuntimes`、
+> `checkDeps`/版本校验等机制全部删除——importmap 是依赖的单一来源，缺依赖时 `import()` 直接抛错被降级捕获。
 
-`@wc/core` 是 workspace 包，在 demo 子项目中直接依赖：
+## 与 UMD 旧方案的根本差异
 
-```json
-{
-  "devDependencies": {
-    "@wc/core": "workspace:*"
-  }
-}
+| 维度 | UMD 旧方案 | ESM 新方案 |
+|------|-----------|-----------|
+| 物料产物 | UMD（`window[name]`） | ESM（`import()` 命名空间） |
+| 依赖隔离 | `external` + `globals` + `window.Vue2/Vue3` | importmap `scopes`（`/widgets/vue2/*`→Vue2，`/widgets/vue3/*`→Vue3） |
+| 运行时按需 | `ensureRuntimes` 拉 `/runtime/*.js` 注 `window.*` | 浏览器原生模块图按需拉取，importmap 单一来源 |
+| 版本校验 | `checkVersionCompat`（自写 semver 子集） | 不需要——版本由 importmap 钉死 |
+| 基座加载 | `mountWidget(c, { name, js, vueVersion, runtimeDeps })` | `mountWidget(c, { name, url, css })` |
+
+## 目录
+
+```
+wc/
+├── loader.js            # 动态 import() + URL 缓存 + CSS 引用计数 + 错误降级 + 懒加载预热
+├── WidgetHost.vue       # Vue3 基座组件（props 用 url/css，无 vueVersion/runtimeDeps）
+├── compat.js            # 浏览器兼容（可选项）：旧浏览器注入 es-module-shims polyfill
+├── importmap-gen.js     # UI 分组按需共享工具（生成 importmap / resolver / manual 校验）
+├── ui-groups.json       # UI 组件库分组策略（唯一配置源）
+├── templates/           # Vue2 / Vue3 / H5 物料入口模板
+│   ├── vue2.js
+│   ├── vue3.js
+│   └── h5.js
+└── __tests__/           # 单元测试（vitest + happy-dom）
 ```
 
-## 基座使用
+## 核心 API
 
-```vue
-<template>
-  <WidgetHost
-    name="sales-panel"
-    js="/widgets/sales-panel.js"
-    css="/widgets/sales-panel.css"
-    vue-version="2"
-    :widget-props="{ title: '销售' }"
-    :context="baseContext"
-  />
-</template>
-
-<script setup>
-import WidgetHost from '@wc/core/WidgetHost.vue';
-
-// 基座上下文，会被注入到所有物料的 props.context 中
-const baseContext = { user: 'admin', theme: 'dark' };
-</script>
-```
-
-或直接使用 JS API：
-
-```js
-import { mountWidget, unmountWidget } from '@wc/core/loader';
-
-const api = await mountWidget(container, {
-  name: 'sales-panel',
-  js: '/widgets/sales-panel.js',
-  css: '/widgets/sales-panel.css',
-  vueVersion: '2',
-  runtimeDeps: ['element-ui'],   // 声明后 loader 按需加载 element-ui 运行时
-  context: { user: 'admin', theme: 'dark' },
-  integrity: 'sha256-abc...',
-  cssIntegrity: 'sha256-def...',
-  props: { title: '销售' }
-});
-
-unmountWidget(api);
-```
-
-## WidgetHost 组件
-
-| 属性 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `name` | String | 必填 | 物料全局变量名（如 `finance-panel`） |
-| `js` | String | 必填 | UMD JS 文件路径 |
-| `css` | String | `''` | CSS 文件路径（可选） |
-| `vueVersion` | String | `'3'` | Vue 版本：`'2'` / `'3'` / `'none'` |
-| `runtimeDeps` | Array | `[]` | 运行时依赖，如 `['element-ui']` / `['element-plus']`；loader 会按需加载对应运行时 |
-| `widgetProps` | Object | `{}` | 传递给物料的 props |
-| `context` | Object | `{}` | 基座上下文（用户、权限、主题等） |
-| `integrity` | String | `''` | JS 文件 SRI hash |
-| `cssIntegrity` | String | `''` | CSS 文件 SRI hash |
-| `onBeforeMount` | Function | `null` | 挂载前回调 |
-| `onMounted` | Function | `null` | 挂载后回调 |
-| `onUnmounted` | Function | `null` | 卸载后回调 |
-
-| 事件 | 说明 |
+| 导出 | 说明 |
 |------|------|
-| `widget-event` | 物料触发的事件，携带 `{ widget, event, payload }` |
+| `mountWidget(container, widget)` | 加载并挂载 ESM 物料。`widget: { name?, url, css?, props?, context?, cssIntegrity? }` |
+| `unmountWidget(api)` | 卸载物料（调用 `api.unmount()`，并按引用计数移除 CSS） |
+| `preloadWidgets(urls)` | 懒加载预热（`requestIdleCallback` 内 `import()`） |
+| `injectImportmapShim()` / `supportsImportmap()` | 浏览器兼容（见下） |
+| `generateImportmap(groups, opts)` / `loadUiGroups()` / `createGroupResolver()` / `createManualCheckPlugin()` | UI 分组按需构建/注入工具 |
+| `createVue2Widget` / `createVue3Widget` / `createH5Widget` | 三种技术栈物料入口模板 |
 
-## 运行时按需加载
+## 物料加载流程
 
-基座不再在 `index.html` 首屏全量注入 Vue2 / Vue3 / element-ui / element-plus。
-`mountWidget` 在加载物料 UMD 之前，先调用 `ensureRuntimes` 按物料声明（`vueVersion` + `runtimeDeps`）补齐缺失的全局变量。
+```
+基座 index.html 由 vite 插件注入 <script type="importmap">{ imports, scopes }</script>
+  - imports:  vue / lodash / axios / element-plus/{common,table,form,heavy} 等 canonical URL
+  - scopes:   /widgets/vue2/* → vue=Vue2；/widgets/vue3/* → vue=Vue3
 
-### 加载策略
-
-| 物料声明 | loader 行为 |
-|---------|------------|
-| `vueVersion: '2'` | 检查 `window.Vue2`，缺失则加载 `/runtime/vue2.js` |
-| `vueVersion: '3'` | 检查 `window.Vue3`，缺失则加载 `/runtime/vue3.js` |
-| `vueVersion: 'none'` | 不加载任何 Vue 运行时（H5 物料） |
-| `runtimeDeps: ['element-ui']` | 加载 element-ui（前置依赖 vue2 自动先加载） |
-| `runtimeDeps: ['element-plus']` | 加载 element-plus（前置依赖 vue3 自动先加载） |
-
-### URL 覆盖
-
-默认运行时 URL 走 `/runtime/{name}.js`。基座可通过 `window.__WIDGET_RUNTIME_URLS__` 覆盖为自有 CDN：
-
-```js
-// 必须在 mountWidget 调用前设置
-window.__WIDGET_RUNTIME_URLS__ = {
-  vue3: { js: 'https://cdn.example.com/vue@3.4.21.js', globalVar: 'Vue3' },
-  'element-plus': {
-    js: 'https://cdn.example.com/element-plus@2.7.0.js',
-    css: 'https://cdn.example.com/element-plus@2.7.0.css',
-    globalVar: 'ElementPlus',
-    requires: 'vue3'
-  }
-};
+mountWidget(container, { url: '/widgets/vue3/finance-panel.js', css, props })
+  1. loadModule(url)        → 动态 import()，浏览器按 importmap 解析 bare import，自动隔离 Vue2/Vue3
+  2. loadStyle(css)         → <link> 引用计数，多物料共享同一份 CSS
+  3. mod.default.mount(c, props) → 物料内部 createApp/new Vue/innerHTML
+  4. 失败 → renderError（错误占位 + 重试按钮）
 ```
 
-### 同栈物料的 ESM 直引
-
-当物料与基座同属一个技术栈时（如 vue2-host 中的 Vue2 物料），无需走 UMD + loader，直接 ESM import 由 Vite 编译挂载，更轻量：
-
-```js
-// vue2-host/src/App.vue：同栈 Vue2 物料走 ESM，跨栈物料走 loader
-import SalesPanel from '../../vue2-widgets/src/widgets/sales-panel/SalesPanel.vue';
-
-// 同栈：ESM 直引
-const app = new Vue({ render: (h) => h(SalesPanel, { props }) });
-app.$mount(container);
-
-// 跨栈：走 loader（loader 自动按需加载 Vue3 / element-plus 运行时）
-await mountWidget(container, {
-  name: 'biFinancePanel',
-  js: '/widgets/finance-panel.js',
-  vueVersion: '3',
-  runtimeDeps: ['element-plus']
-});
-```
-
-## 物料接入
-
-### Vue3 物料
+## 写一个物料（Vue3）
 
 ```js
 // src/widgets/finance-panel/index.js
 import FinancePanel from './FinancePanel.vue';
 import { createVue3Widget } from '@wc/core/templates/vue3';
 
-export default createVue3Widget(FinancePanel, {
-  plugins: window.ElementPlus ? [window.ElementPlus] : [],
-  deps: ['element-plus']
-});
+export default createVue3Widget(FinancePanel, { deps: ['element-plus'] });
 ```
 
-### Vue2 物料
+物料 SFC 里直接写 `<el-table>`，UI 组件由构建期（`unplugin-vue-components` + `createGroupResolver`）
+自动注入 `import { ElTable } from 'element-plus/table'`，运行时由 importmap 解析到分组 URL。
+**不再需要** `app.use(ElementPlus)` 全量注册，也**不再读** `window.ElementPlus`。
 
-```js
-// src/widgets/sales-panel/index.js
-import SalesPanel from './SalesPanel.vue';
-import { createVue2Widget } from '@wc/core/templates/vue2';
+## 浏览器兼容（可选项）
 
-export default createVue2Widget(SalesPanel, {
-  deps: ['element-ui']
-});
-```
+纯 ESM + importmap 要求 Chrome 89+ / Edge 89+ / Firefox 108+ / Safari 16.4+。
+对支持原生 ESM 但不支持 importmap 的旧浏览器，引入 [es-module-shims](https://github.com/guybedford/es-module-shims) 即可，物料与基座代码无需改动。
 
-### H5 物料
+- **Vite 基座**：`COMPAT=true pnpm serve`，`importmapInjectPlugin` 会在 importmap 前注入 shim 标签。
+- **静态 HTML**：运行时 `import { injectImportmapShim } from '@wc/core/compat'; injectImportmapShim();`
+  （需在 importmap 之前调用）。
 
-```js
-// src/widgets/clock-widget/index.js
-import { renderClock } from './ClockWidget.js';
-import { createH5Widget } from '@wc/core/templates/h5';
+es-module-shims 在已支持 importmap 的浏览器里是 no-op，因此也可以无条件引入；做成可选项
+只是为不在现代浏览器多拉一个约 6KB 的脚本。离线/内网可用 `window.__WIDGET_SHIM_URL__` 覆盖 shim URL。
 
-export default createH5Widget(renderClock);
-```
+## 测试
 
-## 分包构建
-
-每个物料独立一个 UMD 文件，按需加载：
-
-```
-dist/
-├── finance-panel.js    # 3.7 KB
-├── finance-panel.css   # 0.5 KB
-├── user-panel.js       # 3.3 KB
-└── user-panel.css      # 0.4 KB
-```
-
-构建脚本 `build.mjs` 自动扫描 `src/widgets/` 目录，无需手动配置入口。
-
-## Loader API
-
-```js
-import { mountWidget, unmountWidget, ensureRuntimes, loadScript, preloadWidgets } from '@wc/core/loader';
-
-// 加载并挂载物料（mountWidget 内部已调用 ensureRuntimes，通常无需手动调用）
-const api = await mountWidget(container, widgetConfig);
-
-// 卸载物料
-unmountWidget(api);
-
-// 预加载物料脚本（不挂载）
-preloadWidgets(['/widgets/finance-panel.js']);
-
-// 手动预加载运行时（如首屏前预热 Vue3 + element-plus）
-await ensureRuntimes({ vue3: true, elementPlus: true });
-```
-
-### `ensureRuntimes(needs)`
-
-按需加载 Vue2 / Vue3 / element-ui / element-plus 运行时到 `window`。已存在的全局变量会被跳过，前置依赖自动解析（element-ui → vue2，element-plus → vue3）。
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `needs.vue2` | boolean | 加载 `window.Vue2`（若缺失） |
-| `needs.vue3` | boolean | 加载 `window.Vue3`（若缺失） |
-| `needs.elementUi` | boolean | 加载 `window.ELEMENT`（自动先加载 vue2） |
-| `needs.elementPlus` | boolean | 加载 `window.ElementPlus`（自动先加载 vue3） |
-
-`mountWidget` 已内置调用，业务侧仅在需要预热时手动调用。
-
-## 跨物料通信（pub/sub）
-
-每个物料通过 `props.emit` / `props.on` 进行跨物料通信，基于 `window.dispatchEvent`，无需额外依赖：
-
-```js
-// 物料 A（筛选器）
-// 筛选条件改变时广播事件
-props.emit('filterChanged', { region: 'CN', date: '2025-01' });
-
-// 物料 B（图表）
-// 监听筛选条件变化并刷新数据
-const off = props.on('filterChanged', (data) => {
-  fetchChartData(data);
-});
-
-// 组件卸载时取消监听
-off();
-```
-
-## 基座上下文共享
-
-基座通过 `context` 将用户、权限、主题等信息注入所有物料：
-
-```js
-// 基座
-mountWidget(container, {
-  name: 'sales-panel',
-  context: { user: 'admin', role: 'editor', theme: 'dark' }
-});
-
-// 物料内读取
-const { user, theme } = props.context;
-```
-
-## SRI 校验
-
-通过 `integrity` / `cssIntegrity` 为 JS / CSS 文件开启 Subresource Integrity 校验：
-
-```js
-mountWidget(container, {
-  name: 'sales-panel',
-  js: '/widgets/sales-panel.js',
-  css: '/widgets/sales-panel.css',
-  integrity: 'sha256-abc...',
-  cssIntegrity: 'sha256-def...'
-});
+```bash
+pnpm test:run     # 单元测试（vitest + happy-dom）
+pnpm e2e          # 端到端（Playwright，自动构建物料并启动 host）
 ```

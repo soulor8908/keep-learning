@@ -1,26 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
+// 仅用于 vite serve 单仓开发预览。构建走 build.mjs（ESM 分包）。
 export default defineConfig({
-  plugins: [vue()],
-  build: {
-    lib: {
-      entry: './src/index.js',
-      name: 'vue3Widgets',
-      formats: ['umd'],
-      fileName: () => 'vue3-widgets.js'
-    },
-    rollupOptions: {
-      external: (id) => {
-        if (id.endsWith('.css')) return false;
-        return id === 'vue' || id === 'element-plus';
-      },
-      output: {
-        globals: {
-          vue: 'Vue3',
-          'element-plus': 'ElementPlus'
-        }
-      }
-    }
-  }
+  plugins: [vue()]
 });

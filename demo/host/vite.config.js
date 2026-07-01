@@ -1,87 +1,29 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
+import { importmapInjectPlugin, localServeWidgetsPlugin } from '@wc/core/host-plugin';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const HOST_NM = path.resolve(__dirname, 'node_modules');
-const ROOT_NM = path.resolve(__dirname, '../../node_modules');
-
-// ─── 运行时依赖映射（从基座 node_modules 读取）───
-const LOCAL_MAP = {
-  '/runtime/vue2.js': path.resolve(HOST_NM, 'vue2/dist/vue.js'),
-  '/runtime/vue3.js': path.resolve(HOST_NM, 'vue/dist/vue.global.js'),
-  '/runtime/element-ui.js': path.resolve(HOST_NM, 'element-ui/lib/index.js'),
-  '/runtime/element-ui.css': path.resolve(HOST_NM, 'element-ui/lib/theme-chalk/index.css'),
-  '/runtime/element-plus.js': path.resolve(HOST_NM, 'element-plus/dist/index.full.js'),
-  '/runtime/element-plus.css': path.resolve(HOST_NM, 'element-plus/dist/index.css'),
-  '/runtime/lodash.min.js': path.resolve(ROOT_NM, 'lodash/lodash.min.js')
-};
-
-// ─── 物料库映射（支持多仓开发）───
-// 本地开发：VITE_WIDGETS_DIRS 环境变量指定物料产物目录（逗号分隔）
-// 默认回退到同级 demo 目录（仅适用于 monorepo 本地开发）
-const WIDGETS_BASE_DIRS = process.env.VITE_WIDGETS_DIRS
-  ? process.env.VITE_WIDGETS_DIRS.split(',').map(d => d.trim())
-  : [
-      path.resolve(__dirname, '../vue2-widgets/dist'),
-      path.resolve(__dirname, '../vue3-widgets/dist'),
-      path.resolve(__dirname, '../h5-widgets/dist')
-    ];
-
-const WIDGET_MAP = {};
-for (const distDir of WIDGETS_BASE_DIRS) {
-  if (!fs.existsSync(distDir)) continue;
-  for (const file of fs.readdirSync(distDir)) {
-    if (file.endsWith('.js') || file.endsWith('.css')) {
-      WIDGET_MAP[`/widgets/${file}`] = path.resolve(distDir, file);
-    }
-  }
-}
-
-const TEST_MODULE_MAP = {
-  '/loader.js': path.resolve(__dirname, '../../wc/loader.js')
-};
-
-function localServePlugin() {
-  return {
-    name: 'local-serve',
-    configureServer(server) {
-      const watcher = server.watcher;
-      for (const distDir of WIDGETS_BASE_DIRS) {
-        if (fs.existsSync(distDir)) watcher.add(distDir);
-      }
-      watcher.on('change', (file) => {
-        if (file.includes('/dist/') && (file.endsWith('.js') || file.endsWith('.css'))) {
-          server.ws.send({ type: 'full-reload' });
-        }
-      });
-
-      server.middlewares.use((req, res, next) => {
-        const url = req.url.split('?')[0];
-        const target = WIDGET_MAP[url] || LOCAL_MAP[url] || TEST_MODULE_MAP[url];
-        if (!target) return next();
-        if (!fs.existsSync(target)) {
-          res.statusCode = 404;
-          res.end(`not found: ${target}`);
-          return;
-        }
-        const ext = path.extname(target);
-        res.setHeader('Content-Type', ext === '.css' ? 'text/css' : 'application/javascript');
-        fs.createReadStream(target).pipe(res);
-      });
-    }
-  };
-}
+// 离线/内网：UI_CDN_BASE 指向自托管 ESM 产物前缀（默认 esm.sh）
+const UI_CDN_BASE = process.env.UI_CDN_BASE || undefined;
+// 可选浏览器兼容：WIDGET_COMPAT=1 注入 es-module-shims 嗅探脚本，兼容不支持 importmap 的旧浏览器
+const COMPAT = process.env.WIDGET_COMPAT === '1';
 
 export default defineConfig({
-  plugins: [vue(), localServePlugin()],
-  resolve: {
-    alias: { '@': path.resolve(__dirname, 'src') }
-  },
-  optimizeDeps: {
-    exclude: ['element-ui']
+  // 基座是 Vue3：importmap 顶层 vue → Vue3，与 Vue3 物料共享同一份 ESM。
+  // 组 specifier（element-plus/common 等）与全量 element-plus/element-ui 也交给 importmap，
+  // 从预打包与构建产物中排除。
+  plugins: [
+    vue(),
+    localServeWidgetsPlugin(),
+    importmapInjectPlugin({ hostStack: 'vue3', cdnBase: UI_CDN_BASE, compat: COMPAT })
+  ],
+  // optimizeDeps.exclude 只接受字符串（RegExp 会让 esbuild cjs-external 插件崩溃）。
+  // element-plus/*、element-ui/* 子路径仅出现在物料产物中（由 localServeWidgetsPlugin 静态托管），
+  // 不经 vite 扫描/预打包，无需在此 exclude。
+  optimizeDeps: { exclude: ['vue', 'element-plus', 'element-ui'] },
+  build: {
+    rollupOptions: {
+      external: ['vue', 'element-plus', 'element-ui', /^element-plus\//, /^element-ui\//]
+    }
   },
   server: {
     port: 5000,

@@ -8,9 +8,14 @@
     "build": "node --max-old-space-size=4096 build.mjs",
     "watch": "node --max-old-space-size=4096 build.mjs --watch"
   },
+  "dependencies": {
+    "element-plus": "^2.7.0",
+    "vue": "^3.4.21"
+  },
   "devDependencies": {
     "vite": "^5.0.0",
     "@vitejs/plugin-vue": "^5.0.0",
-    "@wc/core": "file:../wc"
+    "@wc/core": "file:../wc",
+    "unplugin-vue-components": "^32.1.0"
   }
 }
