@@ -1,11 +1,8 @@
 /**
- * Vue2 物料入口模板（ESM 版 + UI 分组按需）
+ * Vue2 物料入口模板（ESM 版）
  *
- * 与旧版（全量 Vue.use(ElementUI)）的差异：
- * - 不再全量加载 element-ui。UI 组件注册交给物料 SFC：
- *   - manual 模式：物料 <script> 里 import { Button } from 'element-ui/common' 并 components 注册
- *   - auto 模式：unplugin-vue-components 在构建期自动注入 import + 注册
- * - 模板只负责 Vue2 实例创建/挂载。
+ * 只负责 Vue2 实例创建/挂载与 props 热更新；UI 组件注册在物料 SFC 内完成
+ * （manual 模式手写 import；auto 对 Vue2 不生效，见 build.mjs）。
  *
  * @example
  *   import Component from './Widget.vue';
@@ -26,15 +23,19 @@ export function createVue2Widget(Component, options = {}) {
     __widget_meta__: { deps },
 
     mount(container, props = {}) {
+      // data 桥接：update 整体替换 data.p 触发重渲染，物料不重挂载、内部状态不丢
       const app = new Vue({
-        render: (h) => h(Component, { props })
+        data: { p: props },
+        render(h) { return h(Component, { props: this.p }); }
       });
       app.$mount(container);
       return {
         unmount: () => {
           app.$destroy();
-          if (container) container.innerHTML = '';
-        }
+          // Vue2 $mount 会替换 container 本身，渲染根节点是 app.$el，需显式移除
+          app.$el?.parentNode?.removeChild(app.$el);
+        },
+        update: (next) => { app.p = next; }
       };
     }
   };

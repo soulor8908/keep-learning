@@ -47,7 +47,21 @@ export function localServeWidgetsPlugin(dirs = DEFAULT_WIDGET_DIRS) {
         const url = req.url.split('?')[0];
         const m = url.match(/^\/widgets\/(vue2|vue3|h5)\/(.+)$/);
         if (!m) return next();
-        const target = path.resolve(resolved[m[1]], m[2]);
+        const root = resolved[m[1]];
+        let target;
+        try {
+          target = path.resolve(root, decodeURIComponent(m[2]));
+        } catch {
+          res.statusCode = 400;
+          res.end('bad request');
+          return;
+        }
+        // 防路径穿越：解码后的目标必须落在对应物料 dist 目录内
+        if (target !== root && !target.startsWith(root + path.sep)) {
+          res.statusCode = 403;
+          res.end('forbidden');
+          return;
+        }
         if (!fs.existsSync(target) || fs.statSync(target).isDirectory()) {
           res.statusCode = 404;
           res.end(`not found: ${target}`);

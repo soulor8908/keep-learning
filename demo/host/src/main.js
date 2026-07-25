@@ -12,7 +12,7 @@ app.mount('#app');
 // dev 期把加载器挂到 window，供 e2e 错误降级测试直接调用 mountWidget/unmountWidget。
 // 生产构建下 import.meta.env.DEV 为 false，整段会被 tree-shake，不进产物。
 if (import.meta.env.DEV) {
-  import('@wc/core/loader').then(({ mountWidget, unmountWidget, preloadWidgets }) => {
-    window.__loader = { mountWidget, unmountWidget, preloadWidgets };
+  import('@wc/core/loader').then(({ mountWidget, unmountWidget, unmountContainer, preloadWidgets }) => {
+    window.__loader = { mountWidget, unmountWidget, unmountContainer, preloadWidgets };
   });
 }

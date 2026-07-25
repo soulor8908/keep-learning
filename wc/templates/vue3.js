@@ -1,11 +1,8 @@
 /**
- * Vue3 物料入口模板（ESM 版 + UI 分组按需）
+ * Vue3 物料入口模板（ESM 版）
  *
- * 与旧版（全量 app.use(ElementPlus)）的差异：
- * - 不再全量加载 element-plus。UI 组件的注册交给物料 SFC 自己：
- *   - manual 模式：物料 <script setup> 里 import { ElButton } from 'element-plus/common'
- *   - auto 模式：unplugin-vue-components 在构建期自动注入上述 import
- * - 模板只负责 Vue 实例创建/挂载，不再管 UI 库。deps 字段保留仅为元信息标注。
+ * 只负责 Vue3 实例创建/挂载与 props 热更新；UI 组件注册在物料 SFC 内完成
+ * （manual 手写 import / auto 由 unplugin-vue-components 构建期注入）。
  *
  * @example
  *   import Component from './Widget.vue';
@@ -13,7 +10,7 @@
  *   export default createVue3Widget(Component);
  */
 
-import { createApp, h } from 'vue';
+import { createApp, h, shallowRef } from 'vue';
 
 /**
  * @param {import('vue').Component} Component
@@ -26,7 +23,9 @@ export function createVue3Widget(Component, options = {}) {
     __widget_meta__: { deps },
 
     mount(container, props = {}) {
-      const app = createApp({ render: () => h(Component, props) });
+      // shallowRef 桥接：update 整体替换 props 对象触发重渲染，物料不重挂载、内部状态不丢
+      const propsRef = shallowRef(props);
+      const app = createApp({ render: () => h(Component, propsRef.value) });
 
       // 业务方通过 plugins 传入的插件（非 UI 库的全量注册），如自研插件
       for (const plugin of plugins) {
@@ -38,7 +37,8 @@ export function createVue3Widget(Component, options = {}) {
         unmount: () => {
           app.unmount();
           if (container) container.innerHTML = '';
-        }
+        },
+        update: (next) => { propsRef.value = next; }
       };
     }
   };

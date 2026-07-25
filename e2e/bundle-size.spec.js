@@ -76,11 +76,13 @@ test.describe('体积优化验证（纯 ESM）', () => {
   });
 
   // ─── 运行时代码行数（浏览器实际加载的部分） ───
+  // 预算说明：loader 新增会话管理（防竞态）、加载超时、onError 上报后行数增长，
+  // 预算相应上调但仍保持紧凑（gzip 后约 2-3KB，对 2C 首屏可忽略）。
 
-  test('loader.js < 200 行', () => {
+  test('loader.js < 260 行', () => {
     const lines = getLineCount(path.join(WC_DIR, 'loader.js'));
     console.log(`loader.js: ${lines} 行`);
-    expect(lines).toBeLessThan(200);
+    expect(lines).toBeLessThan(260);
   });
 
   test('WidgetHost.vue < 120 行', () => {
@@ -103,7 +105,7 @@ test.describe('体积优化验证（纯 ESM）', () => {
     expect(h5Lines).toBeLessThan(40);
   });
 
-  test('核心运行时总代码 < 450 行', () => {
+  test('核心运行时总代码 < 520 行', () => {
     const loaderLines = getLineCount(path.join(WC_DIR, 'loader.js'));
     const hostLines = getLineCount(path.join(WC_DIR, 'WidgetHost.vue'));
     const vue2Lines = getLineCount(path.join(WC_DIR, 'templates/vue2.js'));
@@ -116,7 +118,7 @@ test.describe('体积优化验证（纯 ESM）', () => {
     console.log(`  WidgetHost.vue:  ${hostLines}`);
     console.log(`  templates:       ${vue2Lines + vue3Lines + h5Lines}`);
 
-    expect(total).toBeLessThan(450);
+    expect(total).toBeLessThan(520);
   });
 
   // ─── UMD 方案彻底移除 ───

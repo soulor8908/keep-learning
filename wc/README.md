@@ -21,7 +21,7 @@
 
 ```
 wc/
-├── loader.js            # 动态 import() + URL 缓存 + CSS 引用计数 + 错误降级 + 懒加载预热
+├── loader.js            # 动态 import() + URL 缓存 + CSS 引用计数 + 错误降级 + 会话防竞态 + 超时 + 预热
 ├── WidgetHost.vue       # Vue3 基座组件（props 用 url/css，无 vueVersion/runtimeDeps）
 ├── compat.js            # 浏览器兼容（可选项）：旧浏览器注入 es-module-shims polyfill
 ├── importmap-gen.js     # UI 分组按需共享工具（生成 importmap / resolver / manual 校验）
@@ -37,12 +37,30 @@ wc/
 
 | 导出 | 说明 |
 |------|------|
-| `mountWidget(container, widget)` | 加载并挂载 ESM 物料。`widget: { name?, url, css?, props?, context?, cssIntegrity? }` |
-| `unmountWidget(api)` | 卸载物料（调用 `api.unmount()`，并按引用计数移除 CSS） |
+| `mountWidget(container, widget)` | 加载并挂载 ESM 物料。`widget: { name?, url, css?, props?, context?, cssIntegrity?, timeout?, onError? }`。**一个容器一个物料**：同容器重复挂载自动取消/卸载旧实例（防竞态覆盖）。返回 `{ unmount, update }`：`update(props)` 热更新返回 `true`，物料不支持 update 返回 `false`（调用方应重挂载） |
+| `unmountWidget(api)` | 卸载物料（等价 `api.unmount()`，按引用计数移除 CSS，自动清理物料经 `on()` 注册的全局监听） |
+| `unmountContainer(container)` | 取消/卸载容器上的当前物料（含进行中的挂载），用于基座组件销毁时 api 尚未 resolve 的场景 |
 | `preloadWidgets(urls)` | 懒加载预热（`requestIdleCallback` 内 `import()`） |
 | `injectImportmapShim()` / `supportsImportmap()` | 浏览器兼容（见下） |
 | `generateImportmap(groups, opts)` / `loadUiGroups()` / `createGroupResolver()` / `createManualCheckPlugin()` | UI 分组按需构建/注入工具 |
-| `createVue2Widget` / `createVue3Widget` / `createH5Widget` | 三种技术栈物料入口模板 |
+| `createVue2Widget` / `createVue3Widget` / `createH5Widget` | 三种技术栈物料入口模板（均支持 props 热更新：mount 返回 `{ unmount, update }`） |
+
+### mountWidget 选项
+
+| 选项 | 默认 | 说明 |
+|------|------|------|
+| `timeout` | `30000` | 加载超时毫秒数（`0` 表示不限制）。超时只是放弃等待走错误降级，底层 import 成功后仍进缓存（相当于预热） |
+| `onError(err, { name, url, container })` | - | 失败上报钩子（监控用），钩子自身抛错不阻断错误降级 |
+| `cssIntegrity` | - | CSS 的 SRI 校验值（设置 `<link integrity crossorigin>`） |
+
+### WidgetHost（Vue3 基座组件）
+
+props：`name`、`url`、`css`、`widgetProps`、`context`、`cssIntegrity`、`timeout`、`onBeforeMount`、`onMounted`、`onUnmounted`。
+事件：`@widget-event`（物料 emit 转发）、`@widget-error`（加载失败上报）。
+
+- `url` / `name` / `css` 变化 → 重挂载
+- `widgetProps` 变化 → 物料支持 `update` 则热更新（不重挂载、内部状态保留），否则退化为重挂载
+- 挂载期间 `widgetProps` 变化会在挂载完成后自动对齐一次最新 props
 
 ## 物料加载流程
 
@@ -52,10 +70,12 @@ wc/
   - scopes:   /widgets/vue2/* → vue=Vue2；/widgets/vue3/* → vue=Vue3
 
 mountWidget(container, { url: '/widgets/vue3/finance-panel.js', css, props })
-  1. loadModule(url)        → 动态 import()，浏览器按 importmap 解析 bare import，自动隔离 Vue2/Vue3
-  2. loadStyle(css)         → <link> 引用计数，多物料共享同一份 CSS
-  3. mod.default.mount(c, props) → 物料内部 createApp/new Vue/innerHTML
-  4. 失败 → renderError（错误占位 + 重试按钮）
+  1. 取消同容器旧会话（防竞态），容器加 widget-loading class
+  2. loadModule(url)        → 动态 import()，浏览器按 importmap 解析 bare import，自动隔离 Vue2/Vue3
+  3. loadStyle(css)         → <link> 引用计数，多物料共享同一份 CSS
+  4. mod.default.mount(c, props) → 物料内部 createApp/new Vue/innerHTML
+  5. 失败 → onError 上报 + renderError（textContent 纯文本渲染，错误占位 + 重试按钮）
+  6. 卸载 → api.unmount() + on() 监听自动清理 + CSS 引用计数平衡
 ```
 
 ## 写一个物料（Vue3）

@@ -4,12 +4,8 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { mountWidget, unmountWidget } from './loader.js';
+import { mountWidget, unmountContainer } from './loader.js';
 
-// 与 UMD 版 WidgetHost.vue 的差异：
-// - props 用 url/css 替代 js（ESM 模块 URL），去掉 vueVersion / runtimeDeps / integrity
-//   （依赖隔离交给 importmap，不再需要运行时声明）
-// - 不再有 loadScript + findWidget 的双路径，挂载只走 mountWidget 一条路
 const props = defineProps({
   name: { type: String, required: true },
   url: { type: String, required: true },
@@ -17,16 +13,19 @@ const props = defineProps({
   widgetProps: { type: Object, default: () => ({}) },
   context: { type: Object, default: () => ({}) },
   cssIntegrity: { type: String, default: '' },
+  // 加载超时毫秒数，默认 0 = 跟随 loader 默认值
+  timeout: { type: Number, default: 0 },
   onBeforeMount: { type: Function, default: null },
   onMounted: { type: Function, default: null },
   onUnmounted: { type: Function, default: null }
 });
 
-const emit = defineEmits(['widget-event']);
+const emit = defineEmits(['widget-event', 'widget-error']);
 // 把 emit 存到局部常量，避免 buildProps 内部方法名同名遮蔽导致调用自身。
 const emitToParent = emit;
 const hostRef = ref();
 let api = null;
+let mountSeq = 0;
 
 function ensureMountPoint() {
   const host = hostRef.value;
@@ -44,8 +43,7 @@ function buildProps() {
     ...props.widgetProps,
     context: props.context,
     emit(type, payload) {
-      // 双通道：既向全局 window 广播（供其他物料 on() 监听），又向基座 Vue 组件抛 widget-event
-      // （供基座 @widget-event 监听）。物料只调 emit 即可，无需知道 emitToHost。
+      // 双通道：window 广播（供其他物料 on()）+ 基座 widget-event（供 @widget-event）。物料只调 emit。
       window.dispatchEvent(new CustomEvent(`widget:${type}`, { detail: payload }));
       emitToParent('widget-event', { widget: props.name, event: type, payload });
     },
@@ -63,39 +61,56 @@ function buildProps() {
 async function doMount() {
   const mountPoint = ensureMountPoint();
   if (!mountPoint) return;
+  const seq = ++mountSeq;
 
-  if (props.onBeforeMount) props.onBeforeMount({ name: props.name, container: mountPoint });
+  props.onBeforeMount?.({ name: props.name, container: mountPoint });
 
-  api = await mountWidget(mountPoint, {
+  const result = await mountWidget(mountPoint, {
     name: props.name,
     url: props.url,
     css: props.css,
     context: props.context,
     cssIntegrity: props.cssIntegrity,
-    props: buildProps()
+    timeout: props.timeout || undefined,
+    props: buildProps(),
+    onError: (error) => emitToParent('widget-error', { widget: props.name, error })
   });
 
-  if (props.onMounted) props.onMounted({ name: props.name, container: mountPoint, api });
+  // await 期间若已卸载/重挂载，seq 过期 → 丢弃迟到的 api（对应会话已被 loader 取消）
+  if (seq !== mountSeq) return;
+  api = result;
+  api.update(buildProps()); // 对齐挂载期间可能变化的 widgetProps（watcher 触发时 api 未就绪被跳过）
+  props.onMounted?.({ name: props.name, container: mountPoint, api });
 }
 
 function doUnmount() {
-  if (props.onUnmounted) props.onUnmounted({ name: props.name, api });
-  unmountWidget(api);
+  mountSeq++; // 使进行中的 doMount 失效
+  props.onUnmounted?.({ name: props.name, api });
+  if (api) api.unmount();
+  else if (hostRef.value?.firstChild) unmountContainer(hostRef.value.firstChild); // 挂载进行中：取消
   api = null;
 }
 
-onMounted(() => { doMount(); });
-onUnmounted(() => { doUnmount(); });
+async function remount() {
+  doUnmount();
+  const host = hostRef.value;
+  if (!host) return;
+  host.innerHTML = '';
+  await nextTick();
+  doMount();
+}
 
+onMounted(doMount);
+onUnmounted(doUnmount);
+
+// 物料本身变化（url/name/css）→ 重挂载
+watch(() => [props.url, props.name, props.css], remount);
+
+// widgetProps 变化：物料支持 update 则热更新（不重挂载、状态保留），否则退化为重挂载
 watch(
   () => props.widgetProps,
-  async () => {
-    doUnmount();
-    const host = hostRef.value;
-    if (!host) return;
-    host.innerHTML = '';
-    await nextTick();
-    doMount();
+  () => {
+    if (api && api.update(buildProps()) === false) remount();
   },
   { deep: true }
 );
